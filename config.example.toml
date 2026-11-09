@@ -1,0 +1,83 @@
+# Kodiak Configuration Example (~/.config/kodiak/config.toml)
+# Local-First AI Task Delegation Workbench
+
+# --- Cloud & Provider Settings (Interpreter & Verifier) ---
+# Primary cloud endpoint defaults to local lumo-tamer bridge (Proton Lumo)
+lumo_url = "http://127.0.0.1:3003/v1"
+lumo_api_key = "frank-local-lumo-bridge"
+cloud_model = "lumo" # "lumo", "lumo-lite", or "lumo-max"
+tier = "medium"      # "low", "medium", or "high"
+
+# --- Local Ollama Settings (Worker Tiers) ---
+ollama_url = "http://127.0.0.1:11434"
+fast_model = "llama3.2:3b"         # Used for fast indexing, summary, and git diff review
+coder_model = "qwen2.5-coder:7b"    # Default worker model for code generation and shell commands
+heavy_model = "qwen2.5-coder:14b"   # Heavy fallback model for local interpret failover
+
+# --- Execution & Safety Timeouts ---
+command_timeout_secs = 60          # Max runtime for individual shell commands
+local_idle_timeout_secs = 60       # Idle stream timeout for Ollama chunk emissions
+local_total_timeout_secs = 600     # Hard total timeout for long code generation streams
+destructive_diff_threshold = 0.40  # Flag any modification replacing >= 40% of an existing file
+dry_run = false                    # Global dry-run mode (generates diffs/plans without applying)
+
+# --- Per-Run Diagnostic Logs (§3) ---
+run_log_level = "info"             # "debug", "info", "warn", or "error"
+run_log_max_mb = 50                # Maximum disk budget (MB) for ~/.local/share/kodiak/runs/
+run_log_keep_runs = 20             # Maximum number of recent runs to keep before pruning oldest
+
+# --- Memory Bank & Wiki Integration ---
+wiki_dir = "~/Nextcloud/ProjectsWiki" # Path to knowledge base / wiki directory
+memory_step_budget_chars = 8000       # Per-step context budget for injected memories
+memory_auto_sanitize = true           # Strip ANSI art / binary blobs before feeding memories
+
+# --- Project Whitelist & Grant Matrix (§4.2) ---
+# Kodiak starts with an empty whitelist (`whitelist = []`). Only explicitly whitelisted
+# directories can be accessed or modified.
+# Grant levels: "READ", "CREATE", "BUILD", "AUTONOMOUS"
+#
+# [[whitelist]]
+# path = "~/Projects/MyProject"
+# level = "BUILD"
+#
+# [[whitelist]]
+# path = "~/Projects/CoreLibrary"
+# level = "READ"
+
+whitelist = []
+
+# --- Alternate Providers (Standby for Cloud Quota Failover) ---
+# When Proton Lumo quota is reached, Kodiak displays the Choice Card. If you configure
+# OpenAI-compatible alternate providers here, you can choose to failover to them with explicit consent.
+#
+# [[alt_provider]]
+# name = "Gemini-Flash"
+# base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
+# api_key = "AIzaSy..."
+# tier = "low"
+# model = "gemini-2.5-flash"
+# max_context_chars = 32000
+#
+# [[alt_provider]]
+# name = "Groq-Llama3"
+# base_url = "https://api.groq.com/openai/v1"
+# api_key = "gsk_your_groq_api_key"
+# tier = "high"
+# model = "llama-3.3-70b-versatile"
+# max_context_chars = 16000
+#
+# [[alt_provider]]
+# name = "Remote-Ollama"
+# base_url = "http://192.168.1.50:11434/v1"
+# api_key = "ollama"
+# tier = "medium"
+# model = "qwen2.5-coder:14b"
+
+# --- Provider Cascade (Ordered Automatic Failover) ---
+# Automatic failover sends task prompts to providers in sequence on quota/retryable errors.
+# Enabling requires explicit consent (consent = true) because alternate providers do not
+# inherit Proton Lumo zero-access guarantees (Charter Tenet 1).
+[cascade]
+enabled = false
+consent = false
+order = ["primary"]

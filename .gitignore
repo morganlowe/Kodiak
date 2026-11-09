@@ -1,0 +1,28 @@
+# Node dependencies and build
+node_modules/
+dist/
+
+# Rust / Tauri build artifacts
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Arch Linux packaging artifacts
+*.pkg.tar.*
+pkg/
+
+# Temporary / backup files
+*.orig
+*.bak
+*~
+*.swp
+*.swo
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Runtime data & sensitive configs
+config.toml
+*.log
+journal.jsonl
+history.json
