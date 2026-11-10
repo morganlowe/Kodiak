@@ -1,4 +1,4 @@
-//! Named prompt constants for Foreman's tiered AI pipeline (§2 & §7).
+//! Named prompt constants for Kodiak's tiered AI pipeline (§2 & §7).
 //!
 //! Hard rule (§1): The cloud model NEVER receives raw file dumps, full logs,
 //! or whole directories. It receives ONLY: the user prompt, the plan,

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capabilities for Foreman main window",
+  "description": "Default capabilities for Kodiak main window",
   "windows": ["main"],
   "permissions": [
     "core:default"

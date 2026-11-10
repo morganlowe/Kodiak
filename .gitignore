@@ -26,3 +26,18 @@ config.toml
 *.log
 journal.jsonl
 history.json
+
+# ProjectsWiki runtime & local virtualenvs
+ProjectsWiki/venv/
+ProjectsWiki/__pycache__/
+ProjectsWiki/.archive_duplicates/
+ProjectsWiki/site/
+ProjectsWiki/*.log
+ProjectsWiki/projects_inventory.json
+ProjectsWiki/docs/projects.json
+ProjectsWiki/project_overrides.json
+ProjectsWiki/docs/*.md
+!ProjectsWiki/docs/index.md
+!ProjectsWiki/docs/demo-project.md
+
+

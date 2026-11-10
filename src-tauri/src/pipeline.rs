@@ -1,6 +1,9 @@
 //! Tiered AI Pipeline (Interpret → Local Execute → Cloud Verify) & Service Health (§1, §2, §4, §5).
 
-use crate::config::{cloud_debug_file_path, expand_tilde, journal_file_path, AppConfig, GrantLevel};
+use crate::config::{
+    cloud_debug_file_path, expand_tilde, journal_file_path, resolve_projects_dir, resolve_wiki_dir,
+    AppConfig, GrantLevel, WhitelistEntry,
+};
 use crate::enforcer::{
     check_command_deny_list, check_path_deny_list, evaluate_action, get_pipeline_generated_files,
     is_readonly_command, log_decision, resolve_canonical_target, ActionClass, EnforcementDecision,
@@ -47,6 +50,50 @@ pub struct HealthStatus {
     pub granted_dirs_count: usize,
     pub wiki_reachable: bool,
     pub wiki_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WikiStatusDetails {
+    pub reachable: bool,
+    pub url: Option<String>,
+    pub api_reachable: bool,
+    pub wiki_dir: String,
+    pub projects_dir: String,
+    pub doc_count: usize,
+    pub catalog_count: usize,
+    pub categories: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WikiProjectSummary {
+    pub name: String,
+    pub title: String,
+    pub category: String,
+    pub summary: String,
+    pub tags: Vec<String>,
+    pub doc_exists: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WikiSetupInfo {
+    pub wiki_enabled: bool,
+    pub wiki_configured: bool,
+    pub projects_dir: String,
+    pub wiki_dir: String,
+    pub detected_projects: Vec<String>,
+    pub hosts_configured: bool,
+    pub port80_configured: bool,
+    pub service_active: bool,
+    pub service_enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WikiSetupPayload {
+    pub enable_wiki: bool,
+    pub projects_dir: String,
+    pub add_to_whitelist: bool,
+    pub enable_service: bool,
+    pub start_now: bool,
 }
 
 /// Probes Lumo bridge (`GET /v1/models`), Ollama (`GET /api/tags`), and ProjectsWiki (`127.0.0.1:80` / `:8000`).
@@ -132,12 +179,14 @@ pub async fn check_system_health(cfg: &AppConfig) -> HealthStatus {
     // 4. ProjectsWiki probe (`127.0.0.1:8000` or `127.0.0.1:80` per wiki.sh)
     let mut wiki_reachable = false;
     let mut wiki_url = None;
-    for candidate in ["http://127.0.0.1:8000", "http://127.0.0.1:80"] {
-        if let Ok(resp) = client.get(candidate).send().await {
-            if resp.status().is_success() || resp.status().is_redirection() {
-                wiki_reachable = true;
-                wiki_url = Some(candidate.to_string());
-                break;
+    if cfg.wiki_enabled {
+        for candidate in ["http://127.0.0.1:8000", "http://127.0.0.1:80"] {
+            if let Ok(resp) = client.get(candidate).send().await {
+                if resp.status().is_success() || resp.status().is_redirection() {
+                    wiki_reachable = true;
+                    wiki_url = Some(candidate.to_string());
+                    break;
+                }
             }
         }
     }
@@ -177,7 +226,7 @@ pub async fn start_lumo_bridge_service(cfg: &AppConfig) -> Result<HealthStatus, 
     if !unit_known {
         return Err(
             "systemd user unit 'lumo-tamer.service' was not found at ~/.config/systemd/user/lumo-tamer.service. \
-            Per §4.1, Foreman does not create systemd units automatically. Please create ~/.config/systemd/user/lumo-tamer.service \
+            Per §4.1, Kodiak does not create systemd units automatically. Please create ~/.config/systemd/user/lumo-tamer.service \
             with ExecStart=%h/.gemini/config/plugins/local-delegation/scripts/tamer server and run 'systemctl --user daemon-reload'."
                 .to_string(),
         );
@@ -207,7 +256,8 @@ pub async fn start_lumo_bridge_service(cfg: &AppConfig) -> Result<HealthStatus, 
 /// Starts the ProjectsWiki server via `systemctl --user start projects-wiki.service` (if present)
 /// or `<wiki_dir>/wiki.sh start`, then polls until reachable.
 pub async fn start_wiki_service(cfg: &AppConfig) -> Result<HealthStatus, String> {
-    let wiki_dir = expand_tilde(&cfg.wiki_dir);
+    let wiki_dir = resolve_wiki_dir(cfg);
+    let projects_dir = resolve_projects_dir(cfg);
     let wiki_sh = wiki_dir.join("wiki.sh");
     let home_unit = dirs::config_dir()
         .map(|d| d.join("systemd/user/projects-wiki.service"))
@@ -221,6 +271,7 @@ pub async fn start_wiki_service(cfg: &AppConfig) -> Result<HealthStatus, String>
         let _ = Command::new("bash")
             .arg(&wiki_sh)
             .arg("start")
+            .env("PROJECTS_DIR", &projects_dir)
             .current_dir(&wiki_dir)
             .output()
             .map_err(|e| format!("Failed to run {}: {e}", wiki_sh.display()))?;
@@ -240,6 +291,354 @@ pub async fn start_wiki_service(cfg: &AppConfig) -> Result<HealthStatus, String>
     }
 
     Err("Wiki start command invoked, but neither 127.0.0.1:80 nor 127.0.0.1:8000 became reachable within 8 seconds.".to_string())
+}
+
+/// Stops the ProjectsWiki server via `systemctl --user stop projects-wiki.service` or `<wiki_dir>/wiki.sh stop`.
+pub async fn stop_wiki_service(cfg: &AppConfig) -> Result<HealthStatus, String> {
+    let wiki_dir = resolve_wiki_dir(cfg);
+    let wiki_sh = wiki_dir.join("wiki.sh");
+    let home_unit = dirs::config_dir()
+        .map(|d| d.join("systemd/user/projects-wiki.service"))
+        .unwrap_or_default();
+
+    if home_unit.exists() {
+        let _ = Command::new("systemctl")
+            .args(["--user", "stop", "projects-wiki.service"])
+            .output();
+    }
+    if wiki_sh.exists() {
+        let _ = Command::new("bash")
+            .arg(&wiki_sh)
+            .arg("stop")
+            .current_dir(&wiki_dir)
+            .output();
+    }
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    Ok(check_system_health(cfg).await)
+}
+
+/// Restarts the ProjectsWiki server.
+pub async fn restart_wiki_service(cfg: &AppConfig) -> Result<HealthStatus, String> {
+    let _ = stop_wiki_service(cfg).await;
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    start_wiki_service(cfg).await
+}
+
+/// Synchronizes the MkDocs documentation catalog by running `make_wiki.py`.
+pub async fn sync_wiki_catalog_service(cfg: &AppConfig) -> Result<String, String> {
+    let wiki_dir = resolve_wiki_dir(cfg);
+    let projects_dir = resolve_projects_dir(cfg);
+    let make_wiki = wiki_dir.join("make_wiki.py");
+    if !make_wiki.exists() {
+        return Err(format!("make_wiki.py not found in {}", wiki_dir.display()));
+    }
+
+    let out = Command::new("python3")
+        .arg(&make_wiki)
+        .env("PROJECTS_DIR", &projects_dir)
+        .current_dir(&wiki_dir)
+        .output()
+        .map_err(|e| format!("Failed to run make_wiki.py: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+    if !out.status.success() {
+        return Err(format!("make_wiki.py failed: {stderr}"));
+    }
+    Ok(if stdout.is_empty() { "Catalog synced successfully.".to_string() } else { stdout })
+}
+
+/// Rebuilds accurate documentation and assets (manuals, photos, PDFs) via `rebuild_accurate_docs.py`.
+pub async fn rebuild_wiki_assets_service(cfg: &AppConfig) -> Result<String, String> {
+    let wiki_dir = resolve_wiki_dir(cfg);
+    let projects_dir = resolve_projects_dir(cfg);
+    let rebuild_py = wiki_dir.join("rebuild_accurate_docs.py");
+    if !rebuild_py.exists() {
+        return Err(format!("rebuild_accurate_docs.py not found in {}", wiki_dir.display()));
+    }
+
+    let out = Command::new("python3")
+        .arg(&rebuild_py)
+        .env("PROJECTS_DIR", &projects_dir)
+        .current_dir(&wiki_dir)
+        .output()
+        .map_err(|e| format!("Failed to run rebuild_accurate_docs.py: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+    if !out.status.success() {
+        return Err(format!("rebuild_accurate_docs.py failed: {stderr}"));
+    }
+    // Also update catalog
+    let _ = sync_wiki_catalog_service(cfg).await;
+    Ok(if stdout.is_empty() { "Assets rebuilt and catalog synced successfully.".to_string() } else { stdout })
+}
+
+/// Generates or refreshes a project's technical documentation using local Ollama models via `build_wiki.py`.
+pub async fn ai_build_wiki_project_service(
+    cfg: &AppConfig,
+    project_name: &str,
+    model: Option<&str>,
+    overwrite: bool,
+) -> Result<String, String> {
+    let wiki_dir = resolve_wiki_dir(cfg);
+    let projects_dir = resolve_projects_dir(cfg);
+    let build_py = wiki_dir.join("build_wiki.py");
+    if !build_py.exists() {
+        return Err(format!("build_wiki.py not found in {}", wiki_dir.display()));
+    }
+
+    let chosen_model = model.unwrap_or("qwen2.5-coder:7b");
+    let mut cmd = Command::new("python3");
+    cmd.arg(&build_py)
+        .arg("--project")
+        .arg(project_name)
+        .arg("--model")
+        .arg(chosen_model)
+        .env("PROJECTS_DIR", &projects_dir)
+        .current_dir(&wiki_dir);
+
+    if overwrite {
+        cmd.arg("--overwrite");
+    }
+
+    let out = cmd.output().map_err(|e| format!("Failed to run build_wiki.py: {e}"))?;
+    let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+
+    if !out.status.success() {
+        return Err(format!("AI documentation build failed: {stderr}"));
+    }
+
+    Ok(stdout)
+}
+
+/// Returns detailed status of the ProjectsWiki including doc counts, catalog items, and API reachability.
+pub async fn get_detailed_wiki_status(cfg: &AppConfig) -> Result<WikiStatusDetails, String> {
+    let health = check_system_health(cfg).await;
+    let client = Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_millis(1500))
+        .build()
+        .unwrap_or_default();
+
+    let api_reachable = client
+        .get("http://127.0.0.1:8765/health")
+        .send()
+        .await
+        .map(|r| r.status().is_success())
+        .unwrap_or(false);
+
+    let wiki_dir = resolve_wiki_dir(cfg);
+    let docs_dir = wiki_dir.join("docs");
+    let mut doc_count = 0;
+    if docs_dir.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(&docs_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.ends_with(".md") && name != "index.md" {
+                    doc_count += 1;
+                }
+            }
+        }
+    }
+
+    let projects_json_path = docs_dir.join("projects.json");
+    let mut catalog_count = 0;
+    let mut categories = Vec::new();
+    if projects_json_path.exists() {
+        if let Ok(data) = std::fs::read_to_string(&projects_json_path) {
+            if let Ok(val) = serde_json::from_str::<Value>(&data) {
+                if let Some(arr) = val.as_array() {
+                    catalog_count = arr.len();
+                    for item in arr {
+                        if let Some(cat) = item.get("category").and_then(|c| c.as_str()) {
+                            if !categories.contains(&cat.to_string()) {
+                                categories.push(cat.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let projects_dir = resolve_projects_dir(cfg).to_string_lossy().to_string();
+
+    Ok(WikiStatusDetails {
+        reachable: health.wiki_reachable,
+        url: health.wiki_url,
+        api_reachable,
+        wiki_dir: wiki_dir.to_string_lossy().to_string(),
+        projects_dir,
+        doc_count,
+        catalog_count,
+        categories,
+    })
+}
+
+/// Returns the catalog of all project entries from `projects.json`.
+pub async fn list_wiki_projects_service(cfg: &AppConfig) -> Result<Vec<Value>, String> {
+    let wiki_dir = resolve_wiki_dir(cfg);
+    let projects_json = wiki_dir.join("docs/projects.json");
+    if projects_json.exists() {
+        let content = std::fs::read_to_string(&projects_json)
+            .map_err(|e| format!("Failed to read projects.json: {e}"))?;
+        let items: Vec<Value> = serde_json::from_str(&content)
+            .map_err(|e| format!("Failed to parse projects.json: {e}"))?;
+        return Ok(items);
+    }
+    Ok(Vec::new())
+}
+
+/// Scans a directory and returns names of project folders contained within it.
+pub fn detect_projects_in_dir_service(dir_path: &str) -> Vec<String> {
+    let path = expand_tilde(dir_path);
+    let mut detected = Vec::new();
+    if path.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(&path) {
+            for entry in entries.flatten() {
+                if let Ok(ft) = entry.file_type() {
+                    if ft.is_dir() {
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        if !name.starts_with('.') && name != "node_modules" && name != "target" && name != "venv" && name != "__pycache__" && name != "dist" {
+                            detected.push(name);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    detected.sort();
+    detected
+}
+
+/// Probes system host configuration, unprivileged port status, and detected projects for setup wizard.
+pub async fn get_wiki_setup_info_service(cfg: &AppConfig) -> Result<WikiSetupInfo, String> {
+    let p_dir = resolve_projects_dir(cfg);
+    let detected_projects = detect_projects_in_dir_service(&p_dir.to_string_lossy());
+
+    let hosts_configured = if let Ok(content) = std::fs::read_to_string("/etc/hosts") {
+        content.lines().any(|l| {
+            let t = l.trim();
+            !t.starts_with('#') && t.contains("wiki.local")
+        })
+    } else {
+        false
+    };
+
+    let port80_configured = if let Ok(val) = std::fs::read_to_string("/proc/sys/net/ipv4/ip_unprivileged_port_start") {
+        val.trim().parse::<u32>().map(|p| p <= 80).unwrap_or(false)
+    } else {
+        false
+    };
+
+    let home_unit = dirs::config_dir()
+        .map(|d| d.join("systemd/user/projects-wiki.service"))
+        .unwrap_or_default();
+    let service_enabled = home_unit.exists() && {
+        Command::new("systemctl")
+            .args(["--user", "is-enabled", "projects-wiki.service"])
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "enabled")
+            .unwrap_or(false)
+    };
+    let service_active = Command::new("systemctl")
+        .args(["--user", "is-active", "projects-wiki.service"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "active")
+        .unwrap_or(false);
+
+    let wiki_dir = resolve_wiki_dir(cfg);
+
+    Ok(WikiSetupInfo {
+        wiki_enabled: cfg.wiki_enabled,
+        wiki_configured: cfg.wiki_configured,
+        projects_dir: p_dir.to_string_lossy().to_string(),
+        wiki_dir: wiki_dir.to_string_lossy().to_string(),
+        detected_projects,
+        hosts_configured,
+        port80_configured,
+        service_active,
+        service_enabled,
+    })
+}
+
+/// Completes or skips the ProjectsWiki setup wizard, saving paths and updating whitelist if selected.
+pub async fn complete_wiki_setup_service(
+    cfg: &mut AppConfig,
+    payload: WikiSetupPayload,
+) -> Result<AppConfig, String> {
+    cfg.wiki_configured = true;
+    cfg.wiki_enabled = payload.enable_wiki;
+
+    if payload.enable_wiki {
+        if !payload.projects_dir.trim().is_empty() {
+            cfg.projects_dir = payload.projects_dir.trim().to_string();
+        }
+
+        let p_dir = resolve_projects_dir(cfg);
+
+        // Optionally add discovered projects to Kodiak's whitelist with READ grant
+        if payload.add_to_whitelist && p_dir.is_dir() {
+            if let Ok(entries) = std::fs::read_dir(&p_dir) {
+                for entry in entries.flatten() {
+                    if let Ok(ft) = entry.file_type() {
+                        if ft.is_dir() {
+                            let path_str = entry.path().to_string_lossy().to_string();
+                            let name = entry.file_name().to_string_lossy().to_string();
+                            if !name.starts_with('.') && name != "node_modules" && name != "target" && name != "venv" && name != "__pycache__" {
+                                if !cfg.whitelist.iter().any(|w| w.path == path_str) {
+                                    cfg.whitelist.push(WhitelistEntry {
+                                        path: path_str.clone(),
+                                        level: GrantLevel::Read,
+                                    });
+                                }
+                                if cfg.active_project.is_none() {
+                                    cfg.active_project = Some(path_str);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Configure systemd service if requested
+        if payload.enable_service {
+            let wiki_dir = resolve_wiki_dir(cfg);
+            let wiki_sh = wiki_dir.join("wiki.sh");
+            if let Some(config_dir) = dirs::config_dir() {
+                let service_path = config_dir.join("systemd/user/projects-wiki.service");
+                let unit = format!(
+                    "[Unit]\nDescription=ProjectsWiki Local Server (http://wiki.local)\nAfter=network.target\n\n\
+                    [Service]\nType=simple\nWorkingDirectory={}\nExecStart={} daemon\nRestart=on-failure\nRestartSec=3\n\n\
+                    [Install]\nWantedBy=default.target\n",
+                    wiki_dir.display(),
+                    wiki_sh.display()
+                );
+                if let Some(parent) = service_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = std::fs::write(&service_path, unit);
+                let _ = Command::new("systemctl").args(["--user", "daemon-reload"]).output();
+                let _ = Command::new("systemctl").args(["--user", "enable", "projects-wiki.service"]).output();
+            }
+        }
+
+        // Initial sync of the catalog
+        let _ = sync_wiki_catalog_service(cfg).await;
+
+        // Start server now if requested
+        if payload.start_now {
+            let _ = start_wiki_service(cfg).await;
+        }
+    } else {
+        let _ = stop_wiki_service(cfg).await;
+    }
+
+    Ok(cfg.clone())
 }
 
 /// Resolves requested Ollama model against installed models (`ollama_delegate_mcp.py` L152-L167).
@@ -291,7 +690,7 @@ fn append_cloud_debug_log(entry: &CloudRequestDebugEntry) {
         }
     }
     eprintln!(
-        "[Foreman Cloud Debug] stage={} attempt={} payload={}B (sys={}B, user={}B) status={:?} elapsed={}ms outcome={} detail={}",
+        "[Kodiak Cloud Debug] stage={} attempt={} payload={}B (sys={}B, user={}B) status={:?} elapsed={}ms outcome={} detail={}",
         entry.stage,
         entry.attempt,
         entry.total_payload_bytes,
@@ -526,6 +925,135 @@ pub async fn ping_alt_provider(provider: &crate::config::AltProviderConfig) -> R
             })
         }
     }
+}
+
+pub async fn fetch_provider_models(
+    base_url: &str,
+    api_key: &str,
+    provider_name: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let client = Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_secs(12))
+        .build()
+        .map_err(|e| format!("HTTP client error: {e}"))?;
+
+    let base_trimmed = base_url.trim().trim_end_matches('/');
+    let prov_name_lower = provider_name.unwrap_or("").to_lowercase();
+    let is_gemini = base_trimmed.contains("generativelanguage.googleapis.com")
+        || prov_name_lower.contains("gemini");
+
+    // 1. If Gemini / Google Generative Language
+    if is_gemini && !api_key.trim().is_empty() {
+        let native_url = format!(
+            "https://generativelanguage.googleapis.com/v1beta/models?key={}",
+            api_key.trim()
+        );
+        if let Ok(resp) = client.get(&native_url).send().await {
+            if resp.status().is_success() {
+                if let Ok(body) = resp.json::<serde_json::Value>().await {
+                    if let Some(models_arr) = body.get("models").and_then(|v| v.as_array()) {
+                        let mut results: Vec<String> = models_arr
+                            .iter()
+                            .filter_map(|m| {
+                                let name = m.get("name")?.as_str()?;
+                                let clean_name = name.strip_prefix("models/").unwrap_or(name);
+                                let methods = m.get("supportedGenerationMethods")?.as_array()?;
+                                let can_generate = methods.iter().any(|meth| meth.as_str() == Some("generateContent"));
+                                if can_generate
+                                    && !clean_name.contains("embedding")
+                                    && !clean_name.contains("aqa")
+                                    && !clean_name.contains("imagen")
+                                    && !clean_name.contains("2.5-flash")
+                                {
+                                    Some(clean_name.to_string())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        if !results.is_empty() {
+                            results.sort_by(|a, b| {
+                                let score = |s: &str| -> i32 {
+                                    if s.contains("3.0") { 0 }
+                                    else if s.contains("2.5-pro") { 1 }
+                                    else if s.contains("1.5-pro") { 2 }
+                                    else if s.contains("2.0") { 3 }
+                                    else if s.contains("1.5-flash") { 4 }
+                                    else { 5 }
+                                };
+                                score(a).cmp(&score(b)).then(a.cmp(b))
+                            });
+                            return Ok(results);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Standard OpenAI-compatible /models endpoint
+    let models_url = if base_trimmed.ends_with("/models") {
+        base_trimmed.to_string()
+    } else {
+        format!("{base_trimmed}/models")
+    };
+
+    let mut req = client.get(&models_url);
+    if !api_key.trim().is_empty() {
+        req = req.header("Authorization", format!("Bearer {}", api_key.trim()));
+    }
+
+    if let Ok(resp) = req.send().await {
+        if resp.status().is_success() {
+            if let Ok(body) = resp.json::<serde_json::Value>().await {
+                if let Some(data_arr) = body.get("data").and_then(|v| v.as_array()) {
+                    let list: Vec<String> = data_arr
+                        .iter()
+                        .filter_map(|m| m.get("id").and_then(|id| id.as_str()).map(|s| s.to_string()))
+                        .filter(|id| {
+                            let lower = id.to_lowercase();
+                            !lower.contains("whisper")
+                                && !lower.contains("embedding")
+                                && !lower.contains("tts")
+                                && !lower.contains("dall-e")
+                                && !lower.contains("moderation")
+                        })
+                        .collect();
+                    if !list.is_empty() {
+                        return Ok(list);
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Fallback for Ollama: try /api/tags
+    let host_base = if let Some(idx) = base_trimmed.find("/v1") {
+        &base_trimmed[..idx]
+    } else {
+        base_trimmed
+    };
+    let ollama_tags_url = format!("{host_base}/api/tags");
+    if let Ok(resp) = client.get(&ollama_tags_url).send().await {
+        if resp.status().is_success() {
+            if let Ok(body) = resp.json::<serde_json::Value>().await {
+                if let Some(models_arr) = body.get("models").and_then(|v| v.as_array()) {
+                    let list: Vec<String> = models_arr
+                        .iter()
+                        .filter_map(|m| m.get("name").and_then(|n| n.as_str()).map(|s| s.to_string()))
+                        .collect();
+                    if !list.is_empty() {
+                        return Ok(list);
+                    }
+                }
+            }
+        }
+    }
+
+    Err(format!(
+        "Failed to fetch model list from '{base_trimmed}'. Verify endpoint URL and API key."
+    ))
 }
 
 pub async fn call_local_stage_chat(

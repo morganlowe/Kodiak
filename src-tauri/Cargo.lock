@@ -1739,7 +1739,7 @@ dependencies = [
 
 [[package]]
 name = "kodiak"
-version = "0.7.0"
+version = "1.0.0"
 dependencies = [
  "chrono",
  "dirs 5.0.1",

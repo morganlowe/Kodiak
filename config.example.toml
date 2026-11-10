@@ -26,8 +26,9 @@ run_log_level = "info"             # "debug", "info", "warn", or "error"
 run_log_max_mb = 50                # Maximum disk budget (MB) for ~/.local/share/kodiak/runs/
 run_log_keep_runs = 20             # Maximum number of recent runs to keep before pruning oldest
 
-# --- Memory Bank & Wiki Integration ---
-wiki_dir = "~/Nextcloud/ProjectsWiki" # Path to knowledge base / wiki directory
+# --- Projects Wiki & AI Documentation Feature ---
+# Bundled optional component (`/usr/share/kodiak/projectswiki`) or local repository (`./ProjectsWiki`):
+wiki_dir = "/usr/share/kodiak/projectswiki" # Path to knowledge base / wiki directory
 memory_step_budget_chars = 8000       # Per-step context budget for injected memories
 memory_auto_sanitize = true           # Strip ANSI art / binary blobs before feeding memories
 
@@ -55,7 +56,7 @@ whitelist = []
 # base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
 # api_key = "AIzaSy..."
 # tier = "low"
-# model = "gemini-2.5-flash"
+# model = "gemini-3.0-flash"
 # max_context_chars = 32000
 #
 # [[alt_provider]]

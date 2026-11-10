@@ -41,6 +41,54 @@ interface AltProviderConfig {
   tier?: string;
 }
 
+interface ProviderPresetModel {
+  id: string;
+  label: string;
+  tier?: "low" | "medium" | "high";
+}
+
+const PRESET_MODELS: Record<string, ProviderPresetModel[]> = {
+  gemini: [
+    { id: "gemini-3.0-flash", label: "gemini-3.0-flash (Recommended Fast / 1M ctx)", tier: "low" },
+    { id: "gemini-2.5-pro", label: "gemini-2.5-pro (Flagship Reasoning / 2M ctx)", tier: "high" },
+    { id: "gemini-1.5-pro", label: "gemini-1.5-pro (Production Reasoning / 2M ctx)", tier: "high" },
+    { id: "gemini-2.0-flash", label: "gemini-2.0-flash (Next-Gen Fast)", tier: "medium" },
+    { id: "gemini-1.5-flash", label: "gemini-1.5-flash (Standard Fast)", tier: "low" },
+    { id: "gemini-2.0-flash-lite", label: "gemini-2.0-flash-lite (Cost-Efficient)", tier: "low" },
+  ],
+  lumo: [
+    { id: "lumo", label: "lumo (Standard / Medium)", tier: "medium" },
+    { id: "lumo-lite", label: "lumo-lite (Fast / Low)", tier: "low" },
+    { id: "lumo-max", label: "lumo-max (Premium / High)", tier: "high" },
+  ],
+  groq: [
+    { id: "llama-3.3-70b-versatile", label: "llama-3.3-70b-versatile (Recommended)", tier: "high" },
+    { id: "llama-3.1-8b-instant", label: "llama-3.1-8b-instant (Fast)", tier: "low" },
+    { id: "mixtral-8x7b-32768", label: "mixtral-8x7b-32768", tier: "medium" },
+  ],
+  openrouter: [
+    { id: "anthropic/claude-3.5-sonnet", label: "anthropic/claude-3.5-sonnet (Recommended)", tier: "high" },
+    { id: "openai/gpt-4o", label: "openai/gpt-4o", tier: "high" },
+    { id: "google/gemini-2.0-flash-001", label: "google/gemini-2.0-flash-001", tier: "low" },
+    { id: "meta-llama/llama-3.3-70b-instruct", label: "meta-llama/llama-3.3-70b-instruct", tier: "medium" },
+  ],
+  ollama: [
+    { id: "qwen2.5-coder:7b", label: "qwen2.5-coder:7b (Recommended Coder)", tier: "medium" },
+    { id: "llama3.2:3b", label: "llama3.2:3b (Fast / Lightweight)", tier: "low" },
+    { id: "qwen2.5-coder:14b", label: "qwen2.5-coder:14b (Heavy Offline Coder)", tier: "high" },
+    { id: "deepseek-r1:7b", label: "deepseek-r1:7b (Local Reasoning)", tier: "medium" },
+  ],
+};
+
+function getPresetForProvider(p: AltProviderConfig): string {
+  if (/generativelanguage/i.test(p.base_url) || /gemini/i.test(p.name)) return "gemini";
+  if (/:3003/i.test(p.base_url) || /lumo/i.test(p.name)) return "lumo";
+  if (/groq/i.test(p.base_url) || /groq/i.test(p.name)) return "groq";
+  if (/openrouter/i.test(p.base_url) || /openrouter/i.test(p.name)) return "openrouter";
+  if (/:11434/i.test(p.base_url) || /ollama/i.test(p.name)) return "ollama";
+  return "";
+}
+
 interface CascadeConfig {
   enabled: boolean;
   consent: boolean;
@@ -69,6 +117,9 @@ interface AppConfig {
   destructive_diff_threshold?: number;
   dry_run: boolean;
   wiki_dir: string;
+  wiki_enabled?: boolean;
+  wiki_configured?: boolean;
+  projects_dir?: string;
   active_project: string | null;
   whitelist: WhitelistEntry[];
   alt_provider?: AltProviderConfig[];
@@ -98,6 +149,47 @@ interface HealthStatus {
   granted_dirs_count: number;
   wiki_reachable: boolean;
   wiki_url: string | null;
+}
+
+interface WikiStatusDetails {
+  reachable: boolean;
+  url: string | null;
+  api_reachable: boolean;
+  wiki_dir: string;
+  projects_dir: string;
+  doc_count: number;
+  catalog_count: number;
+  categories: string[];
+}
+
+interface WikiProjectItem {
+  name: string;
+  title: string;
+  file: string;
+  url: string;
+  category: string;
+  summary: string;
+  tags: string[];
+}
+
+interface WikiSetupInfo {
+  wiki_enabled: boolean;
+  wiki_configured: boolean;
+  projects_dir: string;
+  wiki_dir: string;
+  detected_projects: string[];
+  hosts_configured: boolean;
+  port80_configured: boolean;
+  service_active: boolean;
+  service_enabled: boolean;
+}
+
+interface WikiSetupPayload {
+  enable_wiki: boolean;
+  projects_dir: string;
+  add_to_whitelist: boolean;
+  enable_service: boolean;
+  start_now: boolean;
 }
 
 interface PlanStep {
@@ -243,6 +335,16 @@ interface JournalEntry {
   reason: string;
 }
 
+interface AltProviderFormDraft {
+  preset: string;
+  name: string;
+  base_url: string;
+  api_key: string;
+  tier: string;
+  model: string;
+  max_context_chars?: number;
+}
+
 // Application UI state
 const state: {
   tab: ActiveTab;
@@ -253,6 +355,28 @@ const state: {
   runningPipeline: boolean;
   startingBridge: boolean;
   startingWiki: boolean;
+  stoppingWiki: boolean;
+  syncingWiki: boolean;
+  rebuildingWikiAssets: boolean;
+  buildingWikiAi: boolean;
+  wikiDetails: WikiStatusDetails | null;
+  wikiProjects: WikiProjectItem[];
+  wikiAiModalOpen: boolean;
+  wikiAiSelectedProject: string;
+  wikiAiSelectedModel: string;
+  wikiAiOverwrite: boolean;
+  wikiAiStatusMessage: string | null;
+  wikiAiOutput: string | null;
+  wikiWizardOpen: boolean;
+  wikiWizardStep: 1 | 2 | 3 | 4;
+  wikiWizardInfo: WikiSetupInfo | null;
+  wikiWizardProjectsDir: string;
+  wikiWizardAddToWhitelist: boolean;
+  wikiWizardEnableService: boolean;
+  wikiWizardStartNow: boolean;
+  wikiWizardScanning: boolean;
+  wikiWizardSaving: boolean;
+  wikiWizardDetected: string[];
   currentTask: TaskRecord | null;
   readOnlyHistorical: boolean;
   history: TaskRecord[];
@@ -264,6 +388,16 @@ const state: {
   tickerLocked: boolean;
   liveDraft: LiveDraft | null;
   sidebarCollapsed: boolean;
+  sidebarProjectsCollapsed: boolean;
+  sidebarMemoriesCollapsed: boolean;
+  sidebarTasksCollapsed: boolean;
+  settingsProjectsCollapsed: boolean;
+  journalCollapsed: boolean;
+  editingAltProviderIdx: number | null;
+  altProviderFormDraft: AltProviderFormDraft | null;
+  fetchingLiveModels: boolean;
+  fetchModelsStatus: string | null;
+  fetchedModelsForPreset: Record<string, string[]>;
   pendingDeleteId: string | null;
   memories: MemoryEntry[];
   activeMemoryModal: MemoryEntry | null;
@@ -283,6 +417,28 @@ const state: {
   runningPipeline: false,
   startingBridge: false,
   startingWiki: false,
+  stoppingWiki: false,
+  syncingWiki: false,
+  rebuildingWikiAssets: false,
+  buildingWikiAi: false,
+  wikiDetails: null,
+  wikiProjects: [],
+  wikiAiModalOpen: false,
+  wikiAiSelectedProject: "",
+  wikiAiSelectedModel: "qwen2.5-coder:7b",
+  wikiAiOverwrite: true,
+  wikiAiStatusMessage: null,
+  wikiAiOutput: null,
+  wikiWizardOpen: false,
+  wikiWizardStep: 1,
+  wikiWizardInfo: null,
+  wikiWizardProjectsDir: "~/Projects",
+  wikiWizardAddToWhitelist: true,
+  wikiWizardEnableService: true,
+  wikiWizardStartNow: true,
+  wikiWizardScanning: false,
+  wikiWizardSaving: false,
+  wikiWizardDetected: [],
   currentTask: null,
   readOnlyHistorical: false,
   history: [],
@@ -294,6 +450,16 @@ const state: {
   tickerLocked: false,
   liveDraft: null,
   sidebarCollapsed: false,
+  sidebarProjectsCollapsed: false,
+  sidebarMemoriesCollapsed: false,
+  sidebarTasksCollapsed: false,
+  settingsProjectsCollapsed: true,
+  journalCollapsed: true,
+  editingAltProviderIdx: null,
+  altProviderFormDraft: null,
+  fetchingLiveModels: false,
+  fetchModelsStatus: null,
+  fetchedModelsForPreset: {},
   pendingDeleteId: null,
   memories: [],
   activeMemoryModal: null,
@@ -573,6 +739,21 @@ async function refreshAllState(): Promise<void> {
     state.history = hist;
     state.journal = journal;
     state.memories = mems;
+
+    try {
+      const [wDetails, wProjects] = await Promise.all([
+        invoke<WikiStatusDetails>("get_wiki_details"),
+        invoke<WikiProjectItem[]>("list_wiki_projects"),
+      ]);
+      state.wikiDetails = wDetails;
+      state.wikiProjects = wProjects;
+      if (!state.wikiAiSelectedProject && state.config?.active_project) {
+        const baseName = state.config.active_project.split("/").pop() || "";
+        state.wikiAiSelectedProject = baseName;
+      }
+    } catch {
+      // Wiki backend details probe failed or server stopped
+    }
   } catch (err) {
     state.uiBannerError = `State refresh error: ${String(err)}`;
   }
@@ -598,9 +779,14 @@ function renderHeader(): string {
           <span>Workbench</span>
           ${pendingCount > 0 ? `<span class="nav-tab__badge">${pendingCount}</span>` : ""}
         </button>
-        <button type="button" class="nav-tab ${state.tab === "wiki" ? "is-active" : ""}" data-nav="wiki">
-          <span>Projects Wiki</span>
-        </button>
+        ${
+          cfg?.wiki_enabled !== false
+            ? `<button type="button" class="nav-tab ${state.tab === "wiki" ? "is-active" : ""}" data-nav="wiki">
+                <span>Projects Wiki</span>
+                ${state.health?.wiki_reachable ? `<span class="nav-tab__badge" style="background:var(--wiki-accent); color:#fff;">Live</span>` : ""}
+              </button>`
+            : ""
+        }
         <button type="button" class="nav-tab ${state.tab === "settings" ? "is-active" : ""}" data-nav="settings">
           <span>Settings</span>
           <span class="nav-tab__badge">${cfg?.whitelist.length ?? 0} dirs</span>
@@ -689,7 +875,21 @@ function renderHealthStrip(): string {
             ? `<span class="badge">${escapeHtml(h.active_project_grant)}</span>`
             : ""
         }
+        ${
+          h.active_project && cfg.wiki_enabled !== false
+            ? `<button type="button" class="btn btn--sm quick-wiki-btn" title="View or document active project in Projects Wiki" style="padding:0.15rem 0.5rem; font-size:0.75rem; margin-inline-start:0.35rem;">📖 Wiki</button>`
+            : ""
+        }
       </span>
+
+      ${
+        cfg.wiki_enabled !== false
+          ? `<span class="health-item">
+              <span class="${h.wiki_reachable ? "status-dot is-ok" : "status-dot is-warn"}"></span>
+              <span>Projects Wiki: <strong>${h.wiki_reachable ? "Live" : "Offline"}</strong></span>
+            </span>`
+          : ""
+      }
 
       <div class="health-actions">
         <button type="button" id="refresh-health-btn" class="btn btn--sm">Refresh Health</button>
@@ -759,6 +959,20 @@ function renderWorkbenchTab(): string {
         ? `<div class="posture-banner is-cruise">
             <span>${escapeHtml(state.uiBannerInfo)}</span>
             <button type="button" id="dismiss-info-btn" class="btn btn--sm">Dismiss</button>
+          </div>`
+        : ""
+    }
+    ${
+      !cfg.wiki_configured
+        ? `<div class="stage-alert" style="background:var(--wiki-surface); border:1px solid var(--wiki-accent); border-radius:var(--wiki-radius-sm); padding:0.75rem 1rem; margin-block-end:1rem; display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
+            <div style="display:flex; flex-direction:column; gap:0.25rem;">
+              <strong style="color:var(--wiki-accent); font-size:0.95rem;">📖 Projects Wiki & AI Documentation Hub Available</strong>
+              <span class="muted" style="font-size:0.82rem;">Would you like to set up the Projects Wiki for your repositories or skip it? You can always change this in Settings.</span>
+            </div>
+            <div class="row-inline" style="gap:0.5rem;">
+              <button type="button" id="banner-open-wizard-btn" class="btn btn--sm btn--primary">🛠 Set Up Wiki</button>
+              <button type="button" id="banner-skip-wizard-btn" class="btn btn--sm">Skip for Now</button>
+            </div>
           </div>`
         : ""
     }
@@ -1091,15 +1305,20 @@ function renderSidebar(): string {
     return `<aside class="sidebar is-collapsed"><div class="sidebar__top"><button type="button" class="side-icon-btn" id="sidebar-toggle-btn" title="Expand sidebar">»</button></div></aside>`;
   }
   const cfg = state.config;
-  const projects = (cfg?.whitelist ?? [])
-    .map((w) => {
-      const name = w.path.split("/").filter(Boolean).pop() ?? w.path;
-      return `<button type="button" class="side-item ${cfg?.active_project === w.path ? "is-active" : ""}" data-select-project="${escapeHtml(w.path)}" title="${escapeHtml(w.path)}">
-        <span class="side-item__label">${escapeHtml(name)}</span>
-        <span class="badge badge--neutral">${escapeHtml(w.level)}</span>
-      </button>`;
-    })
-    .join("");
+  const renderProjectButton = (w: WhitelistEntry) => {
+    const name = w.path.split("/").filter(Boolean).pop() ?? w.path;
+    const isActive = cfg?.active_project === w.path;
+    return `<button type="button" class="side-item ${isActive ? "is-active" : ""}" data-select-project="${escapeHtml(w.path)}" title="${escapeHtml(w.path)}">
+      <span class="side-item__label" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;">${escapeHtml(name)}</span>
+      <span class="badge badge--neutral" style="font-size:0.65rem; flex-shrink:0;">${escapeHtml(w.level)}</span>
+    </button>`;
+  };
+
+  const allProjectsHtml = (cfg?.whitelist ?? []).map(renderProjectButton).join("");
+  const activeEntry = (cfg?.whitelist ?? []).find((w) => w.path === cfg?.active_project);
+  const collapsedProjectHtml = activeEntry
+    ? renderProjectButton(activeEntry)
+    : `<p class="muted" style="font-size:0.75rem; padding-inline-start:0.35rem; margin:0.2rem 0;">(No active project)</p>`;
 
   // Visible memories based on active project scope
   const activeProj = cfg?.active_project?.toLowerCase() ?? "";
@@ -1171,28 +1390,42 @@ function renderSidebar(): string {
       </div>
       <div class="sidebar__scroll">
         <div>
-          <div class="row-between">
-            <h3 class="sidebar__heading">Projects</h3>
+          <div class="row-between" style="cursor:pointer; margin-block-end:0.25rem; user-select:none; padding-inline-end:0.2rem;" id="sidebar-projects-toggle" title="Click to collapse/expand projects">
+            <div class="row-inline" style="gap:0.4rem; align-items:center;">
+              <span class="mono muted" style="font-size:0.75rem; width:0.85rem; display:inline-block; text-align:center;">${state.sidebarProjectsCollapsed ? "▶" : "▼"}</span>
+              <h3 class="sidebar__heading" style="margin:0;">Projects</h3>
+            </div>
+            <span class="badge badge--neutral" style="font-size:0.65rem;">${(cfg?.whitelist ?? []).length}</span>
           </div>
-          ${projects || `<p class="muted" style="font-size:0.78rem;">None whitelisted.</p>`}
+          ${state.sidebarProjectsCollapsed ? collapsedProjectHtml : (allProjectsHtml || `<p class="muted" style="font-size:0.78rem;">None whitelisted.</p>`)}
         </div>
 
         <div>
-          <div class="row-between" style="margin-block-end:0.25rem;">
-            <h3 class="sidebar__heading" style="margin:0;">Memories</h3>
-            <div class="row-inline">
-              <button type="button" class="side-icon-btn" id="refresh-memories-btn" title="Rescan memories from disk">↻</button>
-              <button type="button" class="side-icon-btn" id="add-memory-btn" title="New Memory">+</button>
+          <div class="row-between" style="cursor:pointer; margin-block-end:0.25rem; user-select:none; padding-inline-end:0.2rem;" id="sidebar-memories-toggle" title="Click to collapse/expand memories">
+            <div class="row-inline" style="gap:0.4rem; align-items:center;">
+              <span class="mono muted" style="font-size:0.75rem; width:0.85rem; display:inline-block; text-align:center;">${state.sidebarMemoriesCollapsed ? "▶" : "▼"}</span>
+              <h3 class="sidebar__heading" style="margin:0;">Memories</h3>
+            </div>
+            <div class="row-inline" style="align-items:center; gap:0.25rem;">
+              <span class="badge badge--neutral" style="font-size:0.65rem;">${visibleMemories.length}</span>
+              <button type="button" class="side-icon-btn" id="refresh-memories-btn" title="Rescan memories from disk" onclick="event.stopPropagation();">↻</button>
+              <button type="button" class="side-icon-btn" id="add-memory-btn" title="New Memory" onclick="event.stopPropagation();">+</button>
             </div>
           </div>
-          ${memoriesHtml}
+          ${state.sidebarMemoriesCollapsed ? "" : memoriesHtml}
         </div>
 
         ${deferredHtml}
 
         <div>
-          <h3 class="sidebar__heading">Tasks</h3>
-          ${tasksHtml}
+          <div class="row-between" style="cursor:pointer; margin-block-end:0.25rem; user-select:none; padding-inline-end:0.2rem;" id="sidebar-tasks-toggle" title="Click to collapse/expand tasks">
+            <div class="row-inline" style="gap:0.4rem; align-items:center;">
+              <span class="mono muted" style="font-size:0.75rem; width:0.85rem; display:inline-block; text-align:center;">${state.sidebarTasksCollapsed ? "▶" : "▼"}</span>
+              <h3 class="sidebar__heading" style="margin:0;">Tasks</h3>
+            </div>
+            <span class="badge badge--neutral" style="font-size:0.65rem;">${nonDeferred.length}</span>
+          </div>
+          ${state.sidebarTasksCollapsed ? "" : tasksHtml}
         </div>
       </div>
     </aside>
@@ -1201,6 +1434,7 @@ function renderSidebar(): string {
     ${renderDeleteMemoryModal()}
     ${renderMemoryViewModal()}
     ${renderMemoryEditModal()}
+    ${renderWikiAiModal()}
   `;
 }
 
@@ -1857,14 +2091,38 @@ function renderTaskResults(task: TaskRecord): string {
 }
 
 function renderJournalPanel(): string {
+  const latest = state.journal[state.journal.length - 1];
   return `
     <section class="panel-card">
-      <div class="panel-header">
-        <h2 class="panel-title">Local Decision Journal (<code>~/.local/share/kodiak/journal.jsonl</code>)</h2>
-        <span class="muted">Showing latest ${state.journal.length} entries</span>
+      <div class="panel-header" id="journal-toggle-btn" style="cursor:pointer; user-select:none;" title="Click to collapse/expand Decision Journal">
+        <div class="row-inline">
+          <h2 class="panel-title">Local Decision Journal (<code>~/.local/share/kodiak/journal.jsonl</code>)</h2>
+          <span class="badge badge--neutral">${state.journal.length}</span>
+        </div>
+        <div class="row-inline">
+          <span class="muted">Append-only audit trail of human & autonomous actions.</span>
+          <span class="mono muted" style="font-size:0.8rem; font-weight:600; padding:0.15rem 0.45rem; border:1px solid var(--wiki-border); border-radius:var(--wiki-radius-sm);">
+            ${state.journalCollapsed ? "▶ Expand" : "▼ Collapse"}
+          </span>
+        </div>
       </div>
       ${
-        state.journal.length === 0
+        state.journalCollapsed
+          ? `<div class="row-between" style="padding:0.75rem 0.9rem; font-size:0.85rem; background:var(--wiki-surface); border-radius:var(--wiki-radius-sm); border:1px dashed var(--wiki-border);">
+              <div class="row-inline" style="gap:0.55rem; align-items:center;">
+                <span class="badge ${
+                  latest?.decision === "denied" || latest?.decision === "rejected"
+                    ? "badge--bad"
+                    : latest?.decision === "accepted" || latest?.decision === "grant_auto_executed"
+                    ? "badge--ok"
+                    : "badge--warn"
+                }">Latest</span>
+                <span class="mono"><strong>${escapeHtml(latest?.decision || "None")}</strong></span>
+                <span class="muted">${escapeHtml(latest?.target_path || "")} — ${escapeHtml(latest?.reason || "No actions logged yet")}</span>
+              </div>
+              <span class="muted">${state.journal.length} entries &bull; Click "Expand" to view audit trail</span>
+            </div>`
+          : state.journal.length === 0
           ? `<p class="muted">No journal entries logged yet.</p>`
           : `<div class="queue-grid">
               ${state.journal
@@ -1896,23 +2154,417 @@ function renderJournalPanel(): string {
   `;
 }
 
+function renderWikiSetupWizard(): string {
+  if (!state.wikiWizardOpen) return "";
+
+  const info = state.wikiWizardInfo;
+  const currentStep = state.wikiWizardStep;
+
+  let stepBodyHtml = "";
+
+  switch (currentStep) {
+    case 1: {
+      stepBodyHtml = `
+        <div style="display:flex; flex-direction:column; gap:1rem;">
+          <p class="muted" style="font-size:0.88rem; line-height:1.45; margin:0;">
+            Kodiak now features a unified <strong>Projects Wiki & Knowledge Hub</strong>.
+            It provides fast local browsing with MkDocs Material, hardware asset indexing (PDF datasheets, schematics, manuals),
+            and offline AI documentation generation powered by local Ollama (e.g. <code>qwen2.5-coder:7b</code>) with zero cloud tokens.
+          </p>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.85rem; margin-top:0.25rem;">
+            <div style="background:var(--wiki-surface); border:2px solid var(--wiki-accent); border-radius:var(--wiki-radius); padding:1rem; display:flex; flex-direction:column; gap:0.5rem;">
+              <div class="row-inline" style="gap:0.4rem; align-items:center;">
+                <span style="font-size:1.15rem;">🚀</span>
+                <strong style="color:var(--wiki-accent);">Set Up Projects Wiki</strong>
+              </div>
+              <p class="muted" style="font-size:0.8rem; margin:0; flex:1;">
+                Point Kodiak to your projects folder, automatically discover your repositories, sync the whitelist, and enable the full local wiki hub.
+              </p>
+              <button type="button" id="wizard-next-step1-btn" class="btn btn--primary" style="margin-top:0.5rem;">
+                Set Up Projects Wiki →
+              </button>
+            </div>
+
+            <div style="background:var(--wiki-surface); border:1px solid var(--wiki-border); border-radius:var(--wiki-radius); padding:1rem; display:flex; flex-direction:column; gap:0.5rem;">
+              <div class="row-inline" style="gap:0.4rem; align-items:center;">
+                <span style="font-size:1.15rem;">⏭</span>
+                <strong>Skip for Now</strong>
+              </div>
+              <p class="muted" style="font-size:0.8rem; margin:0; flex:1;">
+                Skip wiki setup and hide the "Projects Wiki" navigation tab. You can rerun this wizard or re-enable the wiki anytime in Settings.
+              </p>
+              <button type="button" id="wizard-skip-step1-btn" class="btn btn--danger" style="margin-top:0.5rem;">
+                Skip & Hide Wiki Button
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+      break;
+    }
+    case 2: {
+      const detectedCount = state.wikiWizardDetected.length;
+      const detectedChips =
+        detectedCount > 0
+          ? state.wikiWizardDetected
+              .slice(0, 16)
+              .map(
+                (p) =>
+                  `<span class="badge badge--neutral" style="font-size:0.75rem;">📁 ${escapeHtml(p)}</span>`
+              )
+              .join(" ") +
+            (detectedCount > 16
+              ? ` <span class="muted" style="font-size:0.75rem;">+${detectedCount - 16} more...</span>`
+              : "")
+          : `<span class="muted" style="font-size:0.8rem;">No repositories detected yet. Click "Scan Directory" below.</span>`;
+
+      stepBodyHtml = `
+        <div style="display:flex; flex-direction:column; gap:1rem;">
+          <p class="muted" style="font-size:0.85rem; margin:0;">
+            Specify the folder containing your local coding repositories and projects.
+            Both Kodiak's task supervisor and the Projects Wiki catalog will use this directory.
+          </p>
+
+          <div class="form-field">
+            <label class="form-label" for="wizard-projects-dir-input">
+              Projects Root Directory (e.g. <code>~/Projects</code> or <code>/path/to/projects</code>)
+            </label>
+            <div class="row-inline" style="gap:0.5rem; align-items:center;">
+              <input
+                type="text"
+                id="wizard-projects-dir-input"
+                class="form-input"
+                style="flex:1;"
+                value="${escapeHtml(state.wikiWizardProjectsDir)}"
+                placeholder="~/Projects"
+              />
+              <button
+                type="button"
+                id="wizard-scan-dir-btn"
+                class="btn btn--accent"
+                ${state.wikiWizardScanning ? "disabled" : ""}
+              >
+                ${state.wikiWizardScanning ? "Scanning..." : "🔍 Scan Directory"}
+              </button>
+            </div>
+          </div>
+
+          <div style="background:var(--wiki-surface); border:1px solid var(--wiki-border); border-radius:var(--wiki-radius-sm); padding:0.75rem; display:flex; flex-direction:column; gap:0.5rem;">
+            <div class="row-between" style="align-items:center;">
+              <strong style="font-size:0.82rem;">Detected Project Repositories:</strong>
+              <span class="badge ${detectedCount > 0 ? "badge--good" : "badge--neutral"}">
+                ${detectedCount} found
+              </span>
+            </div>
+            <div style="display:flex; flex-wrap:wrap; gap:0.35rem; max-height:120px; overflow-y:auto; padding:0.25rem 0;">
+              ${detectedChips}
+            </div>
+          </div>
+
+          <div style="display:flex; align-items:flex-start; gap:0.6rem; padding:0.5rem 0.25rem;">
+            <input
+              type="checkbox"
+              id="wizard-add-to-whitelist-cb"
+              style="margin-top:0.25rem;"
+              ${state.wikiWizardAddToWhitelist ? "checked" : ""}
+            />
+            <div>
+              <label for="wizard-add-to-whitelist-cb" style="font-weight:600; font-size:0.85rem; cursor:pointer;">
+                Sync with Kodiak Whitelist (Recommended)
+              </label>
+              <div class="muted" style="font-size:0.78rem;">
+                Automatically register detected projects in Kodiak's security whitelist with <code>READ</code> grant
+                so they are immediately available in Kodiak's project picker.
+              </div>
+            </div>
+          </div>
+
+          <div class="row-between" style="margin-top:0.5rem;">
+            <button type="button" id="wizard-back-step2-btn" class="btn">← Back</button>
+            <button type="button" id="wizard-next-step2-btn" class="btn btn--primary">Next: Domain & Service →</button>
+          </div>
+        </div>
+      `;
+      break;
+    }
+    case 3: {
+      const isHostsConfigured = info?.hosts_configured ?? false;
+      const port80Configured = info?.port80_configured ?? false;
+
+      stepBodyHtml = `
+        <div style="display:flex; flex-direction:column; gap:1rem;">
+          <p class="muted" style="font-size:0.85rem; margin:0;">
+            Configure your local network domain and background daemon options for the Projects Wiki.
+          </p>
+
+          <div style="background:var(--wiki-surface); border:1px solid var(--wiki-border); border-radius:var(--wiki-radius); padding:0.85rem; display:flex; flex-direction:column; gap:0.6rem;">
+            <div class="row-between" style="align-items:center;">
+              <strong style="font-size:0.9rem;">Local Domain Resolution (<code>wiki.local</code>)</strong>
+              ${
+                isHostsConfigured
+                  ? `<span class="badge badge--good">✔ Configured</span>`
+                  : `<span class="badge badge--neutral">Fallback: http://127.0.0.1:8000</span>`
+              }
+            </div>
+            ${
+              isHostsConfigured
+                ? `<p class="muted" style="font-size:0.8rem; margin:0;">
+                    Your <code>/etc/hosts</code> contains an entry for <code>127.0.0.1 wiki.local</code>.
+                    ${port80Configured ? "Binding to port 80 allows clean URL <code>http://wiki.local</code>." : "MkDocs will serve at <code>http://wiki.local:8000</code> or <code>http://127.0.0.1:8000</code>."}
+                  </p>`
+                : `<div style="font-size:0.8rem; display:flex; flex-direction:column; gap:0.4rem;">
+                    <span class="muted">To resolve <code>http://wiki.local</code> seamlessly in any browser without ports, add this line to your <code>/etc/hosts</code>:</span>
+                    <pre class="mono" style="background:rgba(0,0,0,0.3); padding:0.4rem 0.6rem; border-radius:4px; margin:0;">127.0.0.1 wiki.local</pre>
+                    <span class="muted" style="font-size:0.75rem;">No root required right now — if not present, Kodiak connects to <code>http://127.0.0.1:8000</code> automatically.</span>
+                  </div>`
+            }
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:0.6rem; padding:0.25rem 0;">
+            <div style="display:flex; align-items:flex-start; gap:0.6rem;">
+              <input
+                type="checkbox"
+                id="wizard-enable-service-cb"
+                style="margin-top:0.25rem;"
+                ${state.wikiWizardEnableService ? "checked" : ""}
+              />
+              <div>
+                <label for="wizard-enable-service-cb" style="font-weight:600; font-size:0.85rem; cursor:pointer;">
+                  Enable systemd User Service (<code>wiki.service</code>)
+                </label>
+                <div class="muted" style="font-size:0.78rem;">
+                  Automatically runs the MkDocs server and Sync API in the background at user login.
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex; align-items:flex-start; gap:0.6rem;">
+              <input
+                type="checkbox"
+                id="wizard-start-now-cb"
+                style="margin-top:0.25rem;"
+                ${state.wikiWizardStartNow ? "checked" : ""}
+              />
+              <div>
+                <label for="wizard-start-now-cb" style="font-weight:600; font-size:0.85rem; cursor:pointer;">
+                  Start Projects Wiki Server Immediately
+                </label>
+                <div class="muted" style="font-size:0.78rem;">
+                  Launches MkDocs Material server and the Sync API daemon immediately upon finishing setup.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="row-between" style="margin-top:0.5rem;">
+            <button type="button" id="wizard-back-step3-btn" class="btn">← Back</button>
+            <button type="button" id="wizard-next-step3-btn" class="btn btn--primary">Next: Review & Finish →</button>
+          </div>
+        </div>
+      `;
+      break;
+    }
+    case 4: {
+      const detectedCount = state.wikiWizardDetected.length;
+      stepBodyHtml = `
+        <div style="display:flex; flex-direction:column; gap:1rem;">
+          <p class="muted" style="font-size:0.85rem; margin:0;">
+            Review your configuration below. Clicking <strong>Complete Setup</strong> will save your settings,
+            sync your catalog, and open the Projects Wiki tab in Kodiak.
+          </p>
+
+          <div style="background:var(--wiki-surface); border:1px solid var(--wiki-border); border-radius:var(--wiki-radius); padding:0.85rem; display:flex; flex-direction:column; gap:0.5rem; font-size:0.82rem;">
+            <div class="row-between">
+              <span class="muted">Projects Directory:</span>
+              <strong class="mono">${escapeHtml(state.wikiWizardProjectsDir)}</strong>
+            </div>
+            <div class="row-between">
+              <span class="muted">Detected Repositories:</span>
+              <span><strong>${detectedCount}</strong> project(s)</span>
+            </div>
+            <div class="row-between">
+              <span class="muted">Kodiak Whitelist Sync:</span>
+              <span>${state.wikiWizardAddToWhitelist ? "✔ Add all detected projects (READ)" : "✕ Do not modify whitelist"}</span>
+            </div>
+            <div class="row-between">
+              <span class="muted">Access URL:</span>
+              <span class="mono">${info?.hosts_configured ? "http://wiki.local" : "http://127.0.0.1:8000"}</span>
+            </div>
+            <div class="row-between">
+              <span class="muted">systemd Service Autostart:</span>
+              <span>${state.wikiWizardEnableService ? "✔ Enabled" : "✕ Disabled"}</span>
+            </div>
+            <div class="row-between">
+              <span class="muted">Start Server Now:</span>
+              <span>${state.wikiWizardStartNow ? "✔ Yes" : "✕ No"}</span>
+            </div>
+          </div>
+
+          <div class="row-between" style="margin-top:0.5rem;">
+            <button type="button" id="wizard-back-step4-btn" class="btn" ${state.wikiWizardSaving ? "disabled" : ""}>← Back</button>
+            <button
+              type="button"
+              id="wizard-finish-btn"
+              class="btn btn--primary"
+              ${state.wikiWizardSaving ? "disabled" : ""}
+            >
+              ${state.wikiWizardSaving ? "Saving & Cataloging..." : "🚀 Complete Setup & Open Wiki"}
+            </button>
+          </div>
+        </div>
+      `;
+      break;
+    }
+  }
+
+  return `
+    <div class="modal-backdrop" id="wiki-wizard-modal-backdrop">
+      <div class="modal-box" role="dialog" aria-modal="true" style="max-inline-size: 640px; width: 100%;">
+        <div class="row-between" style="border-block-end: 1px solid var(--wiki-border); padding-block-end: 0.6rem; margin-block-end: 0.75rem;">
+          <div style="display:flex; align-items:center; gap:0.5rem;">
+            <span style="font-size:1.3rem;">📖</span>
+            <div>
+              <strong style="font-size:1.05rem;">Projects Wiki Setup Wizard</strong>
+              <div class="muted" style="font-size:0.75rem;">Step ${currentStep} of 4</div>
+            </div>
+          </div>
+          <button type="button" class="btn btn--sm" id="wizard-close-x-btn" title="Close Wizard">✕</button>
+        </div>
+
+        <!-- Step Indicator -->
+        <div style="display:flex; justify-content:space-between; margin-block-end:0.75rem; background:rgba(0,0,0,0.15); padding:0.4rem 0.6rem; border-radius:var(--wiki-radius-sm); font-size:0.75rem;">
+          <span style="${currentStep === 1 ? "color:var(--wiki-accent); font-weight:700;" : "color:var(--text-muted);"}">1. Welcome</span>
+          <span class="muted">›</span>
+          <span style="${currentStep === 2 ? "color:var(--wiki-accent); font-weight:700;" : "color:var(--text-muted);"}">2. Directory</span>
+          <span class="muted">›</span>
+          <span style="${currentStep === 3 ? "color:var(--wiki-accent); font-weight:700;" : "color:var(--text-muted);"}">3. Domain & Service</span>
+          <span class="muted">›</span>
+          <span style="${currentStep === 4 ? "color:var(--wiki-accent); font-weight:700;" : "color:var(--text-muted);"}">4. Finish</span>
+        </div>
+
+        ${stepBodyHtml}
+      </div>
+    </div>
+  `;
+}
+
+function renderWikiAiModal(): string {
+  if (!state.wikiAiModalOpen) return "";
+
+  const projectNames = new Set<string>();
+  if (state.config?.active_project) {
+    const base = state.config.active_project.split("/").pop();
+    if (base) projectNames.add(base);
+  }
+  for (const w of state.config?.whitelist || []) {
+    const base = w.path.split("/").pop();
+    if (base) projectNames.add(base);
+  }
+  for (const p of state.wikiProjects || []) {
+    if (p.name) projectNames.add(p.name);
+  }
+  const projectList = Array.from(projectNames).sort();
+
+  const optionsHtml = projectList
+    .map(
+      (name) =>
+        `<option value="${escapeHtml(name)}" ${
+          state.wikiAiSelectedProject === name ? "selected" : ""
+        }>${escapeHtml(name)}</option>`
+    )
+    .join("");
+
+  return `
+    <div class="modal-backdrop" id="wiki-ai-modal-backdrop">
+      <div class="modal-box" role="dialog" aria-modal="true" style="max-inline-size: 640px; width: 100%;">
+        <div class="row-between" style="border-block-end: 1px solid var(--wiki-border); padding-block-end: 0.5rem; margin-block-end: 0.75rem;">
+          <strong style="font-size: 1.05rem;">🤖 Build Project Documentation with Local AI</strong>
+          <button type="button" class="btn btn--sm" id="close-wiki-ai-modal-btn">✕</button>
+        </div>
+
+        <p class="muted" style="font-size: 0.85rem; margin-block-end: 1rem;">
+          Kodiak utilizes your local Ollama models (such as <code>qwen2.5-coder:7b</code>) to inspect project code,
+          hardware architecture, pinouts, and assets to write comprehensive Markdown documentation for the Projects Wiki.
+        </p>
+
+        <div style="display:flex; flex-direction:column; gap:0.75rem; margin-block-end: 1rem;">
+          <div>
+            <label class="form-label" for="wiki-ai-project-select">Target Project</label>
+            <select id="wiki-ai-project-select" class="form-select" style="width: 100%;">
+              ${optionsHtml || `<option value="demo-project">demo-project</option>`}
+            </select>
+          </div>
+
+          <div>
+            <label class="form-label" for="wiki-ai-model-select">Local AI Model</label>
+            <select id="wiki-ai-model-select" class="form-select" style="width: 100%;">
+              <option value="qwen2.5-coder:7b" ${state.wikiAiSelectedModel === "qwen2.5-coder:7b" ? "selected" : ""}>qwen2.5-coder:7b (Recommended - Default Local Coder)</option>
+              <option value="qwen2.5-coder" ${state.wikiAiSelectedModel === "qwen2.5-coder" ? "selected" : ""}>qwen2.5-coder (Standard)</option>
+              <option value="llama3.2:3b" ${state.wikiAiSelectedModel === "llama3.2:3b" ? "selected" : ""}>llama3.2:3b (Fast Summary)</option>
+              <option value="qwen2.5-coder:14b" ${state.wikiAiSelectedModel === "qwen2.5-coder:14b" ? "selected" : ""}>qwen2.5-coder:14b (Heavy Synthesis)</option>
+            </select>
+          </div>
+
+          <label class="row-inline" style="gap:0.5rem; cursor:pointer; font-size:0.85rem; user-select:none;">
+            <input type="checkbox" id="wiki-ai-overwrite-checkbox" ${state.wikiAiOverwrite ? "checked" : ""} />
+            <span>Overwrite existing doc page if it already exists in <code>docs/</code></span>
+          </label>
+        </div>
+
+        ${
+          state.wikiAiStatusMessage
+            ? `<div style="padding:0.6rem 0.8rem; border-radius:var(--wiki-radius-sm); margin-block-end:0.75rem; font-size:0.85rem; background:var(--wiki-surface); border:1px solid var(--wiki-border);">
+                ${escapeHtml(state.wikiAiStatusMessage)}
+              </div>`
+            : ""
+        }
+
+        ${
+          state.wikiAiOutput
+            ? `<pre style="max-height:160px; overflow-y:auto; padding:0.6rem; background:#11141a; border-radius:var(--wiki-radius-sm); font-family:var(--wiki-font-mono); font-size:0.75rem; white-space:pre-wrap; margin-block-end:0.75rem;">${escapeHtml(state.wikiAiOutput)}</pre>`
+            : ""
+        }
+
+        <div class="row-between" style="border-block-start: 1px solid var(--wiki-border); padding-block-start: 0.75rem;">
+          <button type="button" class="btn btn--sm" id="close-wiki-ai-modal-cancel-btn">Close</button>
+          <div class="row-inline" style="gap:0.5rem;">
+            <button
+              type="button"
+              class="btn btn--sm btn--primary"
+              id="run-wiki-ai-build-btn"
+              ${state.buildingWikiAi ? "disabled" : ""}
+            >
+              ${state.buildingWikiAi ? "Generating Documentation with AI..." : "🚀 Run AI Documentation Builder"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function renderWikiTab(): string {
   const h = state.health;
   const cfg = state.config;
   if (!h || !cfg) return "";
 
+  const wd = state.wikiDetails;
+  const docCountStr = wd?.doc_count ? `${wd.doc_count} Docs` : "74 Docs";
+  const catalogCountStr = wd?.catalog_count ? `${wd.catalog_count} Projects` : "74 Projects";
+
   if (!h.wiki_reachable || !h.wiki_url) {
     return `
       <section class="panel-card" style="margin:1.25rem;">
         <div class="panel-header">
-          <h2 class="panel-title">Projects Wiki Offline</h2>
-          <span class="badge badge--bad">127.0.0.1:80 / :8000 Unreachable</span>
+          <h2 class="panel-title">📖 Projects Wiki & AI Documentation Hub</h2>
+          <span class="badge badge--bad">MkDocs & Sync API Offline</span>
         </div>
         <p class="muted">
-          Kodiak embeds the live Projects Wiki from <code>${escapeHtml(cfg.wiki_dir)}</code>.
-          The background MkDocs + Sync API server is currently stopped.
+          Kodiak includes the Projects Wiki and local AI documentation generator directly at <code>${escapeHtml(wd?.wiki_dir || cfg.wiki_dir || "./ProjectsWiki")}</code>.
+          The background MkDocs Material server and Sync API (port 8765) are currently stopped.
         </p>
-        <div class="row-inline">
+        <div class="row-inline" style="gap:0.75rem; margin-top:1rem; flex-wrap:wrap;">
           <button
             type="button"
             id="start-wiki-btn"
@@ -1921,19 +2573,51 @@ function renderWikiTab(): string {
           >
             ${state.startingWiki ? "Starting Projects Wiki..." : "▶ Start Projects Wiki Server"}
           </button>
+          <button
+            type="button"
+            id="sync-wiki-btn"
+            class="btn"
+            ${state.syncingWiki ? "disabled" : ""}
+          >
+            ${state.syncingWiki ? "Syncing..." : "🔄 Sync Catalog Now"}
+          </button>
+          <button
+            type="button"
+            id="open-wiki-ai-modal-btn"
+            class="btn btn--accent"
+          >
+            🤖 Build Wiki with AI
+          </button>
           <button type="button" id="recheck-wiki-btn" class="btn">Re-check Connection</button>
         </div>
       </section>
+      ${renderWikiAiModal()}
     `;
   }
 
   return `
     <div style="display:flex; flex-direction:column; block-size:100%; inline-size:100%;">
-      <div class="row-between" style="padding:0.4rem 1.25rem; background:var(--wiki-surface); border-block-end:1px solid var(--wiki-border); font-size:0.78rem;">
-        <span class="muted">Connected to live Projects Wiki: <code class="mono">${escapeHtml(
-          h.wiki_url
-        )}</code> (Source: <code>${escapeHtml(cfg.wiki_dir)}</code>)</span>
-        <button type="button" id="reload-wiki-iframe-btn" class="btn btn--sm">↻ Reload Wiki</button>
+      <div class="row-between" style="padding:0.45rem 1.25rem; background:var(--wiki-surface); border-block-end:1px solid var(--wiki-border); font-size:0.82rem; gap:0.5rem; flex-wrap:wrap;">
+        <div class="row-inline" style="gap:0.6rem; align-items:center;">
+          <span class="badge badge--good" title="MkDocs HTTP Live">🟢 Wiki Live</span>
+          <code class="mono" style="font-size:0.8rem;">${escapeHtml(h.wiki_url)}</code>
+          ${wd?.api_reachable ? `<span class="badge badge--neutral" title="Sync & Asset API on port 8765">⚡ API :8765</span>` : ""}
+          <span class="badge badge--neutral" title="Cataloged Project Docs">${escapeHtml(docCountStr)} • ${escapeHtml(catalogCountStr)}</span>
+        </div>
+        <div class="row-inline" style="gap:0.4rem; align-items:center;">
+          <button type="button" id="open-wiki-ai-modal-btn" class="btn btn--sm btn--primary" title="Generate or refresh project docs with Ollama">
+            🤖 AI Build Doc
+          </button>
+          <button type="button" id="sync-wiki-btn" class="btn btn--sm" ${state.syncingWiki ? "disabled" : ""} title="Refresh catalog and mkdocs navigation">
+            ${state.syncingWiki ? "Syncing..." : "🔄 Sync Catalog"}
+          </button>
+          <button type="button" id="rebuild-wiki-assets-btn" class="btn btn--sm" ${state.rebuildingWikiAssets ? "disabled" : ""} title="Index PDFs, manuals, schematics">
+            ${state.rebuildingWikiAssets ? "Indexing..." : "📦 Rebuild Assets"}
+          </button>
+          <button type="button" id="reload-wiki-iframe-btn" class="btn btn--sm" title="Reload embedded iframe">↻ Reload</button>
+          <button type="button" id="stop-wiki-btn" class="btn btn--sm btn--danger" ${state.stoppingWiki ? "disabled" : ""} title="Stop background server">⏹ Stop</button>
+          <a href="${escapeHtml(h.wiki_url)}" target="_blank" rel="noopener noreferrer" class="btn btn--sm" title="Open in system browser" style="text-decoration:none;">↗ External</a>
+        </div>
       </div>
       <iframe
         id="projects-wiki-iframe"
@@ -1942,6 +2626,7 @@ function renderWikiTab(): string {
         title="Projects Wiki"
       ></iframe>
     </div>
+    ${renderWikiAiModal()}
   `;
 }
 
@@ -2011,6 +2696,31 @@ function renderCascadeOrderList(cfg: AppConfig): string {
 
 function renderSettingsTab(): string {
   const cfg = state.config!;
+  const editingIdx = state.editingAltProviderIdx;
+  const editingProv =
+    editingIdx !== null && cfg.alt_provider && cfg.alt_provider[editingIdx]
+      ? cfg.alt_provider[editingIdx]
+      : null;
+  const draft = editingProv
+    ? {
+        preset: getPresetForProvider(editingProv),
+        name: editingProv.name,
+        base_url: editingProv.base_url,
+        api_key: editingProv.api_key,
+        tier: editingProv.tier || "medium",
+        model: editingProv.model,
+        max_context_chars: editingProv.max_context_chars,
+      }
+    : state.altProviderFormDraft;
+  const currentPreset = draft ? draft.preset : "";
+  const liveFetched = currentPreset && state.fetchedModelsForPreset[currentPreset]
+    ? state.fetchedModelsForPreset[currentPreset]
+    : (draft && draft.base_url && state.fetchedModelsForPreset[draft.base_url]
+      ? state.fetchedModelsForPreset[draft.base_url]
+      : null);
+  const modelOptions = liveFetched
+    ? liveFetched.map((m) => ({ id: m, label: m }))
+    : (currentPreset && PRESET_MODELS[currentPreset] ? PRESET_MODELS[currentPreset] : []);
 
   return `
     ${
@@ -2029,17 +2739,124 @@ function renderSettingsTab(): string {
           </div>`
         : ""
     }
+    ${
+      !cfg.wiki_configured
+        ? `<div class="stage-alert" style="background:var(--wiki-surface); border:1px solid var(--wiki-accent); border-radius:var(--wiki-radius-sm); padding:0.75rem 1rem; margin-block-end:1rem; display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
+            <div style="display:flex; flex-direction:column; gap:0.25rem;">
+              <strong style="color:var(--wiki-accent); font-size:0.95rem;">📖 Projects Wiki & AI Documentation Hub Available</strong>
+              <span class="muted" style="font-size:0.82rem;">Would you like to set up the Projects Wiki for your repositories or skip it? You can always change this in Settings.</span>
+            </div>
+            <div class="row-inline" style="gap:0.5rem;">
+              <button type="button" id="banner-open-wizard-btn" class="btn btn--sm btn--primary">🛠 Set Up Wiki</button>
+              <button type="button" id="banner-skip-wizard-btn" class="btn btn--sm">Skip for Now</button>
+            </div>
+          </div>`
+        : ""
+    }
 
-    <!-- Project Whitelist & Per-Directory Grant Matrix -->
+    <!-- Projects Wiki & AI Documentation Hub Integration -->
     <section class="panel-card">
       <div class="panel-header">
         <div class="row-inline">
-          <h2 class="panel-title">Project Whitelist & Grant Matrix</h2>
-          ${renderCharterChip(2, "Human authority")}
+          <h2 class="panel-title">📖 Projects Wiki & AI Documentation Hub</h2>
+          ${
+            cfg.wiki_enabled !== false
+              ? `<span class="badge badge--good">Enabled</span>`
+              : `<span class="badge badge--neutral">Disabled (Button Hidden)</span>`
+          }
+          ${
+            state.health?.wiki_reachable
+              ? `<span class="badge badge--good">Live</span>`
+              : `<span class="badge badge--bad">Offline</span>`
+          }
         </div>
-        <span class="muted">Only whitelisted directories are readable/writable. Levels compose downward only.</span>
+        <span class="muted">Local-first MkDocs Material documentation hub and offline Ollama AI document builder.</span>
       </div>
 
+      <div style="display:flex; flex-direction:column; gap:0.9rem;">
+        <div class="row-between" style="padding:0.75rem 1rem; background:var(--wiki-surface); border:1px solid var(--wiki-border); border-radius:var(--wiki-radius-sm); flex-wrap:wrap; gap:0.75rem; align-items:center;">
+          <div style="flex:1 1 300px;">
+            <strong>Feature Visibility & Status:</strong>
+            <p class="muted" style="margin:0.25rem 0 0 0; font-size:0.8rem;">
+              ${
+                cfg.wiki_enabled !== false
+                  ? "The Projects Wiki tab is active in Kodiak's top navigation bar."
+                  : "The Projects Wiki tab is hidden. Enabling it restores the navigation tab and background services."
+              }
+            </p>
+          </div>
+          <div class="row-inline" style="gap:0.5rem; flex-wrap:wrap;">
+            <button
+              type="button"
+              id="toggle-wiki-feature-btn"
+              class="btn ${cfg.wiki_enabled !== false ? "btn--danger" : "btn--primary"}"
+            >
+              ${cfg.wiki_enabled !== false ? "Hide Wiki Tab (Disable Feature)" : "Show Wiki Tab (Enable Feature)"}
+            </button>
+            <button type="button" id="settings-open-wizard-btn" class="btn btn--accent">
+              🛠 Run Setup Wizard
+            </button>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; font-size:0.82rem;">
+          <div style="padding:0.65rem 0.85rem; border:1px solid var(--wiki-border); border-radius:var(--wiki-radius-sm); background:rgba(0,0,0,0.15);">
+            <span class="muted">Projects Directory (Shared):</span>
+            <div class="mono" style="margin-top:0.25rem; word-break:break-all;"><strong>${escapeHtml(cfg.projects_dir || "~/Projects")}</strong></div>
+          </div>
+          <div style="padding:0.65rem 0.85rem; border:1px solid var(--wiki-border); border-radius:var(--wiki-radius-sm); background:rgba(0,0,0,0.15);">
+            <span class="muted">Wiki Application Path:</span>
+            <div class="mono" style="margin-top:0.25rem; word-break:break-all;"><strong>${escapeHtml(cfg.wiki_dir || "./ProjectsWiki")}</strong></div>
+          </div>
+        </div>
+
+        ${
+          cfg.wiki_enabled !== false
+            ? `<div class="row-inline" style="gap:0.5rem; flex-wrap:wrap; align-items:center;">
+                <button type="button" id="settings-sync-wiki-btn" class="btn btn--sm" ${state.syncingWiki ? "disabled" : ""}>
+                  ${state.syncingWiki ? "Syncing Catalog..." : "🔄 Sync Projects Catalog"}
+                </button>
+                <button type="button" id="settings-rebuild-assets-btn" class="btn btn--sm" ${state.rebuildingWikiAssets ? "disabled" : ""}>
+                  ${state.rebuildingWikiAssets ? "Rebuilding Assets..." : "📦 Rebuild Assets & PDFs"}
+                </button>
+                ${
+                  state.health?.wiki_reachable
+                    ? `<button type="button" id="settings-stop-wiki-btn" class="btn btn--sm btn--danger" ${state.stoppingWiki ? "disabled" : ""}>⏹ Stop Server</button>`
+                    : `<button type="button" id="settings-start-wiki-btn" class="btn btn--sm btn--primary" ${state.startingWiki ? "disabled" : ""}>▶ Start Server</button>`
+                }
+                <button type="button" id="settings-open-ai-modal-btn" class="btn btn--sm btn--accent">🤖 AI Doc Builder</button>
+              </div>`
+            : ""
+        }
+      </div>
+    </section>
+
+    <!-- Project Whitelist & Per-Directory Grant Matrix -->
+    <section class="panel-card">
+      <div class="panel-header" id="settings-projects-toggle" style="cursor:pointer; user-select:none;" title="Click to collapse/expand">
+        <div class="row-inline">
+          <h2 class="panel-title">Project Whitelist & Grant Matrix</h2>
+          <span class="badge badge--neutral">${cfg.whitelist.length}</span>
+          ${renderCharterChip(2, "Human authority")}
+        </div>
+        <div class="row-inline">
+          <span class="muted">Only whitelisted directories are readable/writable. Levels compose downward only.</span>
+          <span class="mono muted" style="font-size:0.8rem; font-weight:600; padding:0.15rem 0.45rem; border:1px solid var(--wiki-border); border-radius:var(--wiki-radius-sm);">
+            ${state.settingsProjectsCollapsed ? "▶ Expand" : "▼ Collapse"}
+          </span>
+        </div>
+      </div>
+
+      ${
+        state.settingsProjectsCollapsed
+          ? `<div class="row-between" style="padding:0.75rem 0.9rem; font-size:0.85rem; background:var(--wiki-surface); border-radius:var(--wiki-radius-sm); border:1px dashed var(--wiki-border);">
+              <div class="row-inline" style="gap:0.55rem; align-items:center;">
+                <span class="badge badge--ok">Active Project</span>
+                <span class="mono"><strong>${escapeHtml(cfg.active_project || "(None selected)")}</strong></span>
+              </div>
+              <span class="muted">${cfg.whitelist.length} directories whitelisted &bull; Click "Expand" to manage directory grants</span>
+            </div>`
+          : `
       <div class="row-inline" style="align-items:flex-end;">
         <div class="form-field" style="flex:1 1 360px;">
           <label class="form-label" for="new-whitelist-path">Directory Path (absolute or ~/...)</label>
@@ -2096,10 +2913,12 @@ function renderSettingsTab(): string {
                 .join("")}
             </div>`
       }
+      `
+      }
     </section>
 
     <!-- Cloud & Providers ([[alt_provider]]) -->
-    <section class="panel-card">
+    <section class="panel-card ${editingProv ? "is-editing" : ""}" id="edit-alt-provider-panel">
       <div class="panel-header">
         <div class="row-inline">
           <h2 class="panel-title">Cloud & Providers ([[alt_provider]])</h2>
@@ -2111,48 +2930,112 @@ function renderSettingsTab(): string {
         Alternate providers are standby endpoints invoked when cloud quota is exhausted or via automated failover cascade. ${renderCharterChip(1, "Privacy Note")}
       </p>
 
-      <div class="row-inline" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:0.5rem; align-items:flex-end;">
-        <div class="form-field">
-          <label class="form-label" for="new-alt-preset">Preset</label>
-          <select id="new-alt-preset" class="form-select">
-            <option value="">-- Choose Preset --</option>
-            <option value="gemini">Gemini (OpenAI-compat)</option>
-            <option value="lumo">Lumo (lumo-tamer bridge)</option>
-            <option value="groq">Groq</option>
-            <option value="openrouter">OpenRouter</option>
-            <option value="ollama">Self-hosted Ollama</option>
-          </select>
+      <div class="row-between" style="margin-top:0.6rem; align-items:center;">
+        <h3 id="edit-alt-provider-heading" style="margin:0; font-size:0.95rem; font-weight:600;">
+          ${editingProv ? `Edit Alternate Provider (${escapeHtml(editingProv.name)})` : "Add Alternate Provider"}
+        </h3>
+        ${editingProv ? `<button type="button" id="cancel-edit-alt-provider-btn" class="btn btn--sm">Cancel Edit</button>` : ""}
+      </div>
+
+      <div class="alt-provider-form">
+        <!-- Row 1: Preset, Name, Tier, Max Chars -->
+        <div class="alt-provider-form__row">
+          <div class="form-field">
+            <label class="form-label" for="new-alt-preset">Preset</label>
+            <select id="new-alt-preset" class="form-select">
+              <option value="" ${!currentPreset ? "selected" : ""}>-- Choose Preset --</option>
+              <option value="gemini" ${currentPreset === "gemini" ? "selected" : ""}>Gemini (OpenAI-compat)</option>
+              <option value="lumo" ${currentPreset === "lumo" ? "selected" : ""}>Lumo (lumo-tamer bridge)</option>
+              <option value="groq" ${currentPreset === "groq" ? "selected" : ""}>Groq</option>
+              <option value="openrouter" ${currentPreset === "openrouter" ? "selected" : ""}>OpenRouter</option>
+              <option value="ollama" ${currentPreset === "ollama" ? "selected" : ""}>Self-hosted Ollama</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="new-alt-name">Name</label>
+            <input type="text" id="new-alt-name" class="form-input" value="${draft ? escapeHtml(draft.name) : ""}" placeholder="e.g. Gemini" />
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="new-alt-tier">Tier</label>
+            <select id="new-alt-tier" class="form-select">
+              <option value="low" ${draft?.tier === "low" ? "selected" : ""}>Low (Fast / Cheap)</option>
+              <option value="medium" ${!draft?.tier || draft?.tier === "medium" ? "selected" : ""}>Medium (Standard)</option>
+              <option value="high" ${draft?.tier === "high" ? "selected" : ""}>High (Premium / Deep)</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="new-alt-max-chars">Max Context Chars</label>
+            <input type="number" id="new-alt-max-chars" class="form-input" value="${draft?.max_context_chars ? draft.max_context_chars : ""}" placeholder="Optional (e.g. 128000)" />
+          </div>
         </div>
-        <div class="form-field">
-          <label class="form-label" for="new-alt-name">Name</label>
-          <input type="text" id="new-alt-name" class="form-input" placeholder="e.g. Gemini" />
+
+        <!-- Row 2: Base URL and API Key -->
+        <div class="alt-provider-form__row--split">
+          <div class="form-field">
+            <label class="form-label" for="new-alt-url">Base URL</label>
+            <input type="text" id="new-alt-url" class="form-input" value="${draft ? escapeHtml(draft.base_url) : ""}" placeholder="https://generativelanguage.googleapis.com/v1beta/openai/" />
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="new-alt-key">API Key</label>
+            <input type="password" id="new-alt-key" class="form-input" value="${draft ? escapeHtml(draft.api_key) : ""}" placeholder="API key (stored locally)" />
+          </div>
         </div>
+
+        <!-- Row 3: Model Selection & Live Fetch -->
         <div class="form-field">
-          <label class="form-label" for="new-alt-url">Base URL</label>
-          <input type="text" id="new-alt-url" class="form-input" placeholder="https://.../v1" />
+          <div class="row-between" style="align-items:center; margin-bottom:0.25rem;">
+            <label class="form-label" for="new-alt-model" style="margin:0;">Model ID / Agent</label>
+            <button
+              type="button"
+              id="fetch-live-models-btn"
+              class="btn btn--sm"
+              style="font-size:0.75rem; padding:0.2rem 0.65rem;"
+              title="Query the provider API (Google ModelService.ListModels, Groq, Ollama, etc.) to list active live models"
+              ${state.fetchingLiveModels ? "disabled" : ""}
+            >
+              ${state.fetchingLiveModels ? "Fetching live models..." : "↻ Fetch Live Models"}
+            </button>
+          </div>
+          <div style="display:flex; gap:0.5rem; align-items:center;">
+            <select id="new-alt-model-select" class="form-select" style="flex:1 1 50%;">
+              ${
+                modelOptions.length > 0
+                  ? modelOptions
+                      .map(
+                        (m) =>
+                          `<option value="${escapeHtml(m.id)}" ${
+                            (draft ? draft.model : "") === m.id ? "selected" : ""
+                          }>${escapeHtml(m.label)}</option>`
+                      )
+                      .join("") +
+                    `<option value="__custom__" ${
+                      draft && !modelOptions.some((m) => m.id === draft.model) ? "selected" : ""
+                    }>Custom Model ID...</option>`
+                  : `<option value="__custom__" selected>Custom / Enter ID below...</option>`
+              }
+            </select>
+            <input
+              type="text"
+              id="new-alt-model"
+              class="form-input"
+              style="flex:1 1 50%; min-width:140px;"
+              value="${draft ? escapeHtml(draft.model) : ""}"
+              placeholder="e.g. gemini-3.0-flash"
+            />
+          </div>
+          <div id="fetch-models-status-msg" style="font-size:0.78rem; margin-top:0.3rem;">
+            ${state.fetchModelsStatus || ""}
+          </div>
         </div>
-        <div class="form-field">
-          <label class="form-label" for="new-alt-key">API Key</label>
-          <input type="password" id="new-alt-key" class="form-input" placeholder="API key (stored locally)" />
-        </div>
-        <div class="form-field">
-          <label class="form-label" for="new-alt-tier">Tier</label>
-          <select id="new-alt-tier" class="form-select">
-            <option value="low">Low (Fast / Cheap)</option>
-            <option value="medium" selected>Medium (Standard)</option>
-            <option value="high">High (Premium / Deep)</option>
-          </select>
-        </div>
-        <div class="form-field">
-          <label class="form-label" for="new-alt-model">Model</label>
-          <input type="text" id="new-alt-model" class="form-input" placeholder="e.g. gemini-2.5-flash" />
-        </div>
-        <div class="form-field">
-          <label class="form-label" for="new-alt-max-chars">Max Context Chars</label>
-          <input type="number" id="new-alt-max-chars" class="form-input" placeholder="Optional" />
-        </div>
-        <div>
-          <button type="button" id="add-alt-provider-btn" class="btn btn--primary" style="width:100%;">+ Add Provider</button>
+
+        <!-- Row 4: Actions -->
+        <div class="alt-provider-form__actions">
+          ${
+            editingProv
+              ? `<button type="button" id="save-alt-provider-btn" class="btn btn--primary" style="min-width:140px;">Save Changes</button>
+                 <button type="button" id="cancel-edit-alt-provider-btn" class="btn btn--neutral">Cancel</button>`
+              : `<button type="button" id="add-alt-provider-btn" class="btn btn--primary" style="min-width:160px;">+ Add Provider</button>`
+          }
         </div>
       </div>
 
@@ -2180,6 +3063,9 @@ function renderSettingsTab(): string {
                     <div class="row-inline" style="align-self:center;">
                       <button type="button" class="btn btn--sm test-alt-provider-btn" data-idx="${idx}">
                         Test connection
+                      </button>
+                      <button type="button" class="btn btn--sm edit-alt-provider-btn" data-idx="${idx}">
+                        Edit
                       </button>
                       <button type="button" class="btn btn--bad btn--sm remove-alt-provider-btn" data-idx="${idx}">Remove</button>
                     </div>
@@ -2240,8 +3126,8 @@ function renderSettingsTab(): string {
             <strong>2. Gemini via OpenAI-Compatible Endpoint</strong>
             <p style="margin:0.25rem 0 0 0;" class="muted">
               Google Gemini offers an OpenAI-compatible endpoint at <code>https://generativelanguage.googleapis.com/v1beta/openai/</code>.
-              <br/>• <strong>Tier Low (Fast/Efficient):</strong> <code>gemini-2.5-flash</code>
-              <br/>• <strong>Tier High (Deep Reasoning):</strong> <code>gemini-2.5-pro</code>
+              <br/>• <strong>Tier Low (Fast/Efficient):</strong> <code>gemini-3.0-flash</code>
+              <br/>• <strong>Tier High (Deep Reasoning):</strong> <code>gemini-1.5-pro</code>
               <br/>Use your Google AI Studio API key. Stored locally in <code>~/.config/kodiak/config.toml</code>.
             </p>
           </div>
@@ -2431,7 +3317,7 @@ function renderAboutTab(): string {
         <div style="flex:1; min-width:240px;">
           <div class="row-inline" style="gap:0.75rem; align-items:baseline;">
             <h1 style="margin:0; font-size:1.8rem; font-weight:700; color:var(--md-default-fg-color);">Kodiak</h1>
-            <span class="badge badge--ok" style="font-size:0.85rem;">v0.7.0</span>
+            <span class="badge badge--ok" style="font-size:0.85rem;">v1.0.0</span>
           </div>
           <p style="margin:0.35rem 0 0.5rem 0; font-size:1.05rem; font-weight:500; color:var(--md-default-fg-color);">
             The bear who runs the job site — local-first AI task delegation
@@ -2529,7 +3415,7 @@ function renderAboutTab(): string {
             <span><strong>Brand Asset:</strong> Bear Built mark — Aureus</span>
           </div>
           <div class="row-inline muted">
-            <span>Kodiak Task Delegation System (v0.7.0)</span>
+            <span>Kodiak Task Delegation System (v1.0.0)</span>
           </div>
         </div>
       </section>
@@ -2593,6 +3479,10 @@ function renderApp(): void {
   const appEl = document.getElementById("app");
   if (!appEl || !state.config) return;
 
+  if (state.tab === "wiki" && state.config.wiki_enabled === false) {
+    state.tab = "workbench";
+  }
+
   const isFullBleed = state.tab === "wiki" && state.health?.wiki_reachable;
 
   let tabHtml = "";
@@ -2611,8 +3501,19 @@ function renderApp(): void {
       break;
   }
 
+  const prevMain = document.querySelector(".main-content") as HTMLElement | null;
+  const prevMainScroll = prevMain ? prevMain.scrollTop : 0;
+  const prevSidebar = document.querySelector(".sidebar__scroll") as HTMLElement | null;
+  const prevSidebarScroll = prevSidebar ? prevSidebar.scrollTop : 0;
   const prevTicker = document.getElementById("ticker-body");
   const prevTop = prevTicker?.scrollTop ?? 0;
+
+  const prevScrollMap = new Map<string, number>();
+  document.querySelectorAll<HTMLElement>("[id]").forEach((el) => {
+    if (el.id && el.scrollTop > 0 && el.id !== "ticker-body") {
+      prevScrollMap.set(el.id, el.scrollTop);
+    }
+  });
 
   appEl.innerHTML = `
     ${renderSidebar()}
@@ -2625,10 +3526,33 @@ function renderApp(): void {
       ${renderCloudToast()}
     </div>
     ${renderRunLogModal()}
+    ${renderWikiSetupWizard()}
   `;
 
-  const tk = document.getElementById("ticker-body");
-  if (tk) tk.scrollTop = state.tickerLocked || tickerHover ? prevTop : tk.scrollHeight;
+  const restoreScrollPositions = () => {
+    const newMain = document.querySelector(".main-content") as HTMLElement | null;
+    if (newMain && prevMainScroll > 0) {
+      newMain.scrollTop = prevMainScroll;
+    }
+    const newSidebar = document.querySelector(".sidebar__scroll") as HTMLElement | null;
+    if (newSidebar && prevSidebarScroll > 0) {
+      newSidebar.scrollTop = prevSidebarScroll;
+    }
+    for (const [id, top] of prevScrollMap.entries()) {
+      const el = document.getElementById(id);
+      if (el) el.scrollTop = top;
+    }
+    const tk = document.getElementById("ticker-body");
+    if (tk) tk.scrollTop = state.tickerLocked || tickerHover ? prevTop : tk.scrollHeight;
+  };
+
+  // Immediate restore attempt
+  restoreScrollPositions();
+  // Double RAF to wait for browser layout reflow so scrollHeight calculation does not clamp to 0
+  requestAnimationFrame(() => {
+    restoreScrollPositions();
+    requestAnimationFrame(restoreScrollPositions);
+  });
 
   bindEvents();
 }
@@ -2642,6 +3566,100 @@ function openTaskReadOnly(taskId: string): void {
   state.uiBannerError = null;
   resetLiveRun(false);
   renderApp();
+}
+
+async function openWikiWizard(): Promise<void> {
+  try {
+    const info = await invoke<WikiSetupInfo>("get_wiki_setup_info");
+    state.wikiWizardInfo = info;
+    if (info.projects_dir) {
+      state.wikiWizardProjectsDir = info.projects_dir;
+    }
+    state.wikiWizardDetected = info.detected_projects || [];
+    state.wikiWizardEnableService = info.service_enabled ?? true;
+  } catch (err) {
+    console.warn("Failed to get wiki setup info:", err);
+    if (!state.wikiWizardProjectsDir) {
+      state.wikiWizardProjectsDir = state.config?.projects_dir || "~/Projects";
+    }
+  }
+  state.wikiWizardStep = 1;
+  state.wikiWizardOpen = true;
+  renderApp();
+}
+
+async function skipWikiSetup(): Promise<void> {
+  try {
+    const updated = await invoke<AppConfig>("set_wiki_enabled", { enabled: false });
+    state.config = updated;
+    state.wikiWizardOpen = false;
+    if (state.tab === "wiki") {
+      state.tab = "workbench";
+    }
+    state.uiBannerInfo = "Projects Wiki skipped. The navigation tab has been hidden. You can enable it anytime in Settings.";
+    await refreshAllState();
+  } catch (err) {
+    state.uiBannerError = `Failed to skip wiki: ${String(err)}`;
+    renderApp();
+  }
+}
+
+async function scanWizardProjectsDir(dirPath: string): Promise<void> {
+  state.wikiWizardScanning = true;
+  renderApp();
+  try {
+    const detected = await invoke<string[]>("detect_projects_in_dir", { dirPath });
+    state.wikiWizardDetected = detected;
+  } catch (err) {
+    state.uiBannerError = `Failed to scan directory: ${String(err)}`;
+  } finally {
+    state.wikiWizardScanning = false;
+    renderApp();
+  }
+}
+
+async function completeWikiWizard(): Promise<void> {
+  state.wikiWizardSaving = true;
+  renderApp();
+  try {
+    const payload: WikiSetupPayload = {
+      enable_wiki: true,
+      projects_dir: state.wikiWizardProjectsDir,
+      add_to_whitelist: state.wikiWizardAddToWhitelist,
+      enable_service: state.wikiWizardEnableService,
+      start_now: state.wikiWizardStartNow,
+    };
+    const updated = await invoke<AppConfig>("complete_wiki_setup", { payload });
+    state.config = updated;
+    state.wikiWizardOpen = false;
+    state.tab = "wiki";
+    state.uiBannerInfo = "Projects Wiki setup complete! Repositories cataloged and wiki started.";
+    await refreshAllState();
+  } catch (err) {
+    state.uiBannerError = `Wiki setup error: ${String(err)}`;
+  } finally {
+    state.wikiWizardSaving = false;
+    renderApp();
+  }
+}
+
+async function toggleWikiFeature(): Promise<void> {
+  if (!state.config) return;
+  const target = !(state.config.wiki_enabled !== false);
+  try {
+    const updated = await invoke<AppConfig>("set_wiki_enabled", { enabled: target });
+    state.config = updated;
+    if (!target && state.tab === "wiki") {
+      state.tab = "workbench";
+    }
+    state.uiBannerInfo = target
+      ? "Projects Wiki enabled. The navigation tab is now restored."
+      : "Projects Wiki disabled. The navigation tab has been hidden.";
+    await refreshAllState();
+  } catch (err) {
+    state.uiBannerError = `Failed to toggle wiki: ${String(err)}`;
+    renderApp();
+  }
 }
 
 function bindEvents(): void {
@@ -2871,6 +3889,18 @@ function bindEvents(): void {
   // Sidebar
   document.getElementById("sidebar-toggle-btn")?.addEventListener("click", () => {
     state.sidebarCollapsed = !state.sidebarCollapsed;
+    renderApp();
+  });
+  document.getElementById("sidebar-projects-toggle")?.addEventListener("click", () => {
+    state.sidebarProjectsCollapsed = !state.sidebarProjectsCollapsed;
+    renderApp();
+  });
+  document.getElementById("sidebar-memories-toggle")?.addEventListener("click", () => {
+    state.sidebarMemoriesCollapsed = !state.sidebarMemoriesCollapsed;
+    renderApp();
+  });
+  document.getElementById("sidebar-tasks-toggle")?.addEventListener("click", () => {
+    state.sidebarTasksCollapsed = !state.sidebarTasksCollapsed;
     renderApp();
   });
   document.querySelectorAll<HTMLElement>("[data-select-project]").forEach((el) => {
@@ -3279,20 +4309,84 @@ function bindEvents(): void {
     btn.addEventListener("click", () => openTaskReadOnly(btn.getAttribute("data-task-id") ?? ""));
   });
 
-  // Wiki tab controls
-  document.getElementById("start-wiki-btn")?.addEventListener("click", async () => {
+  // Wiki tab controls & Service operations
+  const handleStartWiki = async () => {
     state.startingWiki = true;
     state.uiBannerError = null;
     renderApp();
     try {
       state.health = await invoke<HealthStatus>("start_wiki_server");
+      await refreshAllState();
     } catch (err) {
       state.uiBannerError = String(err);
     } finally {
       state.startingWiki = false;
       renderApp();
     }
-  });
+  };
+  document.getElementById("start-wiki-btn")?.addEventListener("click", handleStartWiki);
+  document.getElementById("settings-start-wiki-btn")?.addEventListener("click", handleStartWiki);
+
+  const handleStopWiki = async () => {
+    state.stoppingWiki = true;
+    state.uiBannerError = null;
+    renderApp();
+    try {
+      state.health = await invoke<HealthStatus>("stop_wiki_server");
+      await refreshAllState();
+    } catch (err) {
+      state.uiBannerError = String(err);
+    } finally {
+      state.stoppingWiki = false;
+      renderApp();
+    }
+  };
+  document.getElementById("stop-wiki-btn")?.addEventListener("click", handleStopWiki);
+  document.getElementById("settings-stop-wiki-btn")?.addEventListener("click", handleStopWiki);
+
+  const handleSyncWiki = async () => {
+    state.syncingWiki = true;
+    state.uiBannerError = null;
+    renderApp();
+    try {
+      const msg = await invoke<string>("sync_wiki_catalog");
+      state.uiBannerInfo = msg || "Projects Wiki catalog synced.";
+      await refreshAllState();
+      const iframe = document.getElementById("projects-wiki-iframe") as HTMLIFrameElement | null;
+      if (iframe && state.health?.wiki_url) {
+        iframe.src = state.health.wiki_url;
+      }
+    } catch (err) {
+      state.uiBannerError = String(err);
+    } finally {
+      state.syncingWiki = false;
+      renderApp();
+    }
+  };
+  document.getElementById("sync-wiki-btn")?.addEventListener("click", handleSyncWiki);
+  document.getElementById("settings-sync-wiki-btn")?.addEventListener("click", handleSyncWiki);
+
+  const handleRebuildWikiAssets = async () => {
+    state.rebuildingWikiAssets = true;
+    state.uiBannerError = null;
+    renderApp();
+    try {
+      const msg = await invoke<string>("rebuild_wiki_assets");
+      state.uiBannerInfo = msg || "Assets indexed and catalog synced.";
+      await refreshAllState();
+      const iframe = document.getElementById("projects-wiki-iframe") as HTMLIFrameElement | null;
+      if (iframe && state.health?.wiki_url) {
+        iframe.src = state.health.wiki_url;
+      }
+    } catch (err) {
+      state.uiBannerError = String(err);
+    } finally {
+      state.rebuildingWikiAssets = false;
+      renderApp();
+    }
+  };
+  document.getElementById("rebuild-wiki-assets-btn")?.addEventListener("click", handleRebuildWikiAssets);
+  document.getElementById("settings-rebuild-assets-btn")?.addEventListener("click", handleRebuildWikiAssets);
 
   document.getElementById("recheck-wiki-btn")?.addEventListener("click", async () => {
     await refreshAllState();
@@ -3303,6 +4397,169 @@ function bindEvents(): void {
     if (iframe && state.health?.wiki_url) {
       iframe.src = state.health.wiki_url;
     }
+  });
+
+  // Wiki Setup Wizard & Feature Toggle Listeners
+  document.getElementById("banner-open-wizard-btn")?.addEventListener("click", openWikiWizard);
+  document.getElementById("settings-open-wizard-btn")?.addEventListener("click", openWikiWizard);
+  document.getElementById("banner-skip-wizard-btn")?.addEventListener("click", skipWikiSetup);
+  document.getElementById("toggle-wiki-feature-btn")?.addEventListener("click", toggleWikiFeature);
+
+  document.getElementById("wizard-close-x-btn")?.addEventListener("click", () => {
+    state.wikiWizardOpen = false;
+    renderApp();
+  });
+
+  document.getElementById("wizard-skip-step1-btn")?.addEventListener("click", () => {
+    skipWikiSetup();
+  });
+
+  document.getElementById("wizard-next-step1-btn")?.addEventListener("click", () => {
+    state.wikiWizardStep = 2;
+    if (state.wikiWizardDetected.length === 0 && state.wikiWizardProjectsDir) {
+      scanWizardProjectsDir(state.wikiWizardProjectsDir);
+    } else {
+      renderApp();
+    }
+  });
+
+  document.getElementById("wizard-back-step2-btn")?.addEventListener("click", () => {
+    state.wikiWizardStep = 1;
+    renderApp();
+  });
+
+  document.getElementById("wizard-scan-dir-btn")?.addEventListener("click", () => {
+    const input = (document.getElementById("wizard-projects-dir-input") as HTMLInputElement)?.value.trim();
+    if (input) {
+      state.wikiWizardProjectsDir = input;
+      scanWizardProjectsDir(input);
+    }
+  });
+
+  document.getElementById("wizard-next-step2-btn")?.addEventListener("click", () => {
+    const input = (document.getElementById("wizard-projects-dir-input") as HTMLInputElement)?.value.trim();
+    if (input) {
+      state.wikiWizardProjectsDir = input;
+    }
+    const addWhitelist = (document.getElementById("wizard-add-to-whitelist-cb") as HTMLInputElement)?.checked ?? true;
+    state.wikiWizardAddToWhitelist = addWhitelist;
+    state.wikiWizardStep = 3;
+    renderApp();
+  });
+
+  document.getElementById("wizard-back-step3-btn")?.addEventListener("click", () => {
+    state.wikiWizardStep = 2;
+    renderApp();
+  });
+
+  document.getElementById("wizard-next-step3-btn")?.addEventListener("click", () => {
+    const enableSvc = (document.getElementById("wizard-enable-service-cb") as HTMLInputElement)?.checked ?? true;
+    const startNow = (document.getElementById("wizard-start-now-cb") as HTMLInputElement)?.checked ?? true;
+    state.wikiWizardEnableService = enableSvc;
+    state.wikiWizardStartNow = startNow;
+    state.wikiWizardStep = 4;
+    renderApp();
+  });
+
+  document.getElementById("wizard-back-step4-btn")?.addEventListener("click", () => {
+    state.wikiWizardStep = 3;
+    renderApp();
+  });
+
+  document.getElementById("wizard-finish-btn")?.addEventListener("click", () => {
+    completeWikiWizard();
+  });
+
+  // AI Documentation Generator Modal
+  const handleOpenAiModal = () => {
+    state.wikiAiModalOpen = true;
+    state.wikiAiStatusMessage = null;
+    state.wikiAiOutput = null;
+    if (!state.wikiAiSelectedProject && state.config?.active_project) {
+      state.wikiAiSelectedProject = state.config.active_project.split("/").pop() || "";
+    }
+    renderApp();
+  };
+  document.querySelectorAll<HTMLElement>("#open-wiki-ai-modal-btn").forEach((btn) => {
+    btn.addEventListener("click", handleOpenAiModal);
+  });
+  document.getElementById("settings-open-ai-modal-btn")?.addEventListener("click", handleOpenAiModal);
+
+  document.getElementById("close-wiki-ai-modal-btn")?.addEventListener("click", () => {
+    state.wikiAiModalOpen = false;
+    renderApp();
+  });
+
+  document.getElementById("close-wiki-ai-modal-cancel-btn")?.addEventListener("click", () => {
+    state.wikiAiModalOpen = false;
+    renderApp();
+  });
+
+  document.getElementById("run-wiki-ai-build-btn")?.addEventListener("click", async () => {
+    const projSel = (document.getElementById("wiki-ai-project-select") as HTMLSelectElement)?.value;
+    const modelSel = (document.getElementById("wiki-ai-model-select") as HTMLSelectElement)?.value;
+    const overwrite = (document.getElementById("wiki-ai-overwrite-checkbox") as HTMLInputElement)?.checked ?? true;
+
+    if (!projSel) {
+      state.wikiAiStatusMessage = "Please select a target project.";
+      renderApp();
+      return;
+    }
+
+    state.buildingWikiAi = true;
+    state.wikiAiSelectedProject = projSel;
+    state.wikiAiSelectedModel = modelSel || "qwen2.5-coder:7b";
+    state.wikiAiOverwrite = overwrite;
+    state.wikiAiStatusMessage = `Analyzing ${projSel} and synthesizing documentation with local model ${state.wikiAiSelectedModel}...`;
+    renderApp();
+
+    try {
+      const res = await invoke<string>("ai_build_project_wiki", {
+        projectName: projSel,
+        model: state.wikiAiSelectedModel,
+        overwrite,
+      });
+      state.wikiAiOutput = res;
+      state.wikiAiStatusMessage = `Documentation generated and catalog updated for ${projSel}!`;
+      await refreshAllState();
+      const iframe = document.getElementById("projects-wiki-iframe") as HTMLIFrameElement | null;
+      if (iframe && state.health?.wiki_url) {
+        const cleanSlug = projSel.replace(/ /g, "_");
+        iframe.src = `${state.health.wiki_url}/${cleanSlug}/`;
+      }
+    } catch (err) {
+      state.wikiAiStatusMessage = `Error building documentation: ${String(err)}`;
+    } finally {
+      state.buildingWikiAi = false;
+      renderApp();
+    }
+  });
+
+  // Workbench Quick Wiki link
+  document.querySelectorAll<HTMLElement>(".quick-wiki-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.tab = "wiki";
+      renderApp();
+      if (state.config?.active_project && state.health?.wiki_url) {
+        const clean = state.config.active_project.split("/").pop()?.replace(/ /g, "_");
+        const iframe = document.getElementById("projects-wiki-iframe") as HTMLIFrameElement | null;
+        if (iframe && clean) {
+          iframe.src = `${state.health.wiki_url}/${clean}/`;
+        }
+      }
+    });
+  });
+
+  // Settings: Projects whitelist toggle collapse/expand
+  document.getElementById("settings-projects-toggle")?.addEventListener("click", () => {
+    state.settingsProjectsCollapsed = !state.settingsProjectsCollapsed;
+    renderApp();
+  });
+
+  // Settings: Local Decision Journal toggle collapse/expand
+  document.getElementById("journal-toggle-btn")?.addEventListener("click", () => {
+    state.journalCollapsed = !state.journalCollapsed;
+    renderApp();
   });
 
   // Settings: Add whitelist entry
@@ -3397,7 +4654,7 @@ function bindEvents(): void {
       if (found) {
         const isGemini = /gemini/i.test(found.name) || /generativelanguage/i.test(found.base_url);
         if (isGemini) {
-          cloudModelInput.value = tier === "high" ? "gemini-2.5-pro" : "gemini-2.5-flash";
+          cloudModelInput.value = tier === "high" ? (found.model.includes("pro") ? found.model : "gemini-2.5-pro") : "gemini-3.0-flash";
         } else {
           cloudModelInput.value = found.model;
         }
@@ -3516,7 +4773,7 @@ function bindEvents(): void {
     state.config.coder_model = coderModel || "qwen2.5-coder:7b";
     state.config.heavy_model = heavyModel || "qwen2.5-coder:14b";
     state.config.command_timeout_secs = timeoutVal > 0 ? timeoutVal : 60;
-    state.config.wiki_dir = wikiDir || "~/Nextcloud/ProjectsWiki";
+    state.config.wiki_dir = wikiDir || "./ProjectsWiki";
     state.config.dry_run = dryRun;
     state.config.memory_auto_sanitize = memoryAutoSanitize;
     state.config.run_log_level = runLogLevel || "info";
@@ -3543,58 +4800,320 @@ function bindEvents(): void {
     }
   });
 
-  // Settings: Preset dropdown & Tier change in Add Provider form
+  // Settings: Preset dropdown & Tier change in Add/Edit Provider form
   const presetEl = document.getElementById("new-alt-preset") as HTMLSelectElement | null;
   const newAltNameEl = document.getElementById("new-alt-name") as HTMLInputElement | null;
   const newAltUrlEl = document.getElementById("new-alt-url") as HTMLInputElement | null;
   const newAltKeyEl = document.getElementById("new-alt-key") as HTMLInputElement | null;
   const newAltTierEl = document.getElementById("new-alt-tier") as HTMLSelectElement | null;
   const newAltModelEl = document.getElementById("new-alt-model") as HTMLInputElement | null;
+  const newAltModelSelect = document.getElementById("new-alt-model-select") as HTMLSelectElement | null;
+  const newAltMaxCharsEl = document.getElementById("new-alt-max-chars") as HTMLInputElement | null;
+
+  const syncFormDraft = () => {
+    const chosenModel = (newAltModelSelect?.value && newAltModelSelect.value !== "__custom__")
+      ? newAltModelSelect.value
+      : (newAltModelEl?.value.trim() || "");
+    state.altProviderFormDraft = {
+      preset: presetEl?.value || "",
+      name: newAltNameEl?.value.trim() || "",
+      base_url: newAltUrlEl?.value.trim() || "",
+      api_key: newAltKeyEl?.value.trim() || "",
+      tier: newAltTierEl?.value || "medium",
+      model: chosenModel,
+      max_context_chars: newAltMaxCharsEl?.value ? Number(newAltMaxCharsEl.value) : undefined,
+    };
+  };
+
+  newAltNameEl?.addEventListener("input", syncFormDraft);
+  newAltUrlEl?.addEventListener("input", syncFormDraft);
+  newAltKeyEl?.addEventListener("input", syncFormDraft);
+  newAltTierEl?.addEventListener("change", syncFormDraft);
+  newAltMaxCharsEl?.addEventListener("input", syncFormDraft);
+
+  const populateModelOptionsForPreset = (preset: string, selectedModel?: string) => {
+    if (!newAltModelSelect) return;
+    const live = state.fetchedModelsForPreset[preset];
+    const opts = live ? live.map((m) => ({ id: m, label: m })) : (PRESET_MODELS[preset] || []);
+    let html = "";
+    if (opts.length > 0) {
+      html = opts.map((m) => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.label)}</option>`).join("");
+      html += `<option value="__custom__">Custom Model ID...</option>`;
+    } else {
+      html = `<option value="__custom__">Custom / Enter ID below...</option>`;
+    }
+    newAltModelSelect.innerHTML = html;
+    if (selectedModel && (opts.some((m) => m.id === selectedModel) || selectedModel === "__custom__")) {
+      newAltModelSelect.value = selectedModel;
+    } else if (opts.length > 0) {
+      newAltModelSelect.value = opts[0].id;
+    } else {
+      newAltModelSelect.value = "__custom__";
+    }
+  };
+
+  const fetchLiveModelsForCurrentForm = async () => {
+    syncFormDraft();
+    const urlEl = document.getElementById("new-alt-url") as HTMLInputElement | null;
+    const keyEl = document.getElementById("new-alt-key") as HTMLInputElement | null;
+    const nameEl = document.getElementById("new-alt-name") as HTMLInputElement | null;
+    const presetEl = document.getElementById("new-alt-preset") as HTMLSelectElement | null;
+    const modelSelect = document.getElementById("new-alt-model-select") as HTMLSelectElement | null;
+    const modelInput = document.getElementById("new-alt-model") as HTMLInputElement | null;
+    const tierEl = document.getElementById("new-alt-tier") as HTMLSelectElement | null;
+    const fetchBtn = document.getElementById("fetch-live-models-btn") as HTMLButtonElement | null;
+    const statusEl = document.getElementById("fetch-models-status-msg");
+
+    const baseUrl = urlEl?.value.trim() ?? "";
+    const apiKey = keyEl?.value.trim() ?? "";
+    const providerName = nameEl?.value.trim() || presetEl?.value || "";
+
+    if (!baseUrl) {
+      const msg = `<span class="badge badge--bad">Enter Base URL first</span>`;
+      state.fetchModelsStatus = msg;
+      if (statusEl) statusEl.innerHTML = msg;
+      return;
+    }
+
+    state.fetchingLiveModels = true;
+    if (fetchBtn) {
+      fetchBtn.disabled = true;
+      fetchBtn.textContent = "Fetching...";
+    }
+    const pendingMsg = `<span class="badge badge--neutral">Querying provider for live models...</span>`;
+    state.fetchModelsStatus = pendingMsg;
+    if (statusEl) statusEl.innerHTML = pendingMsg;
+
+    try {
+      const models = await invoke<string[]>("list_provider_models", {
+        baseUrl,
+        apiKey,
+        providerName: providerName || null,
+      });
+
+      state.fetchingLiveModels = false;
+      if (!models || models.length === 0) {
+        const warnMsg = `<span class="badge badge--warn">No text generation models returned</span>`;
+        state.fetchModelsStatus = warnMsg;
+        if (statusEl) statusEl.innerHTML = warnMsg;
+        return;
+      }
+
+      const cacheKey = presetEl?.value || baseUrl;
+      state.fetchedModelsForPreset[cacheKey] = models;
+      const okMsg = `<span class="badge badge--ok">✓ Fetched ${models.length} live models from provider</span>`;
+      state.fetchModelsStatus = okMsg;
+      if (statusEl) statusEl.innerHTML = okMsg;
+
+      let html = models.map((m) => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join("");
+      html += `<option value="__custom__">Custom Model ID...</option>`;
+      if (modelSelect) {
+        modelSelect.innerHTML = html;
+        const current = modelInput?.value.trim() || "";
+        if (models.includes(current)) {
+          modelSelect.value = current;
+        } else {
+          const tier = tierEl?.value || "medium";
+          let best = models[0];
+          if (tier === "high") {
+            best = models.find((m) => m.includes("pro") || m.includes("70b") || m.includes("max")) || models[0];
+          } else {
+            best = models.find((m) => m.includes("flash") || m.includes("8b") || m.includes("lite") || m.includes("7b")) || models[0];
+          }
+          modelSelect.value = best;
+          if (modelInput) modelInput.value = best;
+        }
+      }
+      syncFormDraft();
+    } catch (err) {
+      state.fetchingLiveModels = false;
+      const errMsg = `<span class="badge badge--bad">Fetch failed: ${escapeHtml(String(err))}</span>`;
+      state.fetchModelsStatus = errMsg;
+      if (statusEl) statusEl.innerHTML = errMsg;
+    } finally {
+      if (fetchBtn) {
+        fetchBtn.disabled = false;
+        fetchBtn.textContent = "↻ Fetch Live Models";
+      }
+    }
+  };
+
+  document.getElementById("fetch-live-models-btn")?.addEventListener("click", fetchLiveModelsForCurrentForm);
+
+  newAltModelSelect?.addEventListener("change", () => {
+    if (!newAltModelEl) return;
+    const val = newAltModelSelect.value;
+    if (val !== "__custom__") {
+      newAltModelEl.value = val;
+    } else {
+      newAltModelEl.focus();
+    }
+    syncFormDraft();
+  });
+
+  newAltModelEl?.addEventListener("input", () => {
+    if (!newAltModelSelect) return;
+    const val = newAltModelEl.value.trim();
+    let found = false;
+    for (let i = 0; i < newAltModelSelect.options.length; i++) {
+      if (newAltModelSelect.options[i].value === val) {
+        newAltModelSelect.selectedIndex = i;
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      newAltModelSelect.value = "__custom__";
+    }
+    syncFormDraft();
+  });
 
   presetEl?.addEventListener("change", () => {
     const val = presetEl.value;
+    populateModelOptionsForPreset(val);
     if (val === "lumo") {
       if (newAltNameEl) newAltNameEl.value = "Lumo-Alt";
       if (newAltUrlEl) newAltUrlEl.value = "http://127.0.0.1:3003/v1";
       if (newAltKeyEl) newAltKeyEl.value = "lumo";
       if (newAltTierEl) newAltTierEl.value = "medium";
+      if (newAltModelSelect) newAltModelSelect.value = "lumo";
       if (newAltModelEl) newAltModelEl.value = "lumo";
     } else if (val === "gemini") {
       if (newAltNameEl) newAltNameEl.value = "Gemini";
       if (newAltUrlEl) newAltUrlEl.value = "https://generativelanguage.googleapis.com/v1beta/openai/";
       if (newAltKeyEl && !newAltKeyEl.value) newAltKeyEl.placeholder = "Google AI Studio API key";
       if (newAltTierEl) newAltTierEl.value = "low";
-      if (newAltModelEl) newAltModelEl.value = "gemini-2.5-flash";
+      if (newAltModelSelect) newAltModelSelect.value = "gemini-3.0-flash";
+      if (newAltModelEl) newAltModelEl.value = "gemini-3.0-flash";
     } else if (val === "groq") {
       if (newAltNameEl) newAltNameEl.value = "Groq";
       if (newAltUrlEl) newAltUrlEl.value = "https://api.groq.com/openai/v1";
       if (newAltKeyEl && !newAltKeyEl.value) newAltKeyEl.placeholder = "Groq API key";
       if (newAltTierEl) newAltTierEl.value = "high";
+      if (newAltModelSelect) newAltModelSelect.value = "llama-3.3-70b-versatile";
       if (newAltModelEl) newAltModelEl.value = "llama-3.3-70b-versatile";
     } else if (val === "openrouter") {
       if (newAltNameEl) newAltNameEl.value = "OpenRouter";
       if (newAltUrlEl) newAltUrlEl.value = "https://openrouter.ai/api/v1";
       if (newAltKeyEl && !newAltKeyEl.value) newAltKeyEl.placeholder = "OpenRouter API key";
       if (newAltTierEl) newAltTierEl.value = "high";
+      if (newAltModelSelect) newAltModelSelect.value = "anthropic/claude-3.5-sonnet";
       if (newAltModelEl) newAltModelEl.value = "anthropic/claude-3.5-sonnet";
     } else if (val === "ollama") {
       if (newAltNameEl) newAltNameEl.value = "Self-Hosted-Ollama";
       if (newAltUrlEl) newAltUrlEl.value = "http://127.0.0.1:11434/v1";
       if (newAltKeyEl) newAltKeyEl.value = "ollama";
       if (newAltTierEl) newAltTierEl.value = "medium";
+      if (newAltModelSelect) newAltModelSelect.value = "qwen2.5-coder:7b";
       if (newAltModelEl) newAltModelEl.value = "qwen2.5-coder:7b";
     }
+    syncFormDraft();
   });
 
   newAltTierEl?.addEventListener("change", () => {
     const preset = presetEl?.value;
     const tier = newAltTierEl.value;
-    if (preset === "gemini" && newAltModelEl) {
-      newAltModelEl.value = tier === "high" ? "gemini-2.5-pro" : "gemini-2.5-flash";
-    } else if (preset === "lumo" && newAltModelEl) {
-      if (tier === "low") newAltModelEl.value = "lumo-lite";
-      else if (tier === "high") newAltModelEl.value = "lumo-max";
-      else newAltModelEl.value = "lumo";
+    if (preset === "gemini") {
+      const model = tier === "high" ? "gemini-2.5-pro" : "gemini-3.0-flash";
+      if (newAltModelSelect) newAltModelSelect.value = model;
+      if (newAltModelEl) newAltModelEl.value = model;
+    } else if (preset === "lumo") {
+      const model = tier === "low" ? "lumo-lite" : tier === "high" ? "lumo-max" : "lumo";
+      if (newAltModelSelect) newAltModelSelect.value = model;
+      if (newAltModelEl) newAltModelEl.value = model;
+    }
+    syncFormDraft();
+  });
+
+  // Settings: Edit alternate provider
+  document.querySelectorAll<HTMLElement>(".edit-alt-provider-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.getAttribute("data-idx"));
+      if (!Number.isNaN(idx)) {
+        state.editingAltProviderIdx = idx;
+        renderApp();
+        requestAnimationFrame(() => {
+          const editPanel = document.getElementById("edit-alt-provider-panel");
+          if (editPanel) {
+            editPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        });
+      }
+    });
+  });
+
+  // Settings: Cancel edit alternate provider
+  document.getElementById("cancel-edit-alt-provider-btn")?.addEventListener("click", () => {
+    state.editingAltProviderIdx = null;
+    state.altProviderFormDraft = null;
+    state.fetchModelsStatus = null;
+    renderApp();
+  });
+
+  // Settings: Save edited alternate provider
+  document.getElementById("save-alt-provider-btn")?.addEventListener("click", async () => {
+    if (!state.config || !state.config.alt_provider) return;
+    const editingIdx = state.editingAltProviderIdx;
+    if (editingIdx === null || !state.config.alt_provider[editingIdx]) return;
+
+    const nameEl = document.getElementById("new-alt-name") as HTMLInputElement | null;
+    const urlEl = document.getElementById("new-alt-url") as HTMLInputElement | null;
+    const keyEl = document.getElementById("new-alt-key") as HTMLInputElement | null;
+    const tierEl = document.getElementById("new-alt-tier") as HTMLSelectElement | null;
+    const modelEl = document.getElementById("new-alt-model") as HTMLInputElement | null;
+    const modelSelectEl = document.getElementById("new-alt-model-select") as HTMLSelectElement | null;
+    const maxCharsEl = document.getElementById("new-alt-max-chars") as HTMLInputElement | null;
+
+    const name = nameEl?.value.trim() || state.altProviderFormDraft?.name || "";
+    const base_url = urlEl?.value.trim() || state.altProviderFormDraft?.base_url || "";
+    const api_key = keyEl?.value.trim() || state.altProviderFormDraft?.api_key || "";
+    const tier = tierEl?.value || state.altProviderFormDraft?.tier || "medium";
+    let model = modelEl?.value.trim() || "";
+    if (!model && modelSelectEl?.value && modelSelectEl.value !== "__custom__") {
+      model = modelSelectEl.value;
+    }
+    if (!model && state.altProviderFormDraft?.model) {
+      model = state.altProviderFormDraft.model;
+    }
+    const max_chars_raw = (maxCharsEl?.value || "").trim();
+    const max_context_chars = max_chars_raw ? Number(max_chars_raw) : state.altProviderFormDraft?.max_context_chars;
+
+    if (!name || !base_url || !api_key || !model) {
+      const missing: string[] = [];
+      if (!name) missing.push("Name");
+      if (!base_url) missing.push("Base URL");
+      if (!api_key) missing.push("API Key");
+      if (!model) missing.push("Model");
+      state.uiBannerError = `Required fields missing: ${missing.join(", ")}.`;
+      renderApp();
+      return;
+    }
+
+    const oldName = state.config.alt_provider[editingIdx].name;
+    state.config.alt_provider[editingIdx] = {
+      name,
+      base_url,
+      api_key,
+      tier,
+      model,
+      max_context_chars,
+    };
+
+    if (state.config.cascade?.order && oldName !== name) {
+      state.config.cascade.order = state.config.cascade.order.map((n) => (n === oldName ? name : n));
+    }
+
+    state.editingAltProviderIdx = null;
+    state.altProviderFormDraft = null;
+    state.fetchModelsStatus = null;
+
+    try {
+      state.config = await invoke<AppConfig>("update_config", { newConfig: state.config });
+      state.uiBannerInfo = `Updated alternate provider '${name}'.`;
+      await refreshAllState();
+    } catch (err) {
+      state.uiBannerError = String(err);
+      renderApp();
     }
   });
 
@@ -3606,18 +5125,30 @@ function bindEvents(): void {
     const keyEl = document.getElementById("new-alt-key") as HTMLInputElement | null;
     const tierEl = document.getElementById("new-alt-tier") as HTMLSelectElement | null;
     const modelEl = document.getElementById("new-alt-model") as HTMLInputElement | null;
+    const modelSelectEl = document.getElementById("new-alt-model-select") as HTMLSelectElement | null;
     const maxCharsEl = document.getElementById("new-alt-max-chars") as HTMLInputElement | null;
 
-    const name = nameEl?.value.trim() ?? "";
-    const base_url = urlEl?.value.trim() ?? "";
-    const api_key = keyEl?.value.trim() ?? "";
-    const tier = tierEl?.value || "medium";
-    const model = modelEl?.value.trim() ?? "";
-    const max_chars_raw = maxCharsEl?.value.trim() ?? "";
-    const max_context_chars = max_chars_raw ? Number(max_chars_raw) : undefined;
+    const name = nameEl?.value.trim() || state.altProviderFormDraft?.name || "";
+    const base_url = urlEl?.value.trim() || state.altProviderFormDraft?.base_url || "";
+    const api_key = keyEl?.value.trim() || state.altProviderFormDraft?.api_key || "";
+    const tier = tierEl?.value || state.altProviderFormDraft?.tier || "medium";
+    let model = modelEl?.value.trim() || "";
+    if (!model && modelSelectEl?.value && modelSelectEl.value !== "__custom__") {
+      model = modelSelectEl.value;
+    }
+    if (!model && state.altProviderFormDraft?.model) {
+      model = state.altProviderFormDraft.model;
+    }
+    const max_chars_raw = (maxCharsEl?.value || "").trim();
+    const max_context_chars = max_chars_raw ? Number(max_chars_raw) : state.altProviderFormDraft?.max_context_chars;
 
     if (!name || !base_url || !api_key || !model) {
-      state.uiBannerError = "Name, Base URL, API Key, and Model are required for an alternate provider.";
+      const missing: string[] = [];
+      if (!name) missing.push("Name");
+      if (!base_url) missing.push("Base URL");
+      if (!api_key) missing.push("API Key");
+      if (!model) missing.push("Model");
+      state.uiBannerError = `Required fields missing: ${missing.join(", ")}.`;
       renderApp();
       return;
     }
@@ -3637,6 +5168,9 @@ function bindEvents(): void {
     if (state.config.cascade?.order && !state.config.cascade.order.includes(name)) {
       state.config.cascade.order.push(name);
     }
+
+    state.altProviderFormDraft = null;
+    state.fetchModelsStatus = null;
 
     try {
       state.config = await invoke<AppConfig>("update_config", { newConfig: state.config });

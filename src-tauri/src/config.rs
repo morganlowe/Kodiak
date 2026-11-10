@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
@@ -127,6 +127,9 @@ pub struct AppConfig {
     pub destructive_diff_threshold: f64,
     pub dry_run: bool,
     pub wiki_dir: String,
+    pub wiki_enabled: bool,
+    pub wiki_configured: bool,
+    pub projects_dir: String,
     pub active_project: Option<String>,
     pub whitelist: Vec<WhitelistEntry>,
     #[serde(default)]
@@ -159,7 +162,10 @@ impl Default for AppConfig {
             memory_auto_sanitize: true,
             destructive_diff_threshold: 0.40,
             dry_run: false,
-            wiki_dir: "~/Nextcloud/ProjectsWiki".to_string(),
+            wiki_dir: "/usr/share/kodiak/projectswiki".to_string(),
+            wiki_enabled: true,
+            wiki_configured: false,
+            projects_dir: "~/Projects".to_string(),
             active_project: None,
             // §2.1 binding rule: seeds on first run with whitelist = [] (EMPTY)
             whitelist: Vec::new(),
@@ -183,6 +189,92 @@ pub fn expand_tilde(path_str: &str) -> PathBuf {
         }
     }
     PathBuf::from(path_str)
+}
+
+/// Resolves the ProjectsWiki root directory, prioritizing local repository folder `./ProjectsWiki`,
+/// then explicitly configured `wiki_dir`, then system install `/usr/share/kodiak/ProjectsWiki`.
+pub fn resolve_wiki_dir(cfg: &AppConfig) -> PathBuf {
+    let configured = expand_tilde(&cfg.wiki_dir);
+    // 1. Explicitly configured path if it exists
+    if configured.exists() && (configured.join("wiki.sh").exists() || configured.join("mkdocs.yml").exists()) {
+        return configured;
+    }
+    // 2. Relative to current working directory: ./ProjectsWiki
+    let cwd_wiki = PathBuf::from("ProjectsWiki");
+    if cwd_wiki.exists() && (cwd_wiki.join("wiki.sh").exists() || cwd_wiki.join("mkdocs.yml").exists()) {
+        if let Ok(canon) = cwd_wiki.canonicalize() {
+            return canon;
+        }
+        return cwd_wiki;
+    }
+    // 3. Relative to current executable directory: exe_dir/ProjectsWiki or exe_dir/../ProjectsWiki
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            let exe_wiki = exe_dir.join("ProjectsWiki");
+            if exe_wiki.exists() {
+                return exe_wiki;
+            }
+            if let Some(parent) = exe_dir.parent() {
+                let parent_wiki = parent.join("ProjectsWiki");
+                if parent_wiki.exists() {
+                    return parent_wiki;
+                }
+            }
+        }
+    }
+    // 4. Packaged install at /usr/share/kodiak/projectswiki or /usr/share/kodiak/ProjectsWiki
+    let sys_wiki = PathBuf::from("/usr/share/kodiak/projectswiki");
+    if sys_wiki.exists() {
+        return sys_wiki;
+    }
+    let sys_wiki_cap = PathBuf::from("/usr/share/kodiak/ProjectsWiki");
+    if sys_wiki_cap.exists() {
+        return sys_wiki_cap;
+    }
+    // 5. Local workspace relative path
+    if let Ok(cwd) = std::env::current_dir() {
+        let local_wiki = cwd.join("ProjectsWiki");
+        if local_wiki.exists() {
+            return local_wiki;
+        }
+    }
+    configured
+}
+
+/// Resolves the directory where the user's project repositories live.
+/// Prioritizes configured `projects_dir`, then active project parent directory,
+/// then first whitelist entry parent directory, then standard ~/Projects.
+pub fn resolve_projects_dir(cfg: &AppConfig) -> PathBuf {
+    let configured = expand_tilde(&cfg.projects_dir);
+    if configured.exists() && configured.is_dir() {
+        return configured;
+    }
+    // Check if active project has a valid parent directory
+    if let Some(active) = &cfg.active_project {
+        let active_path = expand_tilde(active);
+        if let Some(parent) = active_path.parent() {
+            if parent.exists() && parent.is_dir() && parent != Path::new("/") {
+                return parent.to_path_buf();
+            }
+        }
+    }
+    // Check first whitelist entry parent directory
+    if let Some(first_wl) = cfg.whitelist.first() {
+        let wl_path = expand_tilde(&first_wl.path);
+        if let Some(parent) = wl_path.parent() {
+            if parent.exists() && parent.is_dir() && parent != Path::new("/") {
+                return parent.to_path_buf();
+            }
+        }
+    }
+    // Fallback to standard ~/Projects location if present
+    if let Some(home) = dirs::home_dir() {
+        let std_projects = home.join("Projects");
+        if std_projects.exists() {
+            return std_projects;
+        }
+    }
+    configured
 }
 
 pub fn config_file_path() -> Result<PathBuf, String> {

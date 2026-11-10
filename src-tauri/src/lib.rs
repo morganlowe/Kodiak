@@ -21,12 +21,16 @@ use history::{
 };
 use memory::{delete_memory_entry, load_all_memories, save_memory_entry, MemoryEntry};
 use pipeline::{
-    build_posture_summary, check_system_health, classify_cloud_error_from_str,
-    create_initial_task_record, ping_alt_provider, probe_cloud_health, resolve_active_project_root,
-    run_execute_stage_with_events, run_interpret_stage, run_interpret_stage_with_provider,
-    run_shell_command_bounded, run_verify_stage, run_verify_stage_with_provider,
-    save_and_return_record, start_lumo_bridge_service, start_wiki_service, CloudErrorKind,
-    HealthStatus, ProviderTestResult, StageProvider,
+    ai_build_wiki_project_service, build_posture_summary, check_system_health,
+    classify_cloud_error_from_str, complete_wiki_setup_service, create_initial_task_record,
+    detect_projects_in_dir_service, fetch_provider_models, get_detailed_wiki_status, get_wiki_setup_info_service,
+    list_wiki_projects_service, ping_alt_provider, probe_cloud_health, rebuild_wiki_assets_service,
+    resolve_active_project_root, restart_wiki_service, run_execute_stage_with_events,
+    run_interpret_stage, run_interpret_stage_with_provider, run_shell_command_bounded,
+    run_verify_stage, run_verify_stage_with_provider, save_and_return_record,
+    start_lumo_bridge_service, start_wiki_service, stop_wiki_service, sync_wiki_catalog_service,
+    CloudErrorKind, HealthStatus, ProviderTestResult, StageProvider, WikiSetupInfo,
+    WikiSetupPayload, WikiStatusDetails,
 };
 use chrono::Utc;
 use std::path::{Path, PathBuf};
@@ -84,6 +88,95 @@ async fn start_lumo_bridge(state: State<'_, AppState>) -> Result<HealthStatus, S
 async fn start_wiki_server(state: State<'_, AppState>) -> Result<HealthStatus, String> {
     let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
     start_wiki_service(&cfg).await
+}
+
+#[tauri::command]
+async fn stop_wiki_server(state: State<'_, AppState>) -> Result<HealthStatus, String> {
+    let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
+    stop_wiki_service(&cfg).await
+}
+
+#[tauri::command]
+async fn restart_wiki_server(state: State<'_, AppState>) -> Result<HealthStatus, String> {
+    let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
+    restart_wiki_service(&cfg).await
+}
+
+#[tauri::command]
+async fn get_wiki_details(state: State<'_, AppState>) -> Result<WikiStatusDetails, String> {
+    let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
+    get_detailed_wiki_status(&cfg).await
+}
+
+#[tauri::command]
+async fn sync_wiki_catalog(state: State<'_, AppState>) -> Result<String, String> {
+    let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
+    sync_wiki_catalog_service(&cfg).await
+}
+
+#[tauri::command]
+async fn rebuild_wiki_assets(state: State<'_, AppState>) -> Result<String, String> {
+    let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
+    rebuild_wiki_assets_service(&cfg).await
+}
+
+#[tauri::command]
+async fn ai_build_project_wiki(
+    state: State<'_, AppState>,
+    project_name: String,
+    model: Option<String>,
+    overwrite: Option<bool>,
+) -> Result<String, String> {
+    let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
+    ai_build_wiki_project_service(&cfg, &project_name, model.as_deref(), overwrite.unwrap_or(true)).await
+}
+
+#[tauri::command]
+async fn list_wiki_projects(state: State<'_, AppState>) -> Result<Vec<serde_json::Value>, String> {
+    let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
+    list_wiki_projects_service(&cfg).await
+}
+
+#[tauri::command]
+async fn get_wiki_setup_info(state: State<'_, AppState>) -> Result<WikiSetupInfo, String> {
+    let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
+    get_wiki_setup_info_service(&cfg).await
+}
+
+#[tauri::command]
+async fn complete_wiki_setup(
+    state: State<'_, AppState>,
+    payload: WikiSetupPayload,
+) -> Result<AppConfig, String> {
+    let mut cfg = {
+        state.config.lock().map_err(|e| e.to_string())?.clone()
+    };
+    let updated = complete_wiki_setup_service(&mut cfg, payload).await?;
+    save_config(&updated)?;
+    let mut guard = state.config.lock().map_err(|e| e.to_string())?;
+    *guard = updated.clone();
+    Ok(updated)
+}
+
+#[tauri::command]
+async fn set_wiki_enabled(state: State<'_, AppState>, enabled: bool) -> Result<AppConfig, String> {
+    let mut cfg = {
+        state.config.lock().map_err(|e| e.to_string())?.clone()
+    };
+    cfg.wiki_enabled = enabled;
+    cfg.wiki_configured = true;
+    if !enabled {
+        let _ = stop_wiki_service(&cfg).await;
+    }
+    save_config(&cfg)?;
+    let mut guard = state.config.lock().map_err(|e| e.to_string())?;
+    *guard = cfg.clone();
+    Ok(cfg)
+}
+
+#[tauri::command]
+fn detect_projects_in_dir(dir_path: String) -> Vec<String> {
+    detect_projects_in_dir_service(&dir_path)
 }
 
 #[tauri::command]
@@ -1873,6 +1966,15 @@ async fn test_alt_provider_connection(
 }
 
 #[tauri::command]
+async fn list_provider_models(
+    base_url: String,
+    api_key: String,
+    provider_name: Option<String>,
+) -> Result<Vec<String>, String> {
+    fetch_provider_models(&base_url, &api_key, provider_name.as_deref()).await
+}
+
+#[tauri::command]
 fn get_task_run_log(task_id: String) -> Result<run_log::TaskRunLogResponse, String> {
     run_log::load_task_run_log(&task_id)
 }
@@ -1899,6 +2001,17 @@ pub fn run() {
             check_health,
             start_lumo_bridge,
             start_wiki_server,
+            stop_wiki_server,
+            restart_wiki_server,
+            get_wiki_details,
+            sync_wiki_catalog,
+            rebuild_wiki_assets,
+            ai_build_project_wiki,
+            list_wiki_projects,
+            get_wiki_setup_info,
+            complete_wiki_setup,
+            set_wiki_enabled,
+            detect_projects_in_dir,
             run_task_pipeline,
             retry_task_stage,
             approve_card,
@@ -1919,6 +2032,7 @@ pub fn run() {
             resume_deferred_task,
             probe_cloud_status,
             test_alt_provider_connection,
+            list_provider_models,
             get_task_run_log,
         ])
         .run(tauri::generate_context!())
@@ -4322,7 +4436,7 @@ mod acceptance_tests {
             name: "Gemini-Pro".to_string(),
             base_url: "https://generativelanguage.googleapis.com/v1beta/openai/".to_string(),
             api_key: "dummy".to_string(),
-            model: "gemini-2.5-pro".to_string(),
+            model: "gemini-1.5-pro".to_string(),
             max_context_chars: Some(32000),
             tier: Some("high".to_string()),
         });
@@ -4342,7 +4456,7 @@ mod acceptance_tests {
         assert_eq!(loaded.tier, Some("high".to_string()));
         assert_eq!(loaded.alt_provider.len(), 2);
         assert_eq!(loaded.alt_provider[0].tier, Some("high".to_string()));
-        assert_eq!(loaded.alt_provider[0].model, "gemini-2.5-pro");
+        assert_eq!(loaded.alt_provider[0].model, "gemini-1.5-pro");
         assert_eq!(loaded.alt_provider[1].tier, Some("low".to_string()));
         assert_eq!(loaded.alt_provider[1].model, "lumo-lite");
 
@@ -4355,7 +4469,7 @@ cloud_tier = "high"
 name = "Gemini-Flash"
 base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
 api_key = "test"
-model = "gemini-2.5-flash"
+model = "gemini-3.0-flash"
 tier = "low"
 "#;
         let custom_loaded: AppConfig = toml::from_str(custom_toml).expect("deserialize alias TOML");
@@ -4411,7 +4525,7 @@ tier = "low"
             name: "backup".to_string(),
             base_url: format!("http://{addr_backup}/v1"),
             api_key: "key".to_string(),
-            model: "gemini-2.5-flash".to_string(),
+            model: "gemini-3.0-flash".to_string(),
             max_context_chars: None,
             tier: Some("low".to_string()),
         });
@@ -4478,7 +4592,7 @@ tier = "low"
             name: "backup".to_string(),
             base_url: format!("http://{addr_backup}/v1"),
             api_key: "key".to_string(),
-            model: "gemini-2.5-flash".to_string(),
+            model: "gemini-3.0-flash".to_string(),
             max_context_chars: None,
             tier: Some("low".to_string()),
         });

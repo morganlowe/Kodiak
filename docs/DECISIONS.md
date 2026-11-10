@@ -589,7 +589,7 @@ All 8 named regression tests pass with zero regressions:
    - UI features a two-level picker (Provider → Tier) with a free-text model field pre-filled from the tier's default. Kodiak never guesses API model IDs; the user always sees and can override the exact model string that will be sent.
 2. **Add Provider Presets**:
    - Presets pre-fill endpoint details for Lumo (`http://127.0.0.1:3003/v1`), Gemini OpenAI-compat (`https://generativelanguage.googleapis.com/v1beta/openai/`), Groq, OpenRouter, and Self-hosted Ollama.
-   - Gemini is treated as a first-class preset with tiered model options (`gemini-2.5-flash` for low, `gemini-2.5-pro` for high).
+   - Gemini is treated as a first-class preset with tiered model options (`gemini-3.0-flash` for low, `gemini-1.5-pro` for high).
 3. **Regression Tests**:
    - `test_tier_field_roundtrips_config` verifies TOML roundtripping of provider tiers.
 
@@ -641,3 +641,134 @@ All 8 named regression tests pass with zero regressions:
    - Replaced cryptic section references ("§1", "§4.2", etc.) across the UI with clear human phrases and interactive `renderCharterChip` pills that link directly to the Charter in the About tab and scroll smoothly to the corresponding tenet.
 3. **About Tab**:
    - Added an About tab displaying the Bear Built logo, app name/version ("Kodiak v0.7.0"), live system status (Lumo bridge, Ollama models, active project, uptime), links/licenses (Apache-2.0 and Bear Built mark attribution), and The Charter.
+
+---
+
+## 19. ProjectsWiki Strip-Down & Optional Component Architecture (Rev 2)
+
+### 19.1 Git History Finding & Clean Publication Path
+- **Audit Findings**:
+  - `ProjectsWiki/` within `Aureus-AI-Foreman/` was completely untracked in git history (`git log --all --full-history -- ProjectsWiki` returned 0 commits).
+  - The repository has only 2 existing commits (`85b6a95` Initial commit, `6f606b5` README screenshot update), neither of which contains any personal project files, photos, PDFs, or generated docs from `ProjectsWiki`.
+  - **Decision**: No history filtering (`git filter-repo` / BFG) is required. The stripped component can be committed directly to git.
+
+### 19.2 Component Split & Packaging Layout
+- **Decision: Split Packaging (`kodiak` + `kodiak-projectswiki`)**:
+  - The stripped wiki is decoupled into an optional sub-component installed to `/usr/share/kodiak/projectswiki/`.
+  - In Arch Linux (`PKGBUILD`), `kodiak` defines `optdepends=('kodiak-projectswiki: Local Projects Wiki and AI documentation hub')`.
+  - In Debian/Ubuntu, a separate binary package `kodiak-projectswiki` is generated with `Recommends: kodiak-projectswiki` on the main `kodiak` package.
+  - When the component is omitted or disabled, Kodiak removes the Projects Wiki button from the navigation bar with no broken dependencies or orphan background services.
+
+### 19.3 Configuration Schema & Externalized Overrides
+- **Externalized Configuration (`~/.config/kodiak/wiki.toml`)**:
+  - `projects_dir`: User-configurable directory for project repositories (defaults to `~/Projects`, prompted during setup). Eliminates hardcoded `~/Nextcloud/Projects` references.
+  - `site_domain`: Defaults to `wiki.local`, with zero-sudo fallback to `http://127.0.0.1:8000` when `/etc/hosts` is unconfigured.
+  - `ollama_url` / `ollama_model`: Connects to local Ollama (default `http://127.0.0.1:11434`, `qwen2.5-coder:7b`).
+  - `port_web` / `port_api`: Defaults to 8000 and 8765.
+  - `overrides_file`: Externalized to `~/.config/kodiak/project_overrides.json` so manual title, category, and overview edits survive package upgrades, catalog rescans, and documentation rebuilds.
+- **Taxonomy Defaults**:
+  - Neutral categories shipped by default: `Hardware & Electronics`, `Embedded & Firmware`, `Software & Tools`, `Robotics & Mechanical`, `Audio & Media`, and `General & Prototypes`. Fully customizable via `wiki.toml`.
+
+### 19.4 Strict Read-Only Boundary & Pipeline Isolation
+- **Boundary Tenet**:
+  - The ProjectsWiki microservice (`sync_api.py`) and MkDocs viewer are strictly read-only with respect to Kodiak's workbench pipeline and task execution engine.
+  - The wiki cannot inject tasks, modify the security whitelist, or alter active execution state.
+  - The live production wiki at `~/Nextcloud/ProjectsWiki` remains untouched (baseline checksum verified before and after).
+
+### 19.5 Zero-Sudo Port & Host Hygiene
+- **Decision: Removal of Automated Port-80 Sysctl**:
+  - Automated modification of `net.ipv4.ip_unprivileged_port_start=80` is removed from all default execution flows.
+  - `/etc/hosts` and sysctl port 80 configuration are strictly opt-in behind interactive confirmation during `wiki setup`.
+  - If unconfigured, the wiki binds to `127.0.0.1:8000` without requiring root permissions.
+
+---
+
+## 20. Alternate Provider Model Dropdowns, Editing & UX Continuity (v1.0.1 / Post-v1.0 Polish)
+
+### 20.1 Dynamic Alternate Model Dropdown & Gemini 3.0 Defaults
+- **Context & Issue**:
+  - Google AI Studio deprecated `models/gemini-2.5-flash` with HTTP 404, recommending `gemini-3.0-flash`.
+  - The previous model field was a plain text input that defaulted to the obsolete string and required typing exact API identifiers.
+- **Decision**:
+  - Introduced dynamic model dropdowns (`#new-alt-model-select`) alongside the model text input (`#new-alt-model`) for all presets (Gemini, Lumo, Groq, OpenRouter, Self-hosted Ollama).
+  - Pre-wired recommended, verified models per preset:
+    - **Gemini**: `gemini-3.0-flash` (Recommended Low/Standard), `gemini-1.5-pro` (High/Deep Reasoning), `gemini-2.0-flash`, `gemini-1.5-flash`, `gemini-2.0-flash-lite`.
+    - **Lumo**: `lumo`, `lumo-lite`, `lumo-max`.
+    - **Groq**: `llama-3.3-70b-versatile`, `llama-3.1-8b-instant`, `mixtral-8x7b-32768`.
+    - **OpenRouter**: `anthropic/claude-3.5-sonnet`, `openai/gpt-4o`, `google/gemini-2.0-flash-001`, `meta-llama/llama-3.3-70b-instruct`.
+    - **Ollama**: `qwen2.5-coder:7b`, `llama3.2:3b`, `qwen2.5-coder:14b`, `deepseek-r1:7b`.
+    - **Custom option**: Allows entering arbitrary model identifiers for zero vendor lock-in.
+  - Two-way binding: selecting a dropdown option synchronizes the text input; typing a custom model switches the dropdown to "Custom Model ID...".
+  - Synchronized tier selection (`Low | Medium | High`) to automatically pick corresponding models (`gemini-3.0-flash` for low/medium, `gemini-1.5-pro` for high).
+
+### 20.2 In-Place Alternate Provider Editing
+- **Context & Issue**:
+  - Users could previously only add or delete alternate providers. Modifying an endpoint, API key, model, or tier required deleting and re-entering from scratch.
+- **Decision**:
+  - Added an "Edit" button (`.edit-alt-provider-btn`) to every alternate provider card.
+  - Clicking "Edit" populates the provider form with existing values, adjusts the header to "Edit Alternate Provider (Name)", switches the primary button to "Save Provider", and provides a "Cancel Edit" button.
+  - Saving updates `config.alt_provider[idx]` in-place and preserves/updates cascade order references if renamed.
+
+### 20.3 Zero-Scroll-Reset Across DOM Re-Renders
+- **Context & Issue**:
+  - In Kodiak, `renderApp()` sets `appEl.innerHTML = ...`. Replacing the DOM destroyed `.main-content` and `.sidebar__scroll`, resetting their scroll positions (`scrollTop = 0`). Any incoming message, status update, banner error, or settings interaction caused the viewport to jump to the top.
+- **Decision**:
+  - Prior to `appEl.innerHTML = ...`, `renderApp()` records `prevMainScroll`, `prevSidebarScroll`, and a map of `id -> scrollTop` for all scrolled containers.
+  - Immediately following innerHTML insertion, scroll positions for `.main-content`, `.sidebar__scroll`, and all matching IDs are synchronously restored.
+
+### 20.5 Live Model Discovery & Collapsed Project Retention
+- **Context & Issue**:
+  - Google AI Studio deprecated `models/gemini-2.5-flash` with HTTP 404, pointing developers to `models/gemini-3.0-flash`. Furthermore, `gemini-3.0-pro` is non-existent in Google v1beta API, causing 404 errors when selected.
+  - In the sidebar, collapsing the project list previously hid all projects completely, leaving no indication of which project is currently active.
+- **Decision**:
+  - Implemented backend Tauri command `list_provider_models` (`pipeline::fetch_provider_models`) which queries live model endpoints:
+    - Google Generative Language `ModelService.ListModels` (`https://generativelanguage.googleapis.com/v1beta/models?key={api_key}`), filtering for `generateContent` methods and excluding non-text embeddings/imagen, sorting `gemini-3.0-flash` and `gemini-2.5-pro` at the top and filtering out deprecated `2.5-flash`.
+    - Standard OpenAI-compatible `/models` endpoint (Groq, OpenRouter, Ollama, Lumo) with Bearer token authentication.
+  - Added frontend `↻ Fetch Live Models` button with automatic background querying on API key blur.
+  - In `renderSidebar()`, when `sidebarProjectsCollapsed` is true, the active project is preserved on the left with its label, accent highlight, and grant badge (`BUILD`/`READ`).
+
+### 20.7 Alternate Provider Form Draft Persistence & Responsive Layout
+- **Context & Issue**:
+  - In Kodiak Settings, the "Add Alternate Provider" form used a single-row auto-fit grid (`minmax(180px, 1fr)`) that stretched 8 controls into one narrow, squashed horizontal line on ultrawide displays.
+  - Furthermore, when querying live models via `fetchLiveModelsForCurrentForm()`, the handler called `renderApp()`, wiping uncommitted DOM input values (Name, URL, API Key) and resetting them to empty placeholders, preventing the user from adding or saving providers.
+  - An automatic fetch event on API key blur caused unexpected form wiping during entry.
+- **Decision**:
+  - **In-Place Live Model Fetch**: Removed all `renderApp()` calls from `fetchLiveModelsForCurrentForm()`. Status badges, button states, and model dropdown options are updated directly in the DOM.
+  - **Form Draft State**: Added `state.altProviderFormDraft` which synchronizes with user inputs on every `input` and `change` event, ensuring form data survives any background re-renders.
+  - **Structured Card Layout**: Replaced the 1-row squashed strip with `.alt-provider-form` comprising:
+    - Row 1: Preset selector, Name, Tier, and Max Context Chars.
+    - Row 2: Base URL and API Key (50/50 split).
+    - Row 3: Model ID selector with clean `[↻ Fetch Live Models]` button placement and status badge.
+    - Row 4: Dedicated right-aligned `[+ Add Provider]` / `[Save Changes]` action buttons.
+  - **Explicit Fetching**: Removed blur-triggered auto-fetch so live discovery runs only when the user explicitly clicks `↻ Fetch Live Models`.
+
+### 20.8 Universal Collapsible Lists & ProjectsWiki Scale Reduction (~20%)
+- **Context & Issue**:
+  - As projects, memories, and audit logs accumulate, long lists (such as the Local Decision Journal with dozens or hundreds of lines, sidebar memories, and tasks) pushed panels down and cluttered the interface.
+  - MkDocs Material on wide screens automatically inflated `html { font-size: 125%; }`, causing typography and UI components on the Projects Wiki to appear approximately 20% too large.
+- **Decision**:
+  - **Collapsible Decision Journal**: Added `journalCollapsed: boolean` (default `true`) to `AppState`. When collapsed, a compact single-line card shows the latest audit action, count, and click-to-expand toggle.
+  - **Collapsible Sidebar Sections**: Added click-to-collapse headers (`sidebarMemoriesCollapsed` and `sidebarTasksCollapsed`) with item counts and directional indicators (`▼` / `▶`).
+  - **Wiki Scale Reduction**: Added root base scaling rules in `ProjectsWiki/docs/extra.css`:
+    - `html { font-size: 80% !important; }` across all viewports (`82%` on ultrawide).
+    - Tightened `rem`-based typography and padding across headings, search bar, navigation links, and explorer controls by ~20%.
+
+### 20.9 MkDocs Live-Reload Loop Resolution & Process Coordination
+- **Context & Issue**:
+  - In testing the Projects Wiki, browsers experienced continuous page flashing and refreshing every 1–2 seconds.
+  - Root cause investigation revealed two intertwined issues:
+    1. A systemd user unit (`projects-wiki.service`) had been enabled with `Restart=on-failure` and `RestartSec=3`. Concurrently, an existing background instance was already running and listening on port 80/8000.
+    2. When systemd executed `wiki.sh daemon`, it ran `sync_catalog` -> `make_wiki.py`, which unconditionally rewrote `mkdocs.yml` and `projects.json` even when content was identical.
+    3. The updated mtime on `mkdocs.yml` triggered the running `mkdocs serve` watcher to rebuild and send reload commands over WebSocket.
+    4. Meanwhile, the systemd process crashed on port binding (`OSError: [Errno 98] Address already in use`) and restarted 3 seconds later, creating an infinite reload cascade (over 1,300 restarts).
+- **Decision**:
+  - **Idempotent File Writes**: Added `_write_file_if_changed()` to `ProjectsWiki/make_wiki.py` for `mkdocs.yml`, `projects.json`, and markdown stubs. Files are never overwritten or touched if content is identical, preserving mtimes and preventing spurious MkDocs live-reload events.
+  - **Process Coordination**: In `ProjectsWiki/wiki.sh`:
+    - `start_background()` checks if `projects-wiki.service` is active before launching to prevent conflicting instances.
+    - `stop_all` is called prior to `sync_catalog` and URL resolution.
+    - `run_daemon_foreground()` cleans up any stale non-systemd background processes and lingering sockets before attempting to bind ports.
+    - `restart` and `status` cleanly route to `systemctl --user` when the systemd service is active.
+    - In `ProjectsWiki/sync_api.py`, increased `RestartSec` from 3 to 5 and added idempotent unit file generation.
+
+
+
