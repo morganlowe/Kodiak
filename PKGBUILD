@@ -77,6 +77,7 @@ EOF
 
   # Documentation
   install -Dm644 "README.md" "${pkgdir}/usr/share/doc/kodiak/README.md"
+  install -Dm644 "CHANGELOG.md" "${pkgdir}/usr/share/doc/kodiak/CHANGELOG.md"
   install -Dm644 "docs/DECISIONS.md" "${pkgdir}/usr/share/doc/kodiak/DECISIONS.md"
   install -Dm644 "docs/THEME.md" "${pkgdir}/usr/share/doc/kodiak/THEME.md"
 }

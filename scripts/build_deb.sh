@@ -56,6 +56,7 @@ EOF
 
 # Documentation
 install -Dm644 "$ROOT_DIR/README.md" "$KODIAK_STAGE/usr/share/doc/kodiak/README.md"
+install -Dm644 "$ROOT_DIR/CHANGELOG.md" "$KODIAK_STAGE/usr/share/doc/kodiak/CHANGELOG.md"
 install -Dm644 "$ROOT_DIR/docs/DECISIONS.md" "$KODIAK_STAGE/usr/share/doc/kodiak/DECISIONS.md"
 install -Dm644 "$ROOT_DIR/docs/THEME.md" "$KODIAK_STAGE/usr/share/doc/kodiak/THEME.md"
 
