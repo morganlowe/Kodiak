@@ -996,9 +996,11 @@ async function refreshAllState(): Promise<void> {
     if (!state.readOnlyHistorical) {
       if (state.currentTask) {
         const fresh = hist.find((h) => h.task_id === state.currentTask!.task_id);
-        if (fresh) state.currentTask = fresh;
-      } else if (hist.length > 0) {
-        state.currentTask = hist[0];
+        if (fresh && (!cfg?.active_project || fresh.project_dir === cfg.active_project)) {
+          state.currentTask = fresh;
+        } else {
+          state.currentTask = null;
+        }
       }
     }
 
@@ -1201,6 +1203,14 @@ function renderWorkbenchTab(): string {
   const h = state.health;
   const task = state.currentTask;
 
+  const activeEntry = cfg.whitelist.find((w) => w.path === cfg.active_project);
+  const activeGrant = activeEntry?.level ?? (h?.active_project_grant ?? "NONE");
+  let grantBadgeClass = "badge--neutral";
+  if (activeGrant === "READ") grantBadgeClass = "badge--neutral";
+  else if (activeGrant === "CREATE") grantBadgeClass = "badge--ok";
+  else if (activeGrant === "BUILD") grantBadgeClass = "badge--warn";
+  else if (activeGrant === "AUTONOMOUS") grantBadgeClass = "badge--bad";
+
   const postureText = cfg.dry_run
     ? `Dry-Run Mode (Zero Writes) — ${cfg.whitelist.length} dirs in whitelist`
     : state.cruiseControl
@@ -1220,6 +1230,75 @@ function renderWorkbenchTab(): string {
   const deniedCount = task?.action_cards.filter((c) => c.status === "denied").length ?? 0;
 
   return `
+    <!-- Top Active Context Header: Clear Current Target & Job Indicator -->
+    <div class="workbench-context-card" style="background:var(--wiki-surface, #1e222b); border:1px solid var(--wiki-border, rgba(255,255,255,0.12)); border-radius:8px; padding:0.85rem 1.15rem; margin-block-end:0.85rem; display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
+      <div style="display:flex; flex-direction:column; gap:0.35rem; min-width:280px; flex:1;">
+        <div class="row-inline" style="gap:0.5rem; align-items:center; flex-wrap:wrap;">
+          <span style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; font-weight:700; color:var(--md-default-fg-color--light, #94a3b8);">ACTIVE PROJECT</span>
+          <span class="badge ${grantBadgeClass}" style="font-size:0.72rem; font-weight:700;">${escapeHtml(activeGrant)}</span>
+          ${
+            state.readOnlyHistorical
+              ? `<span class="badge badge--warn" style="font-size:0.72rem;">Historical Job View</span>`
+              : `<span class="badge badge--ok" style="font-size:0.72rem;">Live Workbench</span>`
+          }
+        </div>
+        <div class="row-inline" style="gap:0.4rem; align-items:center;">
+          <span style="font-size:1.15rem;">📁</span>
+          <span class="mono" style="font-size:0.95rem; font-weight:600; color:#f8fafc; word-break:break-all;">
+            ${escapeHtml(cfg.active_project || "(No project selected — pick one from sidebar or dropdown below)")}
+          </span>
+        </div>
+        <div class="row-inline" style="gap:0.5rem; align-items:center; margin-top:0.25rem; flex-wrap:wrap;">
+          <span style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; font-weight:700; color:var(--md-default-fg-color--light, #94a3b8);">CURRENT JOB:</span>
+          ${
+            state.runningPipeline
+              ? `<span style="font-size:0.88rem; font-weight:600; color:#38bdf8; max-width:620px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                  "${escapeHtml(truncate(state.promptText.trim() || task?.prompt || "Executing...", 80))}"
+                </span>
+                <span class="badge badge--accent" style="font-size:0.7rem;">⚡ Running</span>`
+              : task
+              ? `<span style="font-size:0.88rem; font-weight:500; color:#e2e8f0; max-width:620px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(task.prompt)}">
+                  "${escapeHtml(truncate(task.prompt, 80))}"
+                </span>
+                <span class="mono muted" style="font-size:0.75rem;">(ID: ${escapeHtml(task.task_id.slice(0, 8))}...)</span>
+                ${
+                  task.failed_stage
+                    ? `<span class="badge badge--bad" style="font-size:0.7rem;">Failed on ${escapeHtml(task.failed_stage)}</span>`
+                    : task.deferred
+                    ? `<span class="badge badge--warn" style="font-size:0.7rem;">Deferred</span>`
+                    : `<span class="badge badge--ok" style="font-size:0.7rem;">Finished</span>`
+                }`
+              : state.promptText.trim()
+              ? `<span style="font-size:0.88rem; font-weight:500; color:#cbd5e1; max-width:620px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                  "${escapeHtml(truncate(state.promptText.trim(), 80))}"
+                </span>
+                <span class="badge badge--neutral" style="font-size:0.7rem;">Drafting</span>`
+              : `<span style="font-size:0.85rem; color:var(--md-default-fg-color--light, #94a3b8); font-style:italic;">Ready for new task prompt below</span>`
+          }
+        </div>
+      </div>
+
+      <div class="row-inline" style="gap:0.6rem; align-items:center; flex-shrink:0;">
+        <button type="button" id="wb-new-task-btn" class="btn btn--sm btn--primary" title="Start a fresh task for this project and clear old card diagnostics">
+          + New Task
+        </button>
+        ${
+          task && (task.failed_stage || task.deferred)
+            ? `<button type="button" id="wb-dismiss-error-btn" class="btn btn--sm" title="Dismiss error card and clear diagnostics from workbench view">
+                ✕ Dismiss Error
+              </button>`
+            : ""
+        }
+        ${
+          cfg.active_project && cfg.wiki_enabled !== false
+            ? `<button type="button" class="btn btn--sm quick-wiki-btn" title="View or document this project in Projects Wiki">
+                📖 Wiki
+              </button>`
+            : ""
+        }
+      </div>
+    </div>
+
     <div class="${postureClass}">
       <div class="row-inline">
         <strong>Posture:</strong>
@@ -4788,7 +4867,15 @@ function bindEvents(): void {
   document.querySelectorAll<HTMLElement>("[data-select-project]").forEach((el) => {
     el.addEventListener("click", async () => {
       if (!state.config || state.runningPipeline) return;
-      state.config.active_project = el.getAttribute("data-select-project");
+      const targetProj = el.getAttribute("data-select-project");
+      if (state.config.active_project !== targetProj) {
+        state.config.active_project = targetProj;
+        state.currentTask = null;
+        state.liveDraft = null;
+        state.readOnlyHistorical = false;
+        state.promptText = "";
+        state.stages = { interpret: "idle", execute: "idle", verify: "idle", done: "idle" };
+      }
       state.tab = "workbench";
       await invoke<AppConfig>("update_config", { newConfig: state.config });
       await refreshAllState();
@@ -5016,9 +5103,38 @@ function bindEvents(): void {
   const quickProjEl = document.getElementById("active-project-QuickSelect") as HTMLSelectElement | null;
   quickProjEl?.addEventListener("change", async () => {
     if (!state.config) return;
-    state.config.active_project = quickProjEl.value || null;
+    const newPath = quickProjEl.value || null;
+    if (state.config.active_project !== newPath) {
+      state.config.active_project = newPath;
+      state.currentTask = null;
+      state.liveDraft = null;
+      state.readOnlyHistorical = false;
+      state.promptText = "";
+      state.stages = { interpret: "idle", execute: "idle", verify: "idle", done: "idle" };
+    }
     await invoke<AppConfig>("update_config", { newConfig: state.config });
     await refreshAllState();
+  });
+
+  // Top Workbench Context Header Actions
+  document.getElementById("wb-new-task-btn")?.addEventListener("click", () => {
+    state.currentTask = null;
+    state.liveDraft = null;
+    state.readOnlyHistorical = false;
+    state.promptText = "";
+    state.uiBannerError = null;
+    state.stages = { interpret: "idle", execute: "idle", verify: "idle", done: "idle" };
+    renderApp();
+    const promptInput = document.getElementById("task-prompt-input") as HTMLTextAreaElement | null;
+    promptInput?.focus();
+  });
+
+  document.getElementById("wb-dismiss-error-btn")?.addEventListener("click", () => {
+    state.currentTask = null;
+    state.liveDraft = null;
+    state.uiBannerError = null;
+    state.stages = { interpret: "idle", execute: "idle", verify: "idle", done: "idle" };
+    renderApp();
   });
 
   // Exit read-only historical mode
@@ -6527,6 +6643,10 @@ function bindEvents(): void {
       if (path && state.config?.active_project !== path) {
         try {
           state.config = await invoke<AppConfig>("set_active_project", { path });
+          state.currentTask = null;
+          state.liveDraft = null;
+          state.promptText = "";
+          state.stages = { interpret: "idle", execute: "idle", verify: "idle", done: "idle" };
         } catch {
           // ignore
         }
@@ -6714,71 +6834,6 @@ function bindEvents(): void {
     });
   });
 
-  // Dashboard events (§2.3 Slice 2 Phase C)
-  document.getElementById("refresh-dashboard-btn")?.addEventListener("click", async () => {
-    try {
-      state.dashboardData = await invoke<MultiProjectDashboardResponse>("get_project_dashboard");
-      renderApp();
-    } catch (err) {
-      state.uiBannerError = `Cannot refresh dashboard: ${err}`;
-      renderApp();
-    }
-  });
-
-  document.getElementById("dash-go-settings-btn")?.addEventListener("click", () => {
-    state.tab = "settings";
-    renderApp();
-  });
-
-  document.querySelectorAll<HTMLElement>(".set-active-project-btn").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const path = btn.getAttribute("data-project-path");
-      if (!path) return;
-      try {
-        state.config = await invoke<AppConfig>("set_active_project", { path });
-        state.dashboardData = await invoke<MultiProjectDashboardResponse>("get_project_dashboard");
-        renderApp();
-      } catch (err) {
-        state.uiBannerError = `Cannot set active project: ${err}`;
-        renderApp();
-      }
-    });
-  });
-
-  document.querySelectorAll<HTMLElement>(".open-workbench-project-btn").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const path = btn.getAttribute("data-project-path");
-      if (path && state.config?.active_project !== path) {
-        try {
-          state.config = await invoke<AppConfig>("set_active_project", { path });
-        } catch {
-          // ignore
-        }
-      }
-      state.tab = "workbench";
-      state.readOnlyHistorical = false;
-      renderApp();
-    });
-  });
-
-  document.querySelectorAll<HTMLElement>(".open-wiki-project-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const projName = btn.getAttribute("data-project-name");
-      if (projName) {
-        state.wikiAiSelectedProject = projName;
-      }
-      state.tab = "wiki";
-      renderApp();
-    });
-  });
-
-  document.querySelectorAll<HTMLElement>(".open-inbox-project-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      state.queueDrawerOpen = true;
-      state.queueDrawerTab = "inbox";
-      renderApp();
-    });
-  });
 }
 
 async function checkCloudStatusToast(force = false): Promise<void> {
