@@ -335,7 +335,11 @@ pub fn task_run_dir_path(task_id: &str) -> Result<PathBuf, String> {
 pub fn load_or_seed_config() -> Result<AppConfig, String> {
     let cfg_path = config_file_path()?;
     if !cfg_path.exists() {
-        let default_cfg = AppConfig::default();
+        let mut default_cfg = AppConfig::default();
+        let profile = crate::hardware::detect_hardware_profile();
+        default_cfg.fast_model = profile.recommended_models.fast_model;
+        default_cfg.coder_model = profile.recommended_models.coder_model;
+        default_cfg.heavy_model = profile.recommended_models.heavy_model;
         save_config(&default_cfg)?;
         return Ok(default_cfg);
     }

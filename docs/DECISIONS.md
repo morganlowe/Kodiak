@@ -800,6 +800,28 @@ All 8 named regression tests pass with zero regressions:
   - **Minimal CI (`.github/workflows/ci.yml`)**: Added GitHub Actions workflow running on `ubuntu-latest` (Node 20 + Rust stable) executing `npm ci && npm run tsc` and `cargo check --manifest-path src-tauri/Cargo.toml`. Added `"tsc": "tsc --noEmit"` to `package.json` to mirror the CI typecheck command cleanly.
   - **CI Deviation & Fix**: First CI run revealed that `tauri::generate_context!()` in `src/lib.rs` panics at compile time if `frontendDist` (`../dist`) does not exist on disk. Added `npm run build` step prior to `cargo check` to generate `dist/` and ensure deterministic crate checking in clean CI runners.
 
+## 22. Dynamic Hardware Profiling & Host-Adaptive Model Recommendation (Slice 2)
+
+### 22.1 Context & Problem Statement
+- In Slice 1, local model defaults (`llama3.2:3b`, `qwen2.5-coder:7b`, `qwen2.5-coder:14b`) were statically configured to match Frank's specific 6 GB RTX 4050 mobile GPU.
+- On machines with entry-level GPUs or CPU-only setups (<6 GB VRAM), attempting to run 14B models causes severe swapping or out-of-memory driver kills.
+- On high-end workstations (12 GB–24 GB+ VRAM), capping users to 7B fast coder models fails to utilize available hardware potential.
+
+### 22.2 Architecture & Implementation
+- **Hardware Detection Module (`src-tauri/src/hardware.rs`)**:
+  - Direct kernel memory query: parses `MemTotal` and `MemAvailable` from `/proc/meminfo`.
+  - Non-blocking GPU discovery: queries `nvidia-smi` for dedicated NVIDIA VRAM (`memory.total`, `memory.free`), with fallback to AMD `/sys/class/drm` and CPU-only detection.
+- **Hardware-to-Model Recommendation Matrix**:
+  - **Tier 1 (Entry / Integrated, <6 GB VRAM / CPU-only)**: Recommends `llama3.2:1b` (summary), `qwen2.5-coder:1.5b` or `3b` (coder), and `qwen2.5-coder:7b` (deep fallback) with strict serial queuing.
+  - **Tier 2 (Mid-Range Balanced, 6–8 GB VRAM)**: Recommends `llama3.2:3b` (summary), `qwen2.5-coder:7b` (coder), and `qwen2.5-coder:14b` (hybrid offload).
+  - **Tier 3 (Performance, 10–16 GB VRAM)**: Recommends `llama3.2:3b`, `qwen2.5-coder:7b`, and `qwen2.5-coder:14b` with pipelining.
+  - **Tier 4 (Workstation, 20+ GB VRAM)**: Recommends `llama3.2:3b`, `qwen2.5-coder:14b`, and `qwen2.5-coder:32b` with concurrent worker threads.
+- **Auto-Seeding & User Authority**:
+  - `load_or_seed_config()` in `config.rs` automatically seeds newly created configurations with the detected optimal models.
+  - Exposes `get_hardware_profile` and `apply_hardware_recommended_models` Tauri commands.
+  - Settings UI features a dedicated Hardware Profile card showing detected GPU, VRAM, System RAM, assigned Tier, and a 1-click `[⚡ Adopt Recommended Models]` action button.
+
+
 
 
 

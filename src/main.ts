@@ -151,6 +151,32 @@ interface HealthStatus {
   wiki_url: string | null;
 }
 
+interface GpuInfo {
+  name: string;
+  vram_total_mb: number;
+  vram_free_mb: number;
+  is_dedicated: boolean;
+}
+
+interface RecommendedModels {
+  fast_model: string;
+  coder_model: string;
+  heavy_model: string;
+  concurrency_mode: string;
+  unload_after_run: boolean;
+  rationale: string;
+}
+
+interface HardwareProfile {
+  system_ram_total_mb: number;
+  system_ram_available_mb: number;
+  gpu: GpuInfo | null;
+  hardware_tier: "Tier1Entry" | "Tier2Mid" | "Tier3Performance" | "Tier4Workstation";
+  tier_label: string;
+  tier_description: string;
+  recommended_models: RecommendedModels;
+}
+
 interface WikiStatusDetails {
   reachable: boolean;
   url: string | null;
@@ -408,9 +434,11 @@ const state: {
   sessionAltConsent: boolean;
   appSessionStartTime: number;
   activeRunLog: TaskRunLogResponse | null;
+  hardwareProfile: HardwareProfile | null;
 } = {
   tab: "workbench",
   config: null,
+  hardwareProfile: null,
   health: null,
   cruiseControl: false,
   promptText: "",
@@ -725,13 +753,14 @@ function cardStatusBadge(card: ActionCard): string {
 
 async function refreshAllState(): Promise<void> {
   try {
-    const [cfg, cruise, health, hist, journal, mems] = await Promise.all([
+    const [cfg, cruise, health, hist, journal, mems, hwProfile] = await Promise.all([
       invoke<AppConfig>("get_config"),
       invoke<boolean>("get_cruise_control"),
       invoke<HealthStatus>("check_health"),
       invoke<TaskRecord[]>("get_task_history"),
       invoke<JournalEntry[]>("get_journal_entries", { limit: 50 }),
       invoke<MemoryEntry[]>("get_memories"),
+      invoke<HardwareProfile>("get_hardware_profile").catch(() => null),
     ]);
     state.config = cfg;
     state.cruiseControl = cruise;
@@ -739,6 +768,7 @@ async function refreshAllState(): Promise<void> {
     state.history = hist;
     state.journal = journal;
     state.memories = mems;
+    if (hwProfile) state.hardwareProfile = hwProfile;
 
     try {
       const [wDetails, wProjects] = await Promise.all([
@@ -2694,6 +2724,67 @@ function renderCascadeOrderList(cfg: AppConfig): string {
     .join("");
 }
 
+function renderHardwareCard(hw: HardwareProfile | null): string {
+  if (!hw) {
+    return `
+      <div class="panel-card" style="grid-column: 1 / -1; margin-block-end: 0.75rem; padding: 0.75rem 1rem;">
+        <span class="muted" style="font-size: 0.85rem;">Hardware evaluation in progress...</span>
+      </div>
+    `;
+  }
+
+  const tierBadgeClass =
+    hw.hardware_tier === "Tier4Workstation"
+      ? "badge--accent"
+      : hw.hardware_tier === "Tier3Performance"
+      ? "badge--ok"
+      : hw.hardware_tier === "Tier2Mid"
+      ? "badge--neutral"
+      : "badge--warn";
+
+  const vramText = hw.gpu
+    ? `${(hw.gpu.vram_total_mb / 1024).toFixed(1)} GB VRAM (${(hw.gpu.vram_free_mb / 1024).toFixed(1)} GB free)`
+    : "Shared System Memory (Integrated/CPU)";
+
+  return `
+    <div class="panel-card" style="grid-column: 1 / -1; margin-block-end: 0.75rem; padding: 0.85rem 1.1rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm);">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-block-end: 0.6rem;">
+        <div>
+          <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <strong style="font-size: 0.95rem;">🖥️ Host Hardware Profile & Recommendations</strong>
+            <span class="badge ${tierBadgeClass}">${escapeHtml(hw.tier_label)}</span>
+          </div>
+          <p class="muted" style="font-size: 0.82rem; margin: 0.2rem 0 0 0;">
+            ${escapeHtml(hw.tier_description)}
+          </p>
+        </div>
+        <button type="button" id="btn-apply-hardware-models" class="btn btn--sm btn--primary" style="display: inline-flex; align-items: center; gap: 0.35rem;">
+          <span>⚡ Adopt Recommended Models</span>
+        </button>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0.6rem; font-size: 0.82rem; margin-block-end: 0.6rem;">
+        <div style="background: var(--color-bg-base); padding: 0.45rem 0.65rem; border-radius: var(--radius-sm); border: 1px solid var(--color-border-subtle);">
+          <span class="muted">GPU:</span> <strong>${escapeHtml(hw.gpu?.name || "Integrated / CPU-only")}</strong><br/>
+          <span class="muted">VRAM:</span> <strong>${escapeHtml(vramText)}</strong>
+        </div>
+        <div style="background: var(--color-bg-base); padding: 0.45rem 0.65rem; border-radius: var(--radius-sm); border: 1px solid var(--color-border-subtle);">
+          <span class="muted">System RAM:</span> <strong>${(hw.system_ram_total_mb / 1024).toFixed(1)} GB</strong> (${(hw.system_ram_available_mb / 1024).toFixed(1)} GB avail)<br/>
+          <span class="muted">Queue Concurrency:</span> <strong style="text-transform: capitalize;">${escapeHtml(hw.recommended_models.concurrency_mode.replace("_", " "))}</strong>
+        </div>
+        <div style="background: var(--color-bg-base); padding: 0.45rem 0.65rem; border-radius: var(--radius-sm); border: 1px solid var(--color-border-subtle);">
+          <span class="muted">Fast Model:</span> <code>${escapeHtml(hw.recommended_models.fast_model)}</code><br/>
+          <span class="muted">Coder / Deep:</span> <code>${escapeHtml(hw.recommended_models.coder_model)}</code> / <code>${escapeHtml(hw.recommended_models.heavy_model)}</code>
+        </div>
+      </div>
+
+      <div style="background: rgba(255, 122, 24, 0.08); border-left: 3px solid var(--color-accent); padding: 0.45rem 0.65rem; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; font-size: 0.82rem;">
+        <strong>Hardware Rationale:</strong> ${escapeHtml(hw.recommended_models.rationale)}
+      </div>
+    </div>
+  `;
+}
+
 function renderSettingsTab(): string {
   const cfg = state.config!;
   const editingIdx = state.editingAltProviderIdx;
@@ -3241,6 +3332,8 @@ function renderSettingsTab(): string {
           <label class="form-label" for="cfg-ollama-url">Ollama URL</label>
           <input type="text" id="cfg-ollama-url" class="form-input" value="${escapeHtml(cfg.ollama_url)}" />
         </div>
+
+        ${renderHardwareCard(state.hardwareProfile)}
 
         <div class="form-field">
           <label class="form-label" for="cfg-fast-model">Local Fast/Indexing Model</label>
@@ -4796,6 +4889,26 @@ function bindEvents(): void {
       await refreshAllState();
     } catch (err) {
       state.uiBannerError = String(err);
+      renderApp();
+    }
+  });
+
+  // Settings: Apply hardware-recommended models
+  document.getElementById("btn-apply-hardware-models")?.addEventListener("click", async () => {
+    if (!state.hardwareProfile) return;
+    const rec = state.hardwareProfile.recommended_models;
+    const fastInput = document.getElementById("cfg-fast-model") as HTMLInputElement | null;
+    const coderInput = document.getElementById("cfg-coder-model") as HTMLInputElement | null;
+    const heavyInput = document.getElementById("cfg-heavy-model") as HTMLInputElement | null;
+    if (fastInput) fastInput.value = rec.fast_model;
+    if (coderInput) coderInput.value = rec.coder_model;
+    if (heavyInput) heavyInput.value = rec.heavy_model;
+    try {
+      state.config = await invoke<AppConfig>("apply_hardware_recommended_models");
+      state.uiBannerInfo = `Adopted hardware-recommended models (${rec.fast_model}, ${rec.coder_model}, ${rec.heavy_model}) for ${state.hardwareProfile.tier_label}.`;
+      await refreshAllState();
+    } catch (err) {
+      state.uiBannerError = `Failed to apply recommended models: ${err}`;
       renderApp();
     }
   });

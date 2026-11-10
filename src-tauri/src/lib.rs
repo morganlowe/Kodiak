@@ -1,6 +1,7 @@
 pub mod config;
 pub mod enforcer;
 pub mod events;
+pub mod hardware;
 pub mod history;
 pub mod memory;
 pub mod migration;
@@ -1979,6 +1980,24 @@ fn get_task_run_log(task_id: String) -> Result<run_log::TaskRunLogResponse, Stri
     run_log::load_task_run_log(&task_id)
 }
 
+#[tauri::command]
+fn get_hardware_profile() -> Result<hardware::HardwareProfile, String> {
+    Ok(hardware::detect_hardware_profile())
+}
+
+#[tauri::command]
+fn apply_hardware_recommended_models(
+    state: tauri::State<AppState>,
+) -> Result<AppConfig, String> {
+    let profile = hardware::detect_hardware_profile();
+    let mut cfg = state.config.lock().map_err(|e| e.to_string())?;
+    cfg.fast_model = profile.recommended_models.fast_model;
+    cfg.coder_model = profile.recommended_models.coder_model;
+    cfg.heavy_model = profile.recommended_models.heavy_model;
+    save_config(&cfg)?;
+    Ok(cfg.clone())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     if let Err(e) = migration::run_migration_if_needed() {
@@ -2034,6 +2053,8 @@ pub fn run() {
             test_alt_provider_connection,
             list_provider_models,
             get_task_run_log,
+            get_hardware_profile,
+            apply_hardware_recommended_models,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Kodiak tauri application");
