@@ -844,6 +844,16 @@ All 8 named regression tests pass with zero regressions:
   - `start_background_queue_worker` runs continuously in Tokio async runtime, scanning for runnable items every 500ms and emitting real-time event updates via channel `kodiak://queue-event`.
   - Registered Tauri commands: `enqueue_task`, `get_queue_items`, `cancel_queue_item`, `remove_queue_item`, `reorder_queue_item`, `clear_completed_queue_items`.
 
+### 23.3 Frontend Queue Drawer & Non-blocking Prompt Submission (Milestone 3)
+- **Non-blocking UI Interaction**:
+  - Submitting prompts via Enter or `run-pipeline-btn` invokes `enqueue_task`, immediately clears the input textarea, and provides toast confirmation, allowing seamless sequential prompt entry without waiting for pipeline stages.
+  - The slide-over Queue Drawer panel provides granular control over queued jobs: cancellation, removal of resolved tasks, manual reordering (`▲` / `▼`), and one-click jump to pending review cards (`Waiting Approval`).
+  - Top header `[📋 Queue]` badge dynamically highlights when tasks are active or awaiting approval.
+- **Projects Wiki Typography & Scale**:
+  - Updated `ProjectsWiki/docs/extra.css` header height to `3.5rem` and `.md-header__topic` font size to `2.4rem` to match the visual height of the bear logo.
+  - Increased root document scale from 94% to 100% (102%–104% on ultrawide/high-DPI) for enhanced readability.
+
+
 
 
 

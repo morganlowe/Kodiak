@@ -32,6 +32,31 @@ type PipelineEvent =
   | { kind: "draft_stream_chunk"; task_id: string; step_id: number; title: string; action_class: string; target_path: string; model: string; chunk: string; accumulated: string }
   | { kind: "draft_stream_done"; task_id: string; step_id: number; target_path: string; success: boolean; error: string | null };
 
+interface QueueItem {
+  queue_id: string;
+  task_id: string | null;
+  prompt: string;
+  project_root: string;
+  wait_for_previous_approval: boolean;
+  status: "queued" | "interpreting" | "waiting_for_dependency" | "local_working" | "verifying" | "waiting_approval" | "completed" | "failed" | "cancelled";
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  pending_cards_count: number;
+  approved_cards_count: number;
+  denied_cards_count: number;
+  error: string | null;
+}
+
+interface QueueEvent {
+  kind: "queue_updated" | "item_status_changed";
+  items?: QueueItem[];
+  queue_id?: string;
+  task_id?: string | null;
+  status?: string;
+  error?: string | null;
+}
+
 interface AltProviderConfig {
   name: string;
   base_url: string;
@@ -435,10 +460,16 @@ const state: {
   appSessionStartTime: number;
   activeRunLog: TaskRunLogResponse | null;
   hardwareProfile: HardwareProfile | null;
+  queueItems: QueueItem[];
+  queueDrawerOpen: boolean;
+  queueWaitForApproval: boolean;
 } = {
   tab: "workbench",
   config: null,
   hardwareProfile: null,
+  queueItems: [],
+  queueDrawerOpen: false,
+  queueWaitForApproval: true,
   health: null,
   cruiseControl: false,
   promptText: "",
@@ -753,7 +784,7 @@ function cardStatusBadge(card: ActionCard): string {
 
 async function refreshAllState(): Promise<void> {
   try {
-    const [cfg, cruise, health, hist, journal, mems, hwProfile] = await Promise.all([
+    const [cfg, cruise, health, hist, journal, mems, hwProfile, qItems] = await Promise.all([
       invoke<AppConfig>("get_config"),
       invoke<boolean>("get_cruise_control"),
       invoke<HealthStatus>("check_health"),
@@ -761,6 +792,7 @@ async function refreshAllState(): Promise<void> {
       invoke<JournalEntry[]>("get_journal_entries", { limit: 50 }),
       invoke<MemoryEntry[]>("get_memories"),
       invoke<HardwareProfile>("get_hardware_profile").catch(() => null),
+      invoke<QueueItem[]>("get_queue_items").catch(() => []),
     ]);
     state.config = cfg;
     state.cruiseControl = cruise;
@@ -769,6 +801,7 @@ async function refreshAllState(): Promise<void> {
     state.journal = journal;
     state.memories = mems;
     if (hwProfile) state.hardwareProfile = hwProfile;
+    if (qItems) state.queueItems = qItems;
 
     try {
       const [wDetails, wProjects] = await Promise.all([
@@ -827,6 +860,25 @@ function renderHeader(): string {
       </nav>
 
       <div class="row-inline">
+        <button
+          type="button"
+          id="queue-drawer-toggle-btn"
+          class="btn btn--sm ${state.queueItems.some((i) => i.status === 'interpreting' || i.status === 'local_working' || i.status === 'verifying') ? 'btn--primary' : ''}"
+          title="Toggle Multi-Task Queue Drawer (Slice 2)"
+        >
+          <span>📋 Queue</span>
+          ${
+            state.queueItems.length > 0
+              ? `<span class="nav-tab__badge" style="background:${
+                  state.queueItems.some((i) => i.status === 'waiting_approval')
+                    ? '#a855f7'
+                    : state.queueItems.some((i) => i.status === 'interpreting' || i.status === 'local_working' || i.status === 'verifying')
+                    ? 'var(--accent)'
+                    : '#4b5563'
+                }; color:#fff; font-size:0.7rem; margin-inline-start:0.3rem;">${state.queueItems.length}</span>`
+              : ""
+          }
+        </button>
         ${
           state.readOnlyHistorical
             ? `<button type="button" id="return-workbench-btn" class="btn btn--sm btn--primary" title="Exit historical mode and return to active workbench">← Return to Live Workbench</button>`
@@ -3568,6 +3620,117 @@ function renderCloudToast(): string {
   `;
 }
 
+function renderQueueDrawer(): string {
+  if (!state.queueDrawerOpen) return "";
+
+  const items = state.queueItems;
+  const runningItem = items.find(
+    (i) => i.status === "interpreting" || i.status === "local_working" || i.status === "verifying"
+  );
+
+  const itemsHtml = items.length === 0
+    ? `<div style="text-align:center; padding:3rem 1rem; color:var(--md-default-fg-color--light);">
+         <span style="font-size:2rem; display:block; margin-bottom:0.75rem;">📋</span>
+         <strong>No tasks currently queued</strong>
+         <p style="font-size:0.85rem; margin-top:0.35rem;">Enter a prompt in the workbench bar and hit Enter to queue tasks asynchronously without blocking!</p>
+       </div>`
+    : items.map((item, idx) => {
+        let badgeHtml = "";
+        let pulseClass = "";
+        switch (item.status) {
+          case "queued":
+            badgeHtml = `<span class="badge badge--neutral">Queued #${idx + 1}</span>`;
+            break;
+          case "interpreting":
+            badgeHtml = `<span class="badge badge--info" style="background:#0284c7; color:#fff;">Stage 1: Interpreting...</span>`;
+            pulseClass = "is-active";
+            break;
+          case "waiting_for_dependency":
+            badgeHtml = `<span class="badge badge--warn" title="Paused until earlier tasks in this repository are reviewed">⏳ Waiting for Dependency</span>`;
+            break;
+          case "local_working":
+            badgeHtml = `<span class="badge badge--ok" style="background:#16a34a; color:#fff;" title="Active local model inference under VRAM lock">⚡ Local Working (VRAM)</span>`;
+            pulseClass = "is-active";
+            break;
+          case "verifying":
+            badgeHtml = `<span class="badge badge--info" style="background:#2563eb; color:#fff;">Stage 3: Verifying...</span>`;
+            pulseClass = "is-active";
+            break;
+          case "waiting_approval":
+            badgeHtml = `<span class="badge" style="background:#a855f7; color:#fff;">✋ Waiting Approval (${item.pending_cards_count})</span>`;
+            break;
+          case "completed":
+            badgeHtml = `<span class="badge badge--ok">✓ Completed</span>`;
+            break;
+          case "failed":
+            badgeHtml = `<span class="badge badge--bad">✕ Failed</span>`;
+            break;
+          case "cancelled":
+            badgeHtml = `<span class="badge badge--neutral">Cancelled</span>`;
+            break;
+        }
+
+        const projName = item.project_root.split("/").pop() || item.project_root;
+        const canCancel = item.status === "queued" || item.status === "interpreting" || item.status === "waiting_for_dependency";
+        const canRemove = item.status === "completed" || item.status === "failed" || item.status === "cancelled";
+        const canReorder = item.status === "queued" || item.status === "waiting_for_dependency";
+
+        return `
+          <div class="queue-item-card ${pulseClass}">
+            <div class="row-between" style="align-items:flex-start;">
+              ${badgeHtml}
+              <div class="queue-item-card__controls">
+                ${canReorder && idx > 0 ? `<button type="button" class="btn btn--sm queue-move-up-btn" data-queue-id="${escapeHtml(item.queue_id)}" data-new-idx="${idx - 1}" title="Move up">▲</button>` : ""}
+                ${canReorder && idx < items.length - 1 ? `<button type="button" class="btn btn--sm queue-move-down-btn" data-queue-id="${escapeHtml(item.queue_id)}" data-new-idx="${idx + 1}" title="Move down">▼</button>` : ""}
+                ${canCancel ? `<button type="button" class="btn btn--sm queue-cancel-btn" data-queue-id="${escapeHtml(item.queue_id)}" title="Cancel this queued task">Cancel</button>` : ""}
+                ${canRemove ? `<button type="button" class="btn btn--sm queue-remove-btn" data-queue-id="${escapeHtml(item.queue_id)}" title="Remove from queue list">✕</button>` : ""}
+              </div>
+            </div>
+            <div class="queue-item-card__prompt">${escapeHtml(item.prompt)}</div>
+            <div class="queue-item-card__meta">
+              <span>📁 <strong>${escapeHtml(projName)}</strong></span>
+              ${item.task_id ? `<span class="mono" style="font-size:0.72rem;">${escapeHtml(item.task_id)}</span>` : ""}
+            </div>
+            ${item.error ? `<div class="banner banner--error" style="padding:0.4rem 0.6rem; font-size:0.75rem; margin-top:0.25rem;">${escapeHtml(item.error)}</div>` : ""}
+            ${item.status === "waiting_approval" && item.task_id ? `
+              <div style="margin-top:0.25rem;">
+                <button type="button" class="btn btn--sm btn--primary queue-view-task-btn" data-task-id="${escapeHtml(item.task_id)}" style="width:100%;">
+                  Review ${item.pending_cards_count} Pending Card(s) →
+                </button>
+              </div>
+            ` : ""}
+          </div>
+        `;
+      }).join("");
+
+  return `
+    <div class="queue-drawer-backdrop" id="queue-drawer-backdrop">
+      <div class="queue-drawer" onclick="event.stopPropagation();">
+        <div class="queue-drawer__header">
+          <div class="row-inline" style="gap:0.5rem; align-items:center;">
+            <h2 class="panel-title" style="margin:0;">📋 Task Queue</h2>
+            <span class="badge badge--neutral">${items.length}</span>
+            ${runningItem ? `<span class="badge badge--ok pulse" style="font-size:0.7rem;">Active</span>` : ""}
+          </div>
+          <div class="row-inline" style="gap:0.5rem; align-items:center;">
+            <button type="button" id="clear-completed-queue-btn" class="btn btn--sm" title="Clear completed, failed, and cancelled tasks">Clear Finished</button>
+            <button type="button" id="close-queue-drawer-btn" class="btn btn--sm" title="Close drawer">✕</button>
+          </div>
+        </div>
+        <div style="padding:0.6rem 1.25rem; background:var(--wiki-surface); border-bottom:1px solid var(--wiki-border); font-size:0.82rem; display:flex; align-items:center; justify-content:space-between;">
+          <label class="row-inline" style="gap:0.4rem; cursor:pointer; user-select:none;">
+            <input type="checkbox" id="queue-wait-approval-toggle" ${state.queueWaitForApproval ? "checked" : ""} />
+            <span>Wait for previous task approval in same repository</span>
+          </label>
+        </div>
+        <div class="queue-drawer__body">
+          ${itemsHtml}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function renderApp(): void {
   const appEl = document.getElementById("app");
   if (!appEl || !state.config) return;
@@ -3620,6 +3783,7 @@ function renderApp(): void {
     </div>
     ${renderRunLogModal()}
     ${renderWikiSetupWizard()}
+    ${renderQueueDrawer()}
   `;
 
   const restoreScrollPositions = () => {
@@ -4187,6 +4351,13 @@ function bindEvents(): void {
     }
   });
 
+  promptEl?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      document.getElementById("run-pipeline-btn")?.click();
+    }
+  });
+
   function bindMentionPickerItems() {
     document.querySelectorAll<HTMLElement>("[data-pick-mention]").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -4227,32 +4398,31 @@ function bindEvents(): void {
   document.getElementById("exit-readonly-btn")?.addEventListener("click", exitReadOnly);
   document.getElementById("return-workbench-btn")?.addEventListener("click", exitReadOnly);
 
-  // Run pipeline
+  // Run pipeline / enqueue task asynchronously without blocking prompt input (§2.1 Slice 2)
   document.getElementById("run-pipeline-btn")?.addEventListener("click", async () => {
     const prompt = state.promptText.trim();
     if (!prompt) {
-      state.uiBannerError = "Please enter a task prompt before running the pipeline.";
+      state.uiBannerError = "Please enter a task prompt before submitting.";
       renderApp();
       return;
     }
-    state.runningPipeline = true;
     state.readOnlyHistorical = false;
     state.uiBannerError = null;
     state.uiBannerInfo = null;
-    state.stages = { interpret: "idle", execute: "idle", verify: "idle", done: "idle" };
-    state.currentTask = null;
-    resetLiveRun(false);
-    renderApp();
 
     try {
-      const record = await invoke<TaskRecord>("run_task_pipeline", { prompt });
-      state.currentTask = record;
-      state.liveDraft = record.failed_stage === "execute" ? state.liveDraft : null;
-      await refreshAllState();
+      const item = await invoke<QueueItem>("enqueue_task", {
+        prompt,
+        projectRoot: state.config?.active_project ?? null,
+        waitForPreviousApproval: state.queueWaitForApproval ?? true,
+      });
+      state.promptText = "";
+      state.uiBannerInfo = `Task queued (#${item.queue_id}) — running asynchronously via multi-task queue.`;
+      const qItems = await invoke<QueueItem[]>("get_queue_items");
+      state.queueItems = qItems;
+      renderApp();
     } catch (err) {
-      state.uiBannerError = String(err);
-    } finally {
-      state.runningPipeline = false;
+      state.uiBannerError = `Failed to queue task: ${String(err)}`;
       renderApp();
     }
   });
@@ -5539,6 +5709,101 @@ function bindEvents(): void {
     state.cloudToast = null;
     renderApp();
   });
+
+  // Queue Drawer events (§2.1 Slice 2)
+  document.getElementById("queue-drawer-toggle-btn")?.addEventListener("click", () => {
+    state.queueDrawerOpen = !state.queueDrawerOpen;
+    renderApp();
+  });
+
+  document.getElementById("close-queue-drawer-btn")?.addEventListener("click", () => {
+    state.queueDrawerOpen = false;
+    renderApp();
+  });
+
+  document.getElementById("queue-drawer-backdrop")?.addEventListener("click", (e) => {
+    if ((e.target as HTMLElement)?.id === "queue-drawer-backdrop") {
+      state.queueDrawerOpen = false;
+      renderApp();
+    }
+  });
+
+  document.getElementById("queue-wait-approval-toggle")?.addEventListener("change", (e) => {
+    state.queueWaitForApproval = (e.target as HTMLInputElement).checked;
+  });
+
+  document.getElementById("clear-completed-queue-btn")?.addEventListener("click", async () => {
+    try {
+      const items = await invoke<QueueItem[]>("clear_completed_queue_items");
+      state.queueItems = items;
+      renderApp();
+    } catch (err) {
+      state.uiBannerError = `Cannot clear queue: ${err}`;
+      renderApp();
+    }
+  });
+
+  document.querySelectorAll<HTMLElement>(".queue-cancel-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const queueId = btn.getAttribute("data-queue-id");
+      if (!queueId) return;
+      try {
+        await invoke<QueueItem>("cancel_queue_item", { queueId });
+        state.queueItems = await invoke<QueueItem[]>("get_queue_items");
+        renderApp();
+      } catch (err) {
+        state.uiBannerError = `Cannot cancel queue item: ${err}`;
+        renderApp();
+      }
+    });
+  });
+
+  document.querySelectorAll<HTMLElement>(".queue-remove-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const queueId = btn.getAttribute("data-queue-id");
+      if (!queueId) return;
+      try {
+        await invoke<QueueItem>("remove_queue_item", { queueId });
+        state.queueItems = await invoke<QueueItem[]>("get_queue_items");
+        renderApp();
+      } catch (err) {
+        state.uiBannerError = `Cannot remove queue item: ${err}`;
+        renderApp();
+      }
+    });
+  });
+
+  document.querySelectorAll<HTMLElement>(".queue-move-up-btn, .queue-move-down-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const queueId = btn.getAttribute("data-queue-id");
+      const newIndexStr = btn.getAttribute("data-new-idx");
+      if (!queueId || newIndexStr === null) return;
+      const newIndex = parseInt(newIndexStr, 10);
+      try {
+        const updated = await invoke<QueueItem[]>("reorder_queue_item", { queueId, newIndex });
+        state.queueItems = updated;
+        renderApp();
+      } catch (err) {
+        state.uiBannerError = `Cannot reorder queue item: ${err}`;
+        renderApp();
+      }
+    });
+  });
+
+  document.querySelectorAll<HTMLElement>(".queue-view-task-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const taskId = btn.getAttribute("data-task-id");
+      if (!taskId) return;
+      const found = state.history.find((t) => t.task_id === taskId);
+      if (found) {
+        state.currentTask = found;
+        state.readOnlyHistorical = false;
+        state.tab = "workbench";
+        state.queueDrawerOpen = false;
+        renderApp();
+      }
+    });
+  });
 }
 
 async function checkCloudStatusToast(force = false): Promise<void> {
@@ -5557,5 +5822,11 @@ async function checkCloudStatusToast(force = false): Promise<void> {
 }
 
 listen<PipelineEvent>("kodiak://pipeline-event", (e) => handlePipelineEvent(e.payload));
+listen<QueueEvent>("kodiak://queue-event", (e) => {
+  if (e.payload.kind === "queue_updated" && e.payload.items) {
+    state.queueItems = e.payload.items;
+    renderApp();
+  }
+});
 
 refreshAllState();

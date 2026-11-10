@@ -110,14 +110,14 @@ form.md-header__option {
 html,
 html[lang],
 :root {
-  font-size: 94% !important;
+  font-size: 100% !important;
 }
 
 @media screen and (min-width: 60em) {
   html,
   html[lang],
   :root {
-    font-size: 94% !important;
+    font-size: 100% !important;
   }
 }
 
@@ -125,7 +125,7 @@ html[lang],
   html,
   html[lang],
   :root {
-    font-size: 94% !important;
+    font-size: 100% !important;
   }
 }
 
@@ -133,7 +133,7 @@ html[lang],
   html,
   html[lang],
   :root {
-    font-size: 96% !important;
+    font-size: 102% !important;
   }
 }
 
@@ -141,17 +141,17 @@ html[lang],
   html,
   html[lang],
   :root {
-    font-size: 96% !important;
+    font-size: 104% !important;
   }
 }
 
 /* Prominent MkDocs Header & Logo-matching Title */
 .md-header {
-  height: 3rem !important;
+  height: 3.5rem !important;
 }
 
 .md-header__inner {
-  height: 3rem !important;
+  height: 3.5rem !important;
   align-items: center !important;
 }
 
@@ -163,14 +163,14 @@ html[lang],
 
 .md-logo img,
 .md-logo svg {
-  height: 2.3rem !important;
-  max-height: 2.3rem !important;
+  height: 2.6rem !important;
+  max-height: 2.6rem !important;
   width: auto !important;
 }
 
 .md-header__title {
-  height: 3rem !important;
-  line-height: 3rem !important;
+  height: 3.5rem !important;
+  line-height: 3.5rem !important;
   display: flex !important;
   align-items: center !important;
 }
@@ -178,18 +178,18 @@ html[lang],
 .md-header__ellipsis {
   display: flex !important;
   align-items: center !important;
-  height: 3rem !important;
+  height: 3.5rem !important;
 }
 
 .md-header__topic {
-  font-size: 1.7rem !important;
+  font-size: 2.4rem !important;
   font-weight: 800 !important;
   line-height: 1 !important;
   letter-spacing: -0.02em !important;
 }
 
 .md-header__topic .md-ellipsis {
-  font-size: 1.7rem !important;
+  font-size: 2.4rem !important;
   font-weight: 800 !important;
   line-height: 1 !important;
 }

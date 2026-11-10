@@ -29,6 +29,20 @@ _Nothing yet — planned work will be listed here as it lands._
 - Append-safe queue persistence (`~/.local/share/kodiak/queue.json`) and real-time Tauri event notifications (`kodiak://queue-event`).
 - Tauri IPC commands: `enqueue_task`, `get_queue_items`, `cancel_queue_item`, `remove_queue_item`, `reorder_queue_item`, `clear_completed_queue_items`.
 
+**Multi-Task Queue UI Drawer & Non-Blocking Prompt Bar (Slice 2 Milestone 3)**
+
+- Non-blocking task prompt submission: typing a prompt and pressing `Enter` or clicking Run instantly enqueues the task, clears the input, and returns focus without freezing the workbench.
+- Top-navigation Queue Drawer pill (`[📋 Queue (N)]`) displaying real-time task counts and execution states with pulse animations.
+- Slide-over Task Queue Drawer with live item cards, project directory indicators, status pills (`Queued`, `Interpreting`, `Waiting for Dependency`, `Local Working`, `Verifying`, `Waiting Approval`, `Completed`), and direct 1-click jump to pending action cards.
+- Interactive queue management: cancel active tasks, remove completed/failed items, and reorder queued jobs (`▲` / `▼`).
+- "Wait for previous task approval in same repository" live toggle directly in the queue drawer.
+- Real-time client synchronization listening to `kodiak://queue-event`.
+
+**Projects Wiki Companion Refinements**
+
+- Header typography & branding scale: expanded header height to `3.5rem` with `.md-header__topic` scaled to `2.4rem` to match bear logo height.
+- Enhanced desktop text scale across `extra.css` for improved legibility on high-DPI displays.
+
 ## [1.0.0] — 2026-11-10
 
 ### Added
