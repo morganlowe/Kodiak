@@ -798,6 +798,7 @@ All 8 named regression tests pass with zero regressions:
 - **Decision**:
   - **Security Policy (`SECURITY.md`)**: Created root security policy under 40 lines specifying private disclosure via GitHub Security Advisories, establishing v1.0.0 support, and defining the four high-priority review surfaces (grant matrix, hard deny-list, filesystem boundaries, and atomic write path).
   - **Minimal CI (`.github/workflows/ci.yml`)**: Added GitHub Actions workflow running on `ubuntu-latest` (Node 20 + Rust stable) executing `npm ci && npm run tsc` and `cargo check --manifest-path src-tauri/Cargo.toml`. Added `"tsc": "tsc --noEmit"` to `package.json` to mirror the CI typecheck command cleanly.
+  - **CI Deviation & Fix**: First CI run revealed that `tauri::generate_context!()` in `src/lib.rs` panics at compile time if `frontendDist` (`../dist`) does not exist on disk. Added `npm run build` step prior to `cargo check` to generate `dist/` and ensure deterministic crate checking in clean CI runners.
 
 
 
