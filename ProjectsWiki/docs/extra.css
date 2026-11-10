@@ -106,18 +106,18 @@ form.md-header__option {
   background-color: #8a2000 !important;
 }
 
-/* Base scale reduction — ensure Kodiak desktop & wide viewports stay compact */
+/* Base scale reduction — balanced split-the-difference sizing */
 html,
 html[lang],
 :root {
-  font-size: 72% !important;
+  font-size: 85% !important;
 }
 
 @media screen and (min-width: 60em) {
   html,
   html[lang],
   :root {
-    font-size: 72% !important;
+    font-size: 85% !important;
   }
 }
 
@@ -125,7 +125,7 @@ html[lang],
   html,
   html[lang],
   :root {
-    font-size: 72% !important;
+    font-size: 85% !important;
   }
 }
 
@@ -133,7 +133,7 @@ html[lang],
   html,
   html[lang],
   :root {
-    font-size: 74% !important;
+    font-size: 87% !important;
   }
 }
 
@@ -141,155 +141,155 @@ html[lang],
   html,
   html[lang],
   :root {
-    font-size: 74% !important;
+    font-size: 87% !important;
   }
 }
 
-/* Compact MkDocs Header & Navigation Tabs */
+/* Balanced MkDocs Header & Navigation Tabs */
 .md-header {
-  height: 2.1rem !important;
+  height: 2.3rem !important;
 }
 
 .md-header__title {
-  font-size: 0.82rem !important;
-  height: 2.1rem !important;
-  line-height: 2.1rem !important;
+  font-size: 0.88rem !important;
+  height: 2.3rem !important;
+  line-height: 2.3rem !important;
 }
 
 .md-header__button {
-  padding: 0.2rem !important;
+  padding: 0.25rem !important;
 }
 
 .md-logo img,
 .md-logo svg {
-  height: 1.25rem !important;
+  height: 1.35rem !important;
   width: auto !important;
 }
 
 .md-tabs {
-  font-size: 0.72rem !important;
+  font-size: 0.78rem !important;
 }
 
 .md-tabs__link {
-  height: 1.8rem !important;
-  line-height: 1.8rem !important;
-  padding: 0 0.6rem !important;
+  height: 2rem !important;
+  line-height: 2rem !important;
+  padding: 0 0.75rem !important;
 }
 
-/* Compact Headings & Hero */
+/* Balanced Headings & Hero */
 .md-typeset h1 {
-  font-size: 1.35rem !important;
-  margin-block: 0.4rem 0.35rem !important;
+  font-size: 1.6rem !important;
+  margin-block: 0.5rem 0.4rem !important;
 }
 
 .md-typeset h2 {
-  font-size: 1.15rem !important;
-  margin-block: 0.7rem 0.35rem !important;
+  font-size: 1.35rem !important;
+  margin-block: 0.8rem 0.4rem !important;
 }
 
 .md-typeset h3 {
-  font-size: 0.95rem !important;
-  margin-block: 0.5rem 0.25rem !important;
+  font-size: 1.1rem !important;
+  margin-block: 0.6rem 0.3rem !important;
 }
 
 .hero-subtitle {
-  font-size: 0.82rem !important;
-  margin-block: -0.15rem 1rem !important;
+  font-size: 0.95rem !important;
+  margin-block: -0.2rem 1.25rem !important;
   max-inline-size: 75ch !important;
 }
 
-/* Compact Explorer Toolbar & Controls */
+/* Balanced Explorer Toolbar & Controls */
 .explorer-toolbar {
-  padding-block: 0.45rem !important;
-  padding-inline: 0.75rem !important;
-  gap: 0.45rem !important;
-  margin-block-end: 0.75rem !important;
+  padding-block: 0.6rem !important;
+  padding-inline: 0.85rem !important;
+  gap: 0.6rem !important;
+  margin-block-end: 0.85rem !important;
 }
 
 .search-input-wrap {
-  flex: 1 1 240px !important;
+  flex: 1 1 260px !important;
 }
 
 .search-icon {
-  font-size: 0.9rem !important;
-  inset-inline-start: 0.65rem !important;
+  font-size: 1rem !important;
+  inset-inline-start: 0.75rem !important;
 }
 
 .explorer-search-input {
-  padding-block: 0.4rem !important;
-  padding-inline: 2.1rem 2.2rem !important;
-  font-size: 0.8rem !important;
+  padding-block: 0.48rem !important;
+  padding-inline: 2.25rem 2.4rem !important;
+  font-size: 0.86rem !important;
 }
 
 .search-kbd {
-  inset-inline-end: 0.5rem !important;
-  font-size: 0.68rem !important;
-  padding-block: 0.05rem !important;
-  padding-inline: 0.35rem !important;
+  inset-inline-end: 0.6rem !important;
+  font-size: 0.72rem !important;
+  padding-block: 0.08rem !important;
+  padding-inline: 0.4rem !important;
 }
 
 .explorer-select {
-  padding-block: 0.36rem !important;
-  padding-inline: 0.6rem !important;
-  font-size: 0.76rem !important;
+  padding-block: 0.44rem !important;
+  padding-inline: 0.7rem !important;
+  font-size: 0.8rem !important;
 }
 
 .view-toggle-btn {
-  padding-block: 0.36rem !important;
-  padding-inline: 0.55rem !important;
-  font-size: 0.75rem !important;
+  padding-block: 0.44rem !important;
+  padding-inline: 0.65rem !important;
+  font-size: 0.78rem !important;
 }
 
 .explorer-btn {
-  padding-block: 0.36rem !important;
-  padding-inline: 0.65rem !important;
-  font-size: 0.76rem !important;
+  padding-block: 0.44rem !important;
+  padding-inline: 0.75rem !important;
+  font-size: 0.8rem !important;
 }
 
 .sync-icon {
-  font-size: 0.85rem !important;
+  font-size: 0.9rem !important;
 }
 
 /* Category Filter Pills */
 .category-pills {
-  gap: 0.35rem !important;
-  margin-block-end: 0.75rem !important;
+  gap: 0.45rem !important;
+  margin-block-end: 0.85rem !important;
 }
 
 .category-pill {
-  padding-block: 0.2rem !important;
-  padding-inline: 0.55rem !important;
-  font-size: 0.72rem !important;
+  padding-block: 0.26rem !important;
+  padding-inline: 0.65rem !important;
+  font-size: 0.76rem !important;
 }
 
-/* Compact Project Cards */
+/* Balanced Project Cards */
 .projects-grid {
-  gap: 0.75rem !important;
+  gap: 0.85rem !important;
 }
 
 .project-card {
-  padding: 0.85rem !important;
-  border-radius: 6px !important;
+  padding: 0.95rem !important;
+  border-radius: 7px !important;
 }
 
 .card-category-badge {
-  font-size: 0.62rem !important;
-  padding-block: 0.1rem !important;
-  padding-inline: 0.45rem !important;
+  font-size: 0.66rem !important;
+  padding-block: 0.12rem !important;
+  padding-inline: 0.5rem !important;
 }
 
 .project-card__title {
-  font-size: 0.9rem !important;
+  font-size: 0.98rem !important;
 }
 
 .project-card__dates {
-  font-size: 0.65rem !important;
-  gap: 0.4rem !important;
+  font-size: 0.68rem !important;
+  gap: 0.5rem !important;
 }
 
 .project-card__summary {
-  font-size: 0.75rem !important;
-  line-height: 1.4 !important;
+  font-size: 0.8rem !important;
+  line-height: 1.45 !important;
 }
 
 .md-main,
