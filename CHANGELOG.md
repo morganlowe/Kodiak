@@ -9,11 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet — planned work will be listed here as it lands._
 
-## [1.1.1] — 2026-11-10
+## [1.1.0] — 2026-11-10
 
 ### Added
 
-**Unified Queue Inbox & Batch Action Reviews (§2.2 Slice 2 Phase B)**
+**Sequential Multi-Task Queue & VRAM-Aware Scheduling (§2.1 Slice 2)**
+
+- Multi-task queue manager (`src-tauri/src/queue.rs`) enabling non-blocking prompt submission while tasks are executing in the background.
+- **VRAM Serialization Mutex**: enforces strict serialization of local Ollama model inference across all tasks, preventing GPU Out-Of-Memory crashes on Frank's RTX 4050 6GB Laptop GPU.
+- **Intra-Repository Dependency Chaining** (`wait_for_previous_approval`): automatically transitions subsequent tasks on the same project into `WaitingForDependency` until prior action cards are reviewed, preventing code edits against stale file trees.
+- Inter-project concurrency: queued tasks targeting different whitelisted repositories can proceed without waiting on unrelated approvals.
+- Full queue lifecycle state machine: `Queued`, `Interpreting`, `WaitingForDependency`, `LocalWorking`, `Verifying`, `WaitingApproval`, `Completed`, `Failed`, `Cancelled`.
+- Append-safe queue persistence (`~/.local/share/kodiak/queue.json`) and real-time Tauri event notifications (`kodiak://queue-event`).
+- Slide-over Task Queue Drawer with live item cards, project directory indicators, status pills, and direct 1-click jump to pending action cards.
+- Non-blocking task prompt submission: typing a prompt and pressing Enter or clicking Run instantly enqueues the task, clears the input, and returns focus without freezing the workbench.
+
+**Hardware-Aware Dynamic Profiling (§2.1 Slice 2)**
+
+- Dynamic hardware profiling engine (`src-tauri/src/hardware.rs`) detecting host System RAM via `/proc/meminfo` and dedicated VRAM via `nvidia-smi` / `/sys/class/drm`.
+- 4-Tier Hardware Envelope Classification (`Tier1Entry`, `Tier2Mid`, `Tier3Performance`, `Tier4Workstation`) automatically mapping hardware limits to safe, high-throughput Ollama models (`fast_model`, `coder_model`, `heavy_model`).
+- Auto-seeding on fresh installations and interactive Settings UI card with one-click model adoption.
+
+**Unified Queue Inbox, Diff Stack Review & Test Hooks (§2.2 Slice 2 Phase B)**
 
 - **Unified Queue Inbox (`src-tauri/src/inbox.rs`, `src/main.ts`)**: aggregates pending action cards across all queued and historical tasks into a single filterable inbox view inside the slide-over Queue Drawer.
 - **Diff Stack Overlap & Conflict Detection**:
@@ -27,42 +44,15 @@ _Nothing yet — planned work will be listed here as it lands._
   - Project verification command detector (`detect_project_test_command`) supporting `cargo check` (Rust), `npm test` (JavaScript/TypeScript), `pytest` (Python), and `make test` (C/C++/Makefiles).
   - Post-approval execution hook automatically running project test commands when directory grants satisfy `BUILD` or `AUTONOMOUS` posture.
   - **Local Compiler Log Digestion**: when test commands report compiler errors or warnings, automatically digests terminal logs via local `llama3.2:3b` under `vram_lock` serialization, returning a concise actionable summary.
-- **Unified Inbox UI & Filter Controls (`src/theme.css`, `src/main.ts`)**:
-  - Sub-navigation tabs in the Queue Drawer: `[📋 Tasks (N)]` and `[📥 Approval Inbox (N)]` with real-time conflict warning pills (`⚠️ N conflict(s)`).
-  - Top navigation bar Queue button enhanced with live inbox counters and red conflict alert badges.
-  - Filter bar supporting `All`, `Safe Only`, and `Conflicts Only` views.
-  - Bulk selection controls: `Select Safe` (auto-selects all non-conflicting cards), `Select All`, and `Clear`.
-  - Prominent red/amber diff collision banners displaying conflicting task IDs and overlapping line intervals.
-  - Expandable post-approval test hook result panel displaying exit codes, command names, digested compiler summaries, and raw terminal outputs.
+- **Unified Inbox UI & Filter Controls**: sub-navigation drawer tabs, bulk selection controls (`Select Safe`, `All`, `Clear`), prominent diff collision callouts, and expandable test hook result panels.
 
-## [1.1.0] — 2026-11-10
+**Multi-Project Health & Activity Dashboard (§2.3 Slice 2 Phase C)**
 
-### Added
-
-**Hardware-Aware Dynamic Profiling (Slice 2 Milestone 1)**
-
-- Dynamic hardware profiling engine (`src-tauri/src/hardware.rs`) detecting host System RAM via `/proc/meminfo` and dedicated VRAM via `nvidia-smi` / `/sys/class/drm`.
-- 4-Tier Hardware Envelope Classification (`Tier1Entry`, `Tier2Mid`, `Tier3Performance`, `Tier4Workstation`) automatically mapping hardware limits to safe, high-throughput Ollama models (`fast_model`, `coder_model`, `heavy_model`).
-- Auto-seeding on fresh installations and interactive Settings UI card with one-click model adoption.
-
-**Sequential Multi-Task Queue & VRAM-Aware Scheduling (Slice 2 Milestone 2)**
-
-- Multi-task queue manager (`src-tauri/src/queue.rs`) enabling non-blocking prompt submission while tasks are executing in the background.
-- **VRAM Serialization Mutex**: enforces strict serialization of local Ollama model inference across all tasks, preventing GPU Out-Of-Memory crashes on Frank's RTX 4050 6GB Laptop GPU.
-- **Intra-Repository Dependency Chaining** (`wait_for_previous_approval`): automatically transitions subsequent tasks on the same project into `WaitingForDependency` until prior action cards are reviewed, preventing code edits against stale file trees.
-- Inter-project concurrency: queued tasks targeting different whitelisted repositories can proceed without waiting on unrelated approvals.
-- Full queue lifecycle state machine: `Queued`, `Interpreting`, `WaitingForDependency`, `LocalWorking`, `Verifying`, `WaitingApproval`, `Completed`, `Failed`, `Cancelled`.
-- Append-safe queue persistence (`~/.local/share/kodiak/queue.json`) and real-time Tauri event notifications (`kodiak://queue-event`).
-- Tauri IPC commands: `enqueue_task`, `get_queue_items`, `cancel_queue_item`, `remove_queue_item`, `reorder_queue_item`, `clear_completed_queue_items`.
-
-**Multi-Task Queue UI Drawer & Non-Blocking Prompt Bar (Slice 2 Milestone 3)**
-
-- Non-blocking task prompt submission: typing a prompt and pressing `Enter` or clicking Run instantly enqueues the task, clears the input, and returns focus without freezing the workbench.
-- Top-navigation Queue Drawer pill (`[📋 Queue (N)]`) displaying real-time task counts and execution states with pulse animations.
-- Slide-over Task Queue Drawer with live item cards, project directory indicators, status pills (`Queued`, `Interpreting`, `Waiting for Dependency`, `Local Working`, `Verifying`, `Waiting Approval`, `Completed`), and direct 1-click jump to pending action cards.
-- Interactive queue management: cancel active tasks, remove completed/failed items, and reorder queued jobs (`▲` / `▼`).
-- "Wait for previous task approval in same repository" live toggle directly in the queue drawer.
-- Real-time client synchronization listening to `kodiak://queue-event`.
+- **Multi-Project Aggregation View (`src-tauri/src/dashboard.rs`, `src/main.ts`)**: dedicated Dashboard view presenting all whitelisted repositories in a clean grid.
+- **Git Working Tree Telemetry**: checks `.git` worktrees, displays active branches (`🌿 main`), and flags uncommitted files with real-time dirty status badges.
+- **Granular Project Posture & Task History**: displays governing grant levels, total task executions, pending review cards, and most recent task verdicts (`PASS` / `FAIL`).
+- **One-Click Workspace Actions**: instant switching of the workbench active project (`⚡ Set Active`), direct jump to Workbench (`Open Workbench →`), ProjectsWiki documentation access (`📖 Wiki`), and pending card review.
+- **Local-First Telemetry & Savings Calculator**: tracks local autonomy ratio (percentage of actions executed under Grant Matrix without cloud tokens), cloud tokens saved via zero-cost local Ollama delegation, and verified task pass rates.
 
 **Projects Wiki Companion Refinements**
 
@@ -104,7 +94,6 @@ _Nothing yet — planned work will be listed here as it lands._
 - Split Arch `PKGBUILD` producing `kodiak` and `kodiak-projectswiki` packages with dependency hooks (`python-mkdocs-material`, `python-requests`, `python-toml`).
 - Debian/Ubuntu `.deb` binary packages with `apt` dependency resolution.
 
-[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.1...HEAD
-[1.1.1]: https://github.com/morganlowe/Kodiak/compare/v1.1.0...v1.1.1
+[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.0...HEAD
 [1.1.0]: https://github.com/morganlowe/Kodiak/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/morganlowe/Kodiak/releases/tag/v1.0.0

@@ -1560,5 +1560,115 @@ body {
   color: #7dd3fc;
 }
 
+/* ===== Multi-Project Aggregation Dashboard (§2.3 Slice 2 Phase C) ===== */
+.dashboard-shell {
+  max-width: 1380px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 1.5rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.dashboard-telemetry-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.telemetry-metric-card {
+  background: var(--wiki-surface);
+  border: 1px solid var(--wiki-border);
+  border-radius: var(--wiki-radius);
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  transition: border-color 0.15s ease;
+}
+
+.telemetry-metric-card:hover {
+  border-color: var(--wiki-accent);
+}
+
+.telemetry-metric-lbl {
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--md-default-fg-color--light);
+}
+
+.telemetry-metric-val {
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--md-default-fg-color);
+  font-family: var(--font-mono, monospace);
+}
+
+.telemetry-metric-sub {
+  font-size: 0.76rem;
+  color: var(--md-default-fg-color--light);
+}
+
+.dashboard-projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 1.25rem;
+}
+
+.dashboard-project-card {
+  background: var(--wiki-surface);
+  border: 1px solid var(--wiki-border);
+  border-radius: var(--wiki-radius);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dashboard-project-card:hover {
+  border-color: var(--wiki-accent);
+}
+
+.dashboard-project-card.is-active {
+  border-color: var(--wiki-accent);
+  box-shadow: 0 0 16px rgba(224, 99, 56, 0.15);
+}
+
+.dashboard-project-card__status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.dashboard-project-card__last-task {
+  background: var(--wiki-surface-elevated);
+  border: 1px solid var(--wiki-border);
+  border-radius: var(--wiki-radius-sm);
+  padding: 0.6rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-project-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+
+
 
 

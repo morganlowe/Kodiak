@@ -893,6 +893,38 @@ With asynchronous multi-task queuing established, multiple tasks targeting the s
   - Prominent diff conflict warning banners displaying colliding task titles and line ranges.
   - Post-approval test hook result banner displaying test command status, exit codes, and digested `llama3.2:3b` summaries.
 
+---
+
+## 25. Multi-Project Health & Activity Dashboard and Git Working Tree Telemetry (§2.3 Slice 2 Phase C)
+
+**Date:** 2026-11-10  
+**Context:**  
+With multi-task queuing and unified diff reviews operational across repositories, users managing multiple embedded and software projects lacked a central vantage point to monitor repository status, dirty git modifications, pending approval backlogs, and aggregate local token efficiency.
+
+### 25.1 Architecture & Implementation (`src-tauri/src/dashboard.rs`)
+- **Git Working Tree Inspection (`inspect_git_status`)**:
+  - Uses `git rev-parse --is-inside-work-tree` and `git rev-parse --abbrev-ref HEAD` to detect git repositories and identify the active branch across root and nested subfolders.
+  - Queries `git status --porcelain` to count uncommitted modifications and additions with zero noticeable overhead (<10ms per project).
+- **History Correlation & Telemetry (`gather_dashboard_data`)**:
+  - Correlates all persisted task runs in `~/.local/share/kodiak/history.json` with whitelisted project roots.
+  - Extracts the most recent task run ID, prompt snippet, and Stage 3 verification verdict (`PASS` / `FAIL`).
+  - Aggregates pending approval counts across all tasks belonging to each project.
+  - Computes global telemetry metrics: total tasks completed, local actions executed under Grant Matrix posture, cloud model calls, and local autonomy percentage (`zero_cloud_token_ratio_pct`).
+  - Estimates total cloud tokens saved via zero-cost local Ollama delegation (`~2,000` tokens per local step).
+- **Tauri IPC Commands**:
+  - `get_project_dashboard`: returns `MultiProjectDashboardResponse` containing project cards and telemetry summary.
+  - `set_active_project`: updates `cfg.active_project`, persists to `config.toml`, and returns the updated configuration.
+
+### 25.2 Frontend Multi-Project Dashboard (`src/main.ts`, `src/theme.css`)
+- **Dashboard Navigation**:
+  - Top navigation bar features a prominent `[Dashboard (N)]` tab reflecting whitelisted repository counts.
+- **Telemetry Metric Cards**:
+  - 4 high-level stat tiles: *Managed Projects*, *Local Autonomy Ratio*, *Estimated Cloud Tokens Saved*, and *Verified Pass Rate*.
+- **Whitelisted Project Cards**:
+  - Displays project name, full path, governing grant badge, active project indicator, git branch, and clean vs dirty status (`✓ Git Clean` vs `⚠️ N uncommitted`).
+  - Includes quick action buttons: `⚡ Set Active`, `Open Workbench →`, `📖 Wiki`, and `Review Pending Cards`.
+
+
 
 
 

@@ -1,4 +1,5 @@
 pub mod config;
+pub mod dashboard;
 pub mod enforcer;
 pub mod events;
 pub mod hardware;
@@ -2306,6 +2307,21 @@ fn batch_reject_cards(
     Ok(rejected_count)
 }
 
+#[tauri::command]
+fn get_project_dashboard(state: State<'_, AppState>) -> Result<dashboard::MultiProjectDashboardResponse, String> {
+    let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
+    let history = load_history().unwrap_or_default();
+    Ok(dashboard::gather_dashboard_data(&cfg, &history))
+}
+
+#[tauri::command]
+fn set_active_project(state: State<'_, AppState>, path: String) -> Result<AppConfig, String> {
+    let mut cfg = state.config.lock().map_err(|e| e.to_string())?;
+    cfg.active_project = Some(path);
+    save_config(&cfg)?;
+    Ok(cfg.clone())
+}
+
 async fn execute_queued_pipeline(app: AppHandle, queue_id: String) {
     let state = app.state::<AppState>();
     let queue_item = match state.queue.get_item(&queue_id) {
@@ -2826,6 +2842,8 @@ pub fn run() {
             get_unified_inbox,
             batch_approve_cards,
             batch_reject_cards,
+            get_project_dashboard,
+            set_active_project,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Kodiak tauri application");

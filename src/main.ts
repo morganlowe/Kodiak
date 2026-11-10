@@ -6,7 +6,7 @@ import { CHARTER_TENETS, renderCharterChip } from "./charter";
 
 type GrantLevel = "READ" | "CREATE" | "BUILD" | "AUTONOMOUS";
 type ActionClass = "read" | "create" | "overwrite" | "mkdir" | "execute" | "request";
-type ActiveTab = "workbench" | "wiki" | "settings" | "about";
+type ActiveTab = "workbench" | "dashboard" | "wiki" | "settings" | "about";
 type StageName = "interpret" | "execute" | "verify" | "done";
 type StageStatus = "idle" | "active" | "completed" | "failed";
 
@@ -361,6 +361,37 @@ interface UnifiedInboxResponse {
   conflict_count: number;
 }
 
+interface ProjectDashboardCard {
+  path: string;
+  name: string;
+  grant_level: string;
+  is_active: boolean;
+  is_git_repo: boolean;
+  git_branch: string | null;
+  git_dirty_count: number;
+  total_tasks_count: number;
+  pending_approval_count: number;
+  last_task_id: string | null;
+  last_task_prompt: string | null;
+  last_task_verdict: string | null;
+  last_task_timestamp: string | null;
+  wiki_doc_exists: boolean;
+}
+
+interface TelemetrySummary {
+  total_tasks: number;
+  total_local_actions: number;
+  total_cloud_calls: number;
+  zero_cloud_token_ratio_pct: number;
+  estimated_tokens_saved: number;
+  total_verified_tasks: number;
+}
+
+interface MultiProjectDashboardResponse {
+  projects: ProjectDashboardCard[];
+  telemetry: TelemetrySummary;
+}
+
 interface VerificationResult {
   verdict: string;
   rationale: string;
@@ -508,10 +539,12 @@ const state: {
   lastBatchApprovalResult: BatchApprovalResult | null;
   batchApproving: boolean;
   inboxFilter: "all" | "conflicts" | "safe";
+  dashboardData: MultiProjectDashboardResponse | null;
 } = {
   tab: "workbench",
   config: null,
   hardwareProfile: null,
+  dashboardData: null,
   queueItems: [],
   queueDrawerOpen: false,
   queueWaitForApproval: true,
@@ -836,7 +869,7 @@ function cardStatusBadge(card: ActionCard): string {
 
 async function refreshAllState(): Promise<void> {
   try {
-    const [cfg, cruise, health, hist, journal, mems, hwProfile, qItems, uInbox] = await Promise.all([
+    const [cfg, cruise, health, hist, journal, mems, hwProfile, qItems, uInbox, pDash] = await Promise.all([
       invoke<AppConfig>("get_config"),
       invoke<boolean>("get_cruise_control"),
       invoke<HealthStatus>("check_health"),
@@ -846,6 +879,7 @@ async function refreshAllState(): Promise<void> {
       invoke<HardwareProfile>("get_hardware_profile").catch(() => null),
       invoke<QueueItem[]>("get_queue_items").catch(() => []),
       invoke<UnifiedInboxResponse>("get_unified_inbox").catch(() => null),
+      invoke<MultiProjectDashboardResponse>("get_project_dashboard").catch(() => null),
     ]);
     state.config = cfg;
     state.cruiseControl = cruise;
@@ -856,6 +890,7 @@ async function refreshAllState(): Promise<void> {
     if (hwProfile) state.hardwareProfile = hwProfile;
     if (qItems) state.queueItems = qItems;
     if (uInbox) state.unifiedInbox = uInbox;
+    if (pDash) state.dashboardData = pDash;
 
     try {
       const [wDetails, wProjects] = await Promise.all([
@@ -895,6 +930,10 @@ function renderHeader(): string {
         <button type="button" class="nav-tab ${state.tab === "workbench" ? "is-active" : ""}" data-nav="workbench">
           <span>Workbench</span>
           ${pendingCount > 0 ? `<span class="nav-tab__badge">${pendingCount}</span>` : ""}
+        </button>
+        <button type="button" class="nav-tab ${state.tab === "dashboard" ? "is-active" : ""}" data-nav="dashboard">
+          <span>Dashboard</span>
+          ${cfg ? `<span class="nav-tab__badge">${cfg.whitelist.length}</span>` : ""}
         </button>
         ${
           cfg?.wiki_enabled !== false
@@ -3516,6 +3555,147 @@ function formatUptime(seconds: number): string {
   return `${s}s`;
 }
 
+function renderDashboardTab(): string {
+  const dash = state.dashboardData;
+  const cfg = state.config;
+  const projects = dash?.projects ?? [];
+  const tel = dash?.telemetry ?? {
+    total_tasks: 0,
+    total_local_actions: 0,
+    total_cloud_calls: 0,
+    zero_cloud_token_ratio_pct: 100,
+    estimated_tokens_saved: 0,
+    total_verified_tasks: 0,
+  };
+
+  const activeProjName = cfg?.active_project
+    ? cfg.active_project.split("/").pop() || cfg.active_project
+    : "None";
+
+  // Telemetry metric cards (§2.3)
+  const telemetryHtml = `
+    <div class="dashboard-telemetry-grid">
+      <div class="telemetry-metric-card">
+        <div class="telemetry-metric-lbl">Managed Projects</div>
+        <div class="telemetry-metric-val">${projects.length}</div>
+        <div class="telemetry-metric-sub">Active: <strong>${escapeHtml(activeProjName)}</strong></div>
+      </div>
+      <div class="telemetry-metric-card">
+        <div class="telemetry-metric-lbl">Local Autonomy Ratio</div>
+        <div class="telemetry-metric-val" style="color:var(--wiki-accent);">${tel.zero_cloud_token_ratio_pct}%</div>
+        <div class="telemetry-metric-sub">${tel.total_local_actions} local / ${tel.total_cloud_calls} cloud actions</div>
+      </div>
+      <div class="telemetry-metric-card">
+        <div class="telemetry-metric-lbl">Estimated Cloud Tokens Saved</div>
+        <div class="telemetry-metric-val" style="color:#10b981;">~${(tel.estimated_tokens_saved / 1000).toFixed(0)}k</div>
+        <div class="telemetry-metric-sub">Zero-token Ollama delegation</div>
+      </div>
+      <div class="telemetry-metric-card">
+        <div class="telemetry-metric-lbl">Verified Pass Rate</div>
+        <div class="telemetry-metric-val" style="color:#0284c7;">${tel.total_verified_tasks}</div>
+        <div class="telemetry-metric-sub">Out of ${tel.total_tasks} completed tasks</div>
+      </div>
+    </div>
+  `;
+
+  // Projects Grid
+  const projectCardsHtml = projects.length === 0
+    ? `<div style="text-align:center; padding:3rem; background:var(--wiki-surface); border:1px solid var(--wiki-border); border-radius:var(--wiki-radius);">
+         <span style="font-size:2.5rem; display:block; margin-bottom:0.75rem;">📁</span>
+         <strong>No Whitelisted Projects Configured</strong>
+         <p style="font-size:0.85rem; color:var(--md-default-fg-color--light); margin-top:0.35rem;">Add your project folders in Settings to start delegating tasks and reviewing diffs.</p>
+         <button type="button" class="btn btn--primary" id="dash-go-settings-btn" style="margin-top:0.75rem;">Configure Projects in Settings →</button>
+       </div>`
+    : `
+      <div class="dashboard-projects-grid">
+        ${projects.map((p) => {
+          let grantClass = "badge--neutral";
+          if (p.grant_level === "AUTONOMOUS") grantClass = "badge--ok";
+          else if (p.grant_level === "BUILD") grantClass = "badge--info";
+          else if (p.grant_level === "CREATE") grantClass = "badge--warn";
+
+          return `
+            <div class="dashboard-project-card ${p.is_active ? 'is-active' : ''}">
+              <div class="row-between" style="align-items:flex-start;">
+                <div>
+                  <div class="row-inline" style="gap:0.4rem; align-items:center;">
+                    <h3 style="margin:0; font-size:1.15rem; font-weight:600;">📁 ${escapeHtml(p.name)}</h3>
+                    ${p.is_active ? `<span class="badge badge--ok" style="font-size:0.68rem;">Active</span>` : ""}
+                  </div>
+                  <div class="mono" style="font-size:0.72rem; color:var(--md-default-fg-color--light); margin-top:0.2rem; word-break:break-all;">${escapeHtml(p.path)}</div>
+                </div>
+                <span class="badge ${grantClass}">${escapeHtml(p.grant_level)}</span>
+              </div>
+
+              <div class="dashboard-project-card__status-row">
+                <div class="row-inline" style="gap:0.4rem; align-items:center;">
+                  ${p.is_git_repo ? `
+                    <span class="badge badge--neutral">🌿 ${escapeHtml(p.git_branch || "main")}</span>
+                    ${p.git_dirty_count === 0 ? `<span class="badge badge--ok">✓ Git Clean</span>` : `<span class="badge badge--warn">⚠️ ${p.git_dirty_count} uncommitted</span>`}
+                  ` : `<span class="badge badge--neutral">Non-Git</span>`}
+                </div>
+                <div class="row-inline" style="gap:0.4rem; align-items:center;">
+                  <span class="badge badge--neutral">📋 ${p.total_tasks_count} tasks</span>
+                  ${p.pending_approval_count > 0 ? `<span class="badge badge--warn">✋ ${p.pending_approval_count} pending</span>` : `<span class="badge badge--ok">0 pending</span>`}
+                </div>
+              </div>
+
+              ${p.last_task_prompt ? `
+                <div class="dashboard-project-card__last-task">
+                  <div class="row-between" style="font-size:0.72rem; color:var(--md-default-fg-color--light); margin-bottom:0.25rem;">
+                    <span>Last Task</span>
+                    <span>${p.last_task_verdict ? `<span class="badge ${p.last_task_verdict.toLowerCase() === 'pass' ? 'badge--ok' : 'badge--bad'}" style="font-size:0.65rem;">${escapeHtml(p.last_task_verdict.toUpperCase())}</span>` : ""}</span>
+                  </div>
+                  <div style="font-size:0.78rem; font-weight:500; line-height:1.35; color:var(--md-default-fg-color);">${escapeHtml(p.last_task_prompt.slice(0, 110))}${p.last_task_prompt.length > 110 ? "..." : ""}</div>
+                </div>
+              ` : `
+                <div class="dashboard-project-card__last-task" style="color:var(--md-default-fg-color--light); font-size:0.75rem; font-style:italic;">
+                  No task executions recorded yet.
+                </div>
+              `}
+
+              <div class="dashboard-project-card__actions">
+                ${!p.is_active ? `
+                  <button type="button" class="btn btn--sm set-active-project-btn" data-project-path="${escapeHtml(p.path)}" title="Make this the active project for workbench prompts">⚡ Set Active</button>
+                ` : ""}
+                <button type="button" class="btn btn--sm open-workbench-project-btn" data-project-path="${escapeHtml(p.path)}" title="Open this project in the Workbench">Open Workbench →</button>
+                ${p.wiki_doc_exists ? `
+                  <button type="button" class="btn btn--sm open-wiki-project-btn" data-project-name="${escapeHtml(p.name)}" title="View this project in ProjectsWiki">📖 Wiki</button>
+                ` : ""}
+                ${p.pending_approval_count > 0 ? `
+                  <button type="button" class="btn btn--sm btn--primary open-inbox-project-btn" title="Review pending cards in the Unified Inbox">Review (${p.pending_approval_count})</button>
+                ` : ""}
+              </div>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    `;
+
+  return `
+    <div class="dashboard-shell">
+      <div class="row-between" style="align-items:flex-end;">
+        <div>
+          <h2 style="font-size:1.45rem; font-weight:700; margin:0; display:flex; align-items:center; gap:0.5rem;">
+            <span>📊 Multi-Project Aggregation & Health Dashboard</span>
+          </h2>
+          <p style="margin:0.25rem 0 0; font-size:0.85rem; color:var(--md-default-fg-color--light);">
+            Unified repository health, dirty Git changes, approval loads, and local-first telemetry.
+          </p>
+        </div>
+        <button type="button" id="refresh-dashboard-btn" class="btn btn--sm" title="Refresh project states, git status, and telemetry">↻ Refresh</button>
+      </div>
+
+      ${telemetryHtml}
+
+      <div style="margin-top:0.5rem;">
+        <h3 style="font-size:1.05rem; font-weight:600; margin:0 0 0.85rem 0;">Whitelisted Project Workspaces</h3>
+        ${projectCardsHtml}
+      </div>
+    </div>
+  `;
+}
+
 function renderAboutTab(): string {
   const h = state.health;
   const cfg = state.config;
@@ -3529,7 +3709,7 @@ function renderAboutTab(): string {
         <div style="flex:1; min-width:240px;">
           <div class="row-inline" style="gap:0.75rem; align-items:baseline;">
             <h1 style="margin:0; font-size:1.8rem; font-weight:700; color:var(--md-default-fg-color);">Kodiak</h1>
-            <span class="badge badge--ok" style="font-size:0.85rem;">v1.0.0</span>
+            <span class="badge badge--ok" style="font-size:0.85rem;">v1.1.0</span>
           </div>
           <p style="margin:0.35rem 0 0.5rem 0; font-size:1.05rem; font-weight:500; color:var(--md-default-fg-color);">
             The bear who runs the job site — local-first AI task delegation
@@ -3994,6 +4174,9 @@ function renderApp(): void {
   switch (state.tab) {
     case "workbench":
       tabHtml = renderWorkbenchTab();
+      break;
+    case "dashboard":
+      tabHtml = renderDashboardTab();
       break;
     case "wiki":
       tabHtml = renderWikiTab();
@@ -6054,6 +6237,72 @@ function bindEvents(): void {
     });
   });
 
+  // Dashboard events (§2.3 Slice 2 Phase C)
+  document.getElementById("refresh-dashboard-btn")?.addEventListener("click", async () => {
+    try {
+      state.dashboardData = await invoke<MultiProjectDashboardResponse>("get_project_dashboard");
+      renderApp();
+    } catch (err) {
+      state.uiBannerError = `Cannot refresh dashboard: ${err}`;
+      renderApp();
+    }
+  });
+
+  document.getElementById("dash-go-settings-btn")?.addEventListener("click", () => {
+    state.tab = "settings";
+    renderApp();
+  });
+
+  document.querySelectorAll<HTMLElement>(".set-active-project-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const path = btn.getAttribute("data-project-path");
+      if (!path) return;
+      try {
+        state.config = await invoke<AppConfig>("set_active_project", { path });
+        state.dashboardData = await invoke<MultiProjectDashboardResponse>("get_project_dashboard");
+        renderApp();
+      } catch (err) {
+        state.uiBannerError = `Cannot set active project: ${err}`;
+        renderApp();
+      }
+    });
+  });
+
+  document.querySelectorAll<HTMLElement>(".open-workbench-project-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const path = btn.getAttribute("data-project-path");
+      if (path && state.config?.active_project !== path) {
+        try {
+          state.config = await invoke<AppConfig>("set_active_project", { path });
+        } catch {
+          // ignore
+        }
+      }
+      state.tab = "workbench";
+      state.readOnlyHistorical = false;
+      renderApp();
+    });
+  });
+
+  document.querySelectorAll<HTMLElement>(".open-wiki-project-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const projName = btn.getAttribute("data-project-name");
+      if (projName) {
+        state.wikiAiSelectedProject = projName;
+      }
+      state.tab = "wiki";
+      renderApp();
+    });
+  });
+
+  document.querySelectorAll<HTMLElement>(".open-inbox-project-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.queueDrawerOpen = true;
+      state.queueDrawerTab = "inbox";
+      renderApp();
+    });
+  });
+
   // Unified Inbox events (§2.2 Slice 2 Phase B)
   document.getElementById("queue-tab-btn-tasks")?.addEventListener("click", () => {
     state.queueDrawerTab = "queue";
@@ -6209,6 +6458,72 @@ function bindEvents(): void {
         state.queueDrawerOpen = false;
         renderApp();
       }
+    });
+  });
+
+  // Dashboard events (§2.3 Slice 2 Phase C)
+  document.getElementById("refresh-dashboard-btn")?.addEventListener("click", async () => {
+    try {
+      state.dashboardData = await invoke<MultiProjectDashboardResponse>("get_project_dashboard");
+      renderApp();
+    } catch (err) {
+      state.uiBannerError = `Cannot refresh dashboard: ${err}`;
+      renderApp();
+    }
+  });
+
+  document.getElementById("dash-go-settings-btn")?.addEventListener("click", () => {
+    state.tab = "settings";
+    renderApp();
+  });
+
+  document.querySelectorAll<HTMLElement>(".set-active-project-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const path = btn.getAttribute("data-project-path");
+      if (!path) return;
+      try {
+        state.config = await invoke<AppConfig>("set_active_project", { path });
+        state.dashboardData = await invoke<MultiProjectDashboardResponse>("get_project_dashboard");
+        renderApp();
+      } catch (err) {
+        state.uiBannerError = `Cannot set active project: ${err}`;
+        renderApp();
+      }
+    });
+  });
+
+  document.querySelectorAll<HTMLElement>(".open-workbench-project-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const path = btn.getAttribute("data-project-path");
+      if (path && state.config?.active_project !== path) {
+        try {
+          state.config = await invoke<AppConfig>("set_active_project", { path });
+        } catch {
+          // ignore
+        }
+      }
+      state.tab = "workbench";
+      state.readOnlyHistorical = false;
+      renderApp();
+    });
+  });
+
+  document.querySelectorAll<HTMLElement>(".open-wiki-project-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const projName = btn.getAttribute("data-project-name");
+      if (projName) {
+        state.wikiAiSelectedProject = projName;
+      }
+      state.tab = "wiki";
+      renderApp();
+    });
+  });
+
+  document.querySelectorAll<HTMLElement>(".open-inbox-project-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.queueDrawerOpen = true;
+      state.queueDrawerTab = "inbox";
+      renderApp();
     });
   });
 }
