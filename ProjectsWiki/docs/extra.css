@@ -106,21 +106,190 @@ form.md-header__option {
   background-color: #8a2000 !important;
 }
 
-/* Base scale reduction (~20% smaller typography and layout metrics) */
-html {
-  font-size: 80% !important;
+/* Base scale reduction — ensure Kodiak desktop & wide viewports stay compact */
+html,
+html[lang],
+:root {
+  font-size: 72% !important;
 }
 
-@media only screen and (min-width: 60em) {
-  html {
-    font-size: 80% !important;
+@media screen and (min-width: 60em) {
+  html,
+  html[lang],
+  :root {
+    font-size: 72% !important;
   }
 }
 
-@media only screen and (min-width: 76.25em) {
-  html {
-    font-size: 82% !important;
+@media screen and (min-width: 76.25em) {
+  html,
+  html[lang],
+  :root {
+    font-size: 72% !important;
   }
+}
+
+@media screen and (min-width: 100em) {
+  html,
+  html[lang],
+  :root {
+    font-size: 74% !important;
+  }
+}
+
+@media screen and (min-width: 125em) {
+  html,
+  html[lang],
+  :root {
+    font-size: 74% !important;
+  }
+}
+
+/* Compact MkDocs Header & Navigation Tabs */
+.md-header {
+  height: 2.1rem !important;
+}
+
+.md-header__title {
+  font-size: 0.82rem !important;
+  height: 2.1rem !important;
+  line-height: 2.1rem !important;
+}
+
+.md-header__button {
+  padding: 0.2rem !important;
+}
+
+.md-logo img,
+.md-logo svg {
+  height: 1.25rem !important;
+  width: auto !important;
+}
+
+.md-tabs {
+  font-size: 0.72rem !important;
+}
+
+.md-tabs__link {
+  height: 1.8rem !important;
+  line-height: 1.8rem !important;
+  padding: 0 0.6rem !important;
+}
+
+/* Compact Headings & Hero */
+.md-typeset h1 {
+  font-size: 1.35rem !important;
+  margin-block: 0.4rem 0.35rem !important;
+}
+
+.md-typeset h2 {
+  font-size: 1.15rem !important;
+  margin-block: 0.7rem 0.35rem !important;
+}
+
+.md-typeset h3 {
+  font-size: 0.95rem !important;
+  margin-block: 0.5rem 0.25rem !important;
+}
+
+.hero-subtitle {
+  font-size: 0.82rem !important;
+  margin-block: -0.15rem 1rem !important;
+  max-inline-size: 75ch !important;
+}
+
+/* Compact Explorer Toolbar & Controls */
+.explorer-toolbar {
+  padding-block: 0.45rem !important;
+  padding-inline: 0.75rem !important;
+  gap: 0.45rem !important;
+  margin-block-end: 0.75rem !important;
+}
+
+.search-input-wrap {
+  flex: 1 1 240px !important;
+}
+
+.search-icon {
+  font-size: 0.9rem !important;
+  inset-inline-start: 0.65rem !important;
+}
+
+.explorer-search-input {
+  padding-block: 0.4rem !important;
+  padding-inline: 2.1rem 2.2rem !important;
+  font-size: 0.8rem !important;
+}
+
+.search-kbd {
+  inset-inline-end: 0.5rem !important;
+  font-size: 0.68rem !important;
+  padding-block: 0.05rem !important;
+  padding-inline: 0.35rem !important;
+}
+
+.explorer-select {
+  padding-block: 0.36rem !important;
+  padding-inline: 0.6rem !important;
+  font-size: 0.76rem !important;
+}
+
+.view-toggle-btn {
+  padding-block: 0.36rem !important;
+  padding-inline: 0.55rem !important;
+  font-size: 0.75rem !important;
+}
+
+.explorer-btn {
+  padding-block: 0.36rem !important;
+  padding-inline: 0.65rem !important;
+  font-size: 0.76rem !important;
+}
+
+.sync-icon {
+  font-size: 0.85rem !important;
+}
+
+/* Category Filter Pills */
+.category-pills {
+  gap: 0.35rem !important;
+  margin-block-end: 0.75rem !important;
+}
+
+.category-pill {
+  padding-block: 0.2rem !important;
+  padding-inline: 0.55rem !important;
+  font-size: 0.72rem !important;
+}
+
+/* Compact Project Cards */
+.projects-grid {
+  gap: 0.75rem !important;
+}
+
+.project-card {
+  padding: 0.85rem !important;
+  border-radius: 6px !important;
+}
+
+.card-category-badge {
+  font-size: 0.62rem !important;
+  padding-block: 0.1rem !important;
+  padding-inline: 0.45rem !important;
+}
+
+.project-card__title {
+  font-size: 0.9rem !important;
+}
+
+.project-card__dates {
+  font-size: 0.65rem !important;
+  gap: 0.4rem !important;
+}
+
+.project-card__summary {
+  font-size: 0.75rem !important;
+  line-height: 1.4 !important;
 }
 
 .md-main,
