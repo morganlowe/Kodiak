@@ -3,7 +3,7 @@
 
   # Kodiak
 
-  **Autonomous Desktop Orchestrator & Local-First AI Development Partner for Linux**
+  **Autonomous Desktop Orchestrator & Local-First AI Development Partner for Linux & Windows**
 
   [![Version: v1.1.2](https://img.shields.io/badge/Version-v1.1.2-success.svg)](#)
   [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
@@ -24,7 +24,7 @@
 
 Conventional cloud coding agents require blanket filesystem access, execute unverified shell pipelines, and silently stream proprietary source code across third-party APIs. Fragile CLI wrappers add latency and brittleness on top.
 
-**Kodiak** takes a different path: it is a native Linux desktop orchestrator built with **Rust (Tauri v2)**, the **Tokio** async runtime, and modern **TypeScript**. Cloud models plan and verify using *sanitized metadata only*, while local models execute every raw file read, code generation step, and diff draft directly on your hardware. Every action is governed by an explicit permission matrix and recorded to an immutable local audit trail.
+**Kodiak** takes a different path: it is a native cross-platform desktop orchestrator for Linux and Windows built with **Rust (Tauri v2)**, the **Tokio** async runtime, and modern **TypeScript**. Cloud models plan and verify using *sanitized metadata only*, while local models execute every raw file read, code generation step, and diff draft directly on your hardware. Every action is governed by an explicit permission matrix and recorded to an immutable local audit trail.
 
 In short: **high-reasoning cloud synthesis + zero-cost local GPU execution + cryptographically verifiable filesystem boundaries.**
 
@@ -164,6 +164,16 @@ The compiled binary is produced at `src-tauri/target/release/kodiak`. A default 
 
 ## Prebuilt Packages
 
+### Linux (Universal AppImage)
+
+Single standalone binary with zero dependencies — works on all modern Linux distributions:
+
+```bash
+# Download Kodiak_1.1.2_amd64.AppImage from GitHub Releases, make executable, and run:
+chmod +x Kodiak_1.1.2_amd64.AppImage
+./Kodiak_1.1.2_amd64.AppImage
+```
+
 ### Arch Linux & Derivatives (CachyOS, EndeavourOS, Manjaro)
 
 Kodiak provides a split `PKGBUILD` producing the desktop orchestrator (`/usr/bin/kodiak`) and the optional documentation hub (`kodiak-projectswiki`, installed to `/usr/share/kodiak/projectswiki/` with dependency hooks for `python-mkdocs-material`, `python-requests`, and `python-toml`).
@@ -193,8 +203,8 @@ sudo apt-get install -f
 
 Windows builds are generated automatically on release and available from the [GitHub Releases](https://github.com/morganlowe/Kodiak/releases) page:
 
-- **NSIS Setup Installer (`.exe`)**: `kodiak_1.1.2_x64-setup.exe` (Recommended)
-- **WiX Installer (`.msi`)**: `kodiak_1.1.2_x64_en-US.msi`
+- **NSIS Setup Installer (`.exe`)**: `Kodiak_1.1.2_x64-setup.exe` (Recommended)
+- **WiX Installer (`.msi`)**: `Kodiak_1.1.2_x64_en-US.msi`
 
 #### Windows Prerequisites
 - [Ollama for Windows](https://ollama.com/download/windows) running on `http://127.0.0.1:11434`
@@ -336,7 +346,7 @@ Kodiak generates a default configuration on first launch. The references below a
 <summary><strong>1. Core Orchestrator — <code>~/.config/kodiak/config.toml</code> (click to expand)</strong></summary>
 
 ```toml
-# Kodiak v1.0.0 Core Orchestrator Configuration
+# Kodiak v1.1.2 Core Orchestrator Configuration
 
 [general]
 theme = "kodiak-dark"
@@ -346,6 +356,16 @@ run_log_level = "info"          # Options: "debug" | "info" | "warn" | "error"
 run_log_max_mb = 50             # Max disk usage for per-run diagnostic logs
 run_log_keep_runs = 20          # Recent run logs retained (journal.jsonl is never pruned)
 destructive_diff_threshold = 0.40
+
+# Project Exclusions (managed via sidebar right-click or Settings -> Excluded Projects)
+exclusion_list = [
+  "~/Nextcloud/Projects/archived-experiment"
+]
+
+# Custom CSS Overrides (managed via Settings -> Custom CSS)
+custom_css = """
+/* Injected live into the desktop interface at runtime */
+"""
 
 [primary_provider]
 name = "lumo"
