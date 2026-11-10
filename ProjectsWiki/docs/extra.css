@@ -106,18 +106,18 @@ form.md-header__option {
   background-color: #8a2000 !important;
 }
 
-/* Base scale reduction — balanced split-the-difference sizing */
+/* Base scale — comfortable, legible desktop scale */
 html,
 html[lang],
 :root {
-  font-size: 85% !important;
+  font-size: 94% !important;
 }
 
 @media screen and (min-width: 60em) {
   html,
   html[lang],
   :root {
-    font-size: 85% !important;
+    font-size: 94% !important;
   }
 }
 
@@ -125,7 +125,7 @@ html[lang],
   html,
   html[lang],
   :root {
-    font-size: 85% !important;
+    font-size: 94% !important;
   }
 }
 
@@ -133,7 +133,7 @@ html[lang],
   html,
   html[lang],
   :root {
-    font-size: 87% !important;
+    font-size: 96% !important;
   }
 }
 
@@ -141,155 +141,196 @@ html[lang],
   html,
   html[lang],
   :root {
-    font-size: 87% !important;
+    font-size: 96% !important;
   }
 }
 
-/* Balanced MkDocs Header & Navigation Tabs */
+/* Prominent MkDocs Header & Logo-matching Title */
 .md-header {
-  height: 2.3rem !important;
+  height: 3rem !important;
 }
 
-.md-header__title {
-  font-size: 0.88rem !important;
-  height: 2.3rem !important;
-  line-height: 2.3rem !important;
+.md-header__inner {
+  height: 3rem !important;
+  align-items: center !important;
 }
 
-.md-header__button {
-  padding: 0.25rem !important;
+.md-header__button.md-logo {
+  padding: 0.2rem 0.5rem !important;
+  display: flex !important;
+  align-items: center !important;
 }
 
 .md-logo img,
 .md-logo svg {
-  height: 1.35rem !important;
+  height: 2.3rem !important;
+  max-height: 2.3rem !important;
   width: auto !important;
 }
 
+.md-header__title {
+  height: 3rem !important;
+  line-height: 3rem !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.md-header__ellipsis {
+  display: flex !important;
+  align-items: center !important;
+  height: 3rem !important;
+}
+
+.md-header__topic {
+  font-size: 1.7rem !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+  letter-spacing: -0.02em !important;
+}
+
+.md-header__topic .md-ellipsis {
+  font-size: 1.7rem !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+}
+
 .md-tabs {
-  font-size: 0.78rem !important;
+  font-size: 0.85rem !important;
 }
 
 .md-tabs__link {
-  height: 2rem !important;
-  line-height: 2rem !important;
-  padding: 0 0.75rem !important;
+  height: 2.2rem !important;
+  line-height: 2.2rem !important;
+  padding: 0 0.85rem !important;
 }
 
-/* Balanced Headings & Hero */
+/* Prominent Headings & Hero */
 .md-typeset h1 {
-  font-size: 1.6rem !important;
-  margin-block: 0.5rem 0.4rem !important;
+  font-size: 1.85rem !important;
+  font-weight: 600 !important;
+  margin-block: 0.6rem 0.45rem !important;
 }
 
 .md-typeset h2 {
-  font-size: 1.35rem !important;
-  margin-block: 0.8rem 0.4rem !important;
+  font-size: 1.45rem !important;
+  margin-block: 0.9rem 0.45rem !important;
 }
 
 .md-typeset h3 {
-  font-size: 1.1rem !important;
-  margin-block: 0.6rem 0.3rem !important;
+  font-size: 1.2rem !important;
+  margin-block: 0.7rem 0.35rem !important;
 }
 
 .hero-subtitle {
-  font-size: 0.95rem !important;
-  margin-block: -0.2rem 1.25rem !important;
+  font-size: 1.05rem !important;
+  line-height: 1.5 !important;
+  margin-block: -0.15rem 1.4rem !important;
   max-inline-size: 75ch !important;
 }
 
-/* Balanced Explorer Toolbar & Controls */
+/* Comfortable Explorer Toolbar & Controls */
 .explorer-toolbar {
-  padding-block: 0.6rem !important;
-  padding-inline: 0.85rem !important;
-  gap: 0.6rem !important;
-  margin-block-end: 0.85rem !important;
+  padding-block: 0.65rem !important;
+  padding-inline: 1rem !important;
+  gap: 0.7rem !important;
+  margin-block-end: 1rem !important;
 }
 
 .search-input-wrap {
-  flex: 1 1 260px !important;
+  flex: 1 1 280px !important;
 }
 
 .search-icon {
-  font-size: 1rem !important;
-  inset-inline-start: 0.75rem !important;
+  font-size: 1.15rem !important;
+  inset-inline-start: 0.85rem !important;
 }
 
 .explorer-search-input {
-  padding-block: 0.48rem !important;
-  padding-inline: 2.25rem 2.4rem !important;
-  font-size: 0.86rem !important;
+  padding-block: 0.55rem !important;
+  padding-inline: 2.4rem 2.6rem !important;
+  font-size: 0.95rem !important;
 }
 
 .search-kbd {
-  inset-inline-end: 0.6rem !important;
-  font-size: 0.72rem !important;
-  padding-block: 0.08rem !important;
-  padding-inline: 0.4rem !important;
+  inset-inline-end: 0.65rem !important;
+  font-size: 0.76rem !important;
+  padding-block: 0.1rem !important;
+  padding-inline: 0.45rem !important;
 }
 
 .explorer-select {
-  padding-block: 0.44rem !important;
-  padding-inline: 0.7rem !important;
-  font-size: 0.8rem !important;
+  padding-block: 0.5rem !important;
+  padding-inline: 0.75rem !important;
+  font-size: 0.86rem !important;
 }
 
 .view-toggle-btn {
-  padding-block: 0.44rem !important;
-  padding-inline: 0.65rem !important;
-  font-size: 0.78rem !important;
+  padding-block: 0.5rem !important;
+  padding-inline: 0.75rem !important;
+  font-size: 0.84rem !important;
 }
 
 .explorer-btn {
-  padding-block: 0.44rem !important;
-  padding-inline: 0.75rem !important;
-  font-size: 0.8rem !important;
+  padding-block: 0.5rem !important;
+  padding-inline: 0.85rem !important;
+  font-size: 0.86rem !important;
 }
 
 .sync-icon {
-  font-size: 0.9rem !important;
+  font-size: 1rem !important;
 }
 
 /* Category Filter Pills */
 .category-pills {
-  gap: 0.45rem !important;
-  margin-block-end: 0.85rem !important;
+  gap: 0.5rem !important;
+  margin-block-end: 1rem !important;
 }
 
 .category-pill {
-  padding-block: 0.26rem !important;
-  padding-inline: 0.65rem !important;
-  font-size: 0.76rem !important;
+  padding-block: 0.32rem !important;
+  padding-inline: 0.75rem !important;
+  font-size: 0.84rem !important;
 }
 
-/* Balanced Project Cards */
+/* Generous Project Cards */
 .projects-grid {
-  gap: 0.85rem !important;
+  gap: 1rem !important;
 }
 
 .project-card {
-  padding: 0.95rem !important;
-  border-radius: 7px !important;
+  padding: 1.15rem !important;
+  border-radius: 8px !important;
 }
 
 .card-category-badge {
-  font-size: 0.66rem !important;
-  padding-block: 0.12rem !important;
-  padding-inline: 0.5rem !important;
+  font-size: 0.72rem !important;
+  padding-block: 0.15rem !important;
+  padding-inline: 0.6rem !important;
 }
 
 .project-card__title {
-  font-size: 0.98rem !important;
+  font-size: 1.14rem !important;
+  font-weight: 700 !important;
 }
 
 .project-card__dates {
-  font-size: 0.68rem !important;
-  gap: 0.5rem !important;
+  font-size: 0.75rem !important;
+  gap: 0.6rem !important;
 }
 
 .project-card__summary {
-  font-size: 0.8rem !important;
-  line-height: 1.45 !important;
+  font-size: 0.88rem !important;
+  line-height: 1.5 !important;
+}
+
+.project-card__peek-btn,
+.project-card__view-btn {
+  font-size: 0.84rem !important;
+}
+
+.md-typeset {
+  font-size: 0.94rem !important;
+  line-height: 1.6 !important;
 }
 
 .md-main,
