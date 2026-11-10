@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet — planned work will be listed here as it lands._
 
+## [1.1.0] — 2026-11-10
+
+### Added
+
+**Hardware-Aware Dynamic Profiling (Slice 2 Milestone 1)**
+
+- Dynamic hardware profiling engine (`src-tauri/src/hardware.rs`) detecting host System RAM via `/proc/meminfo` and dedicated VRAM via `nvidia-smi` / `/sys/class/drm`.
+- 4-Tier Hardware Envelope Classification (`Tier1Entry`, `Tier2Mid`, `Tier3Performance`, `Tier4Workstation`) automatically mapping hardware limits to safe, high-throughput Ollama models (`fast_model`, `coder_model`, `heavy_model`).
+- Auto-seeding on fresh installations and interactive Settings UI card with one-click model adoption.
+
+**Sequential Multi-Task Queue & VRAM-Aware Scheduling (Slice 2 Milestone 2)**
+
+- Multi-task queue manager (`src-tauri/src/queue.rs`) enabling non-blocking prompt submission while tasks are executing in the background.
+- **VRAM Serialization Mutex**: enforces strict serialization of local Ollama model inference across all tasks, preventing GPU Out-Of-Memory crashes on Frank's RTX 4050 6GB Laptop GPU.
+- **Intra-Repository Dependency Chaining** (`wait_for_previous_approval`): automatically transitions subsequent tasks on the same project into `WaitingForDependency` until prior action cards are reviewed, preventing code edits against stale file trees.
+- Inter-project concurrency: queued tasks targeting different whitelisted repositories can proceed without waiting on unrelated approvals.
+- Full queue lifecycle state machine: `Queued`, `Interpreting`, `WaitingForDependency`, `LocalWorking`, `Verifying`, `WaitingApproval`, `Completed`, `Failed`, `Cancelled`.
+- Append-safe queue persistence (`~/.local/share/kodiak/queue.json`) and real-time Tauri event notifications (`kodiak://queue-event`).
+- Tauri IPC commands: `enqueue_task`, `get_queue_items`, `cancel_queue_item`, `remove_queue_item`, `reorder_queue_item`, `clear_completed_queue_items`.
+
 ## [1.0.0] — 2026-11-10
 
 ### Added
@@ -44,5 +64,6 @@ _Nothing yet — planned work will be listed here as it lands._
 - Split Arch `PKGBUILD` producing `kodiak` and `kodiak-projectswiki` packages with dependency hooks (`python-mkdocs-material`, `python-requests`, `python-toml`).
 - Debian/Ubuntu `.deb` binary packages with `apt` dependency resolution.
 
-[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/morganlowe/Kodiak/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/morganlowe/Kodiak/releases/tag/v1.0.0

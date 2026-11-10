@@ -310,6 +310,10 @@ pub fn history_file_path() -> Result<PathBuf, String> {
     Ok(data_dir_path()?.join("history.json"))
 }
 
+pub fn queue_file_path() -> Result<PathBuf, String> {
+    Ok(data_dir_path()?.join("queue.json"))
+}
+
 pub fn cloud_debug_file_path() -> Result<PathBuf, String> {
     Ok(data_dir_path()?.join("cloud_debug.jsonl"))
 }

@@ -5,7 +5,7 @@
 
   **Autonomous Desktop Orchestrator & Local-First AI Development Partner for Linux**
 
-  [![Version: v1.0.0](https://img.shields.io/badge/Version-v1.0.0-success.svg)](#)
+  [![Version: v1.1.0](https://img.shields.io/badge/Version-v1.1.0-success.svg)](#)
   [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
   [![Platform: Linux | Arch | Debian/Ubuntu](https://img.shields.io/badge/Platform-Linux_%7C_Arch_%7C_Debian%2FUbuntu-orange.svg)](#installation--packaging)
   [![Tech: Rust | Tauri v2 | TypeScript](https://img.shields.io/badge/Stack-Rust_%7C_Tauri_v2_%7C_TypeScript-red.svg)](#)

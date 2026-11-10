@@ -821,6 +821,30 @@ All 8 named regression tests pass with zero regressions:
   - Exposes `get_hardware_profile` and `apply_hardware_recommended_models` Tauri commands.
   - Settings UI features a dedicated Hardware Profile card showing detected GPU, VRAM, System RAM, assigned Tier, and a 1-click `[⚡ Adopt Recommended Models]` action button.
 
+## 23. Sequential Multi-Task Queue & VRAM-Aware Scheduling (Slice 2 Milestone 2)
+
+### 23.1 Context & Problem Statement
+- In Slice 1, Kodiak was single-task locked: submitting a prompt blocked the workbench UI until the entire pipeline (`interpret` $\rightarrow$ `execute` $\rightarrow$ `verify`) resolved.
+- On Frank's RTX 4050 Laptop GPU (6,141 MB dedicated VRAM), running multiple concurrent local Ollama inferences (`qwen2.5-coder:7b` + `llama3.2:3b`) leads to catastrophic driver eviction and out-of-memory crashes.
+- In multi-task workflows where task $N+1$ modifies the same project repository as task $N$, drafting task $N+1$'s diffs against stale files before task $N$'s diff cards are approved causes merge conflicts and inconsistent patches.
+
+### 23.2 Architecture & Implementation
+- **Queue Manager (`src-tauri/src/queue.rs`)**:
+  - Implements thread-safe in-memory queue (`Arc<Mutex<Vec<QueueItem>>>`) backed by atomic persistence (`~/.local/share/kodiak/queue.json`).
+  - Full lifecycle state machine: `Queued`, `Interpreting`, `WaitingForDependency`, `LocalWorking`, `Verifying`, `WaitingApproval`, `Completed`, `Failed`, `Cancelled`.
+  - Non-blocking task submission: `enqueue_task` generates a collision-proof `queue_id` using timestamp + atomic monotonically increasing counter (`AtomicU64`), appends the item, and returns immediately (<5ms) to the UI.
+- **VRAM Serialization Mutex**:
+  - `QueueManager.vram_lock` (`Arc<tokio::sync::Mutex<()>>`) serializes local model inference across all tasks in Stage 2 (`execute`).
+  - Cloud stages (`interpret` and `verify`) run asynchronously without holding the VRAM lock, allowing overlapping cloud operations while local model inference stays strictly serialized on the GPU.
+- **Intra-Repository Dependency Chaining**:
+  - Evaluates `wait_for_previous_approval` flag: if an earlier queued task targeting the same `project_root` is active or has pending unreviewed action cards, task $N+1$ automatically transitions to `WaitingForDependency`.
+  - Tasks targeting different whitelisted repositories bypass dependency pauses and execute concurrently.
+  - When user approves or rejects the final pending card on task $N$, `sync_from_task_record` marks task $N$ `Completed`, and the background worker automatically unblocks dependent tasks on the subsequent tick.
+- **Background Worker & Tauri IPC Commands**:
+  - `start_background_queue_worker` runs continuously in Tokio async runtime, scanning for runnable items every 500ms and emitting real-time event updates via channel `kodiak://queue-event`.
+  - Registered Tauri commands: `enqueue_task`, `get_queue_items`, `cancel_queue_item`, `remove_queue_item`, `reorder_queue_item`, `clear_completed_queue_items`.
+
+
 
 
 

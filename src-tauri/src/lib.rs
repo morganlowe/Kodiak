@@ -7,6 +7,7 @@ pub mod memory;
 pub mod migration;
 pub mod pipeline;
 pub mod prompts;
+pub mod queue;
 pub mod run_log;
 
 use serde::{Deserialize, Serialize};
@@ -37,14 +38,26 @@ use chrono::Utc;
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 pub struct AppState {
     pub config: Mutex<AppConfig>,
     /// §4.2.1 Cruise Control: session posture ONLY, defaults to OFF on every startup
     pub cruise_control: AtomicBool,
+    /// Multi-task queue manager and VRAM serialization mutex (§2.1 Slice 2)
+    pub queue: Arc<queue::QueueManager>,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            config: Mutex::new(AppConfig::default()),
+            cruise_control: AtomicBool::new(false),
+            queue: Arc::new(queue::QueueManager::new()),
+        }
+    }
 }
 
 #[tauri::command]
@@ -345,16 +358,21 @@ async fn run_task_pipeline(
         ),
     );
 
-    match run_execute_stage_with_events(
-        Some(&app),
-        &cfg,
-        &project_root,
-        &record.task_id,
-        &plan_ref,
-        cruise,
-    )
-    .await
-    {
+    let exec_res = {
+        // Enforce strict VRAM serialization for local model inference (§2.1 Slice 2)
+        let _vram_guard = state.queue.vram_lock.lock().await;
+        run_execute_stage_with_events(
+            Some(&app),
+            &cfg,
+            &project_root,
+            &record.task_id,
+            &plan_ref,
+            cruise,
+        )
+        .await
+    };
+
+    match exec_res {
         Ok((step_logs, action_cards)) => {
             let (posture, auto_c, queued_c, denied_c) =
                 build_posture_summary(&cfg, cruise, &action_cards);
@@ -1051,6 +1069,14 @@ async fn approve_card(
         .ok_or_else(|| format!("Task {task_id} not found"))?;
 
     let updated = apply_card_approval(&cfg, cruise, record, &card_id).await?;
+    state.queue.sync_from_task_record(
+        &updated.task_id,
+        updated.queued_count,
+        updated.auto_executed_count,
+        updated.denied_count,
+        updated.queued_count == 0,
+    );
+    queue::emit_queue_updated(Some(&app), &state.queue.get_items());
     if let Some(card) = updated.action_cards.iter().find(|c| c.card_id == card_id) {
         emit_ticker_log(
             Some(&app),
@@ -1082,6 +1108,14 @@ fn reject_card(
         .ok_or_else(|| format!("Task {task_id} not found"))?;
 
     let updated = apply_card_rejection(cruise, record, &card_id, &reason)?;
+    state.queue.sync_from_task_record(
+        &updated.task_id,
+        updated.queued_count,
+        updated.auto_executed_count,
+        updated.denied_count,
+        updated.queued_count == 0,
+    );
+    queue::emit_queue_updated(Some(&app), &state.queue.get_items());
     if let Some(card) = updated.action_cards.iter().find(|c| c.card_id == card_id) {
         emit_ticker_log(
             Some(&app),
@@ -1998,6 +2032,524 @@ fn apply_hardware_recommended_models(
     Ok(cfg.clone())
 }
 
+#[tauri::command]
+fn enqueue_task(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    prompt: String,
+    project_root: Option<String>,
+    wait_for_previous_approval: Option<bool>,
+) -> Result<queue::QueueItem, String> {
+    let resolved_root = match project_root {
+        Some(r) if !r.trim().is_empty() => r,
+        _ => {
+            let cfg = state.config.lock().map_err(|e| e.to_string())?;
+            resolve_active_project_root(&cfg)?
+                .to_string_lossy()
+                .to_string()
+        }
+    };
+    let wait_dep = wait_for_previous_approval.unwrap_or(true);
+    let item = state.queue.enqueue(prompt, resolved_root, wait_dep)?;
+    queue::emit_queue_updated(Some(&app), &state.queue.get_items());
+    Ok(item)
+}
+
+#[tauri::command]
+fn get_queue_items(state: State<'_, AppState>) -> Result<Vec<queue::QueueItem>, String> {
+    Ok(state.queue.get_items())
+}
+
+#[tauri::command]
+fn cancel_queue_item(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    queue_id: String,
+) -> Result<queue::QueueItem, String> {
+    let item = state.queue.cancel_item(&queue_id)?;
+    queue::emit_queue_updated(Some(&app), &state.queue.get_items());
+    Ok(item)
+}
+
+#[tauri::command]
+fn remove_queue_item(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    queue_id: String,
+) -> Result<queue::QueueItem, String> {
+    let item = state.queue.remove_item(&queue_id)?;
+    queue::emit_queue_updated(Some(&app), &state.queue.get_items());
+    Ok(item)
+}
+
+#[tauri::command]
+fn reorder_queue_item(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    queue_id: String,
+    new_index: usize,
+) -> Result<Vec<queue::QueueItem>, String> {
+    let items = state.queue.reorder_item(&queue_id, new_index)?;
+    queue::emit_queue_updated(Some(&app), &items);
+    Ok(items)
+}
+
+#[tauri::command]
+fn clear_completed_queue_items(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<queue::QueueItem>, String> {
+    let items = state.queue.clear_completed();
+    queue::emit_queue_updated(Some(&app), &items);
+    Ok(items)
+}
+
+async fn execute_queued_pipeline(app: AppHandle, queue_id: String) {
+    let state = app.state::<AppState>();
+    let queue_item = match state.queue.get_item(&queue_id) {
+        Some(item) => item,
+        None => return,
+    };
+
+    if queue_item.status != queue::QueueItemStatus::Queued {
+        return;
+    }
+
+    let cfg = match state.config.lock() {
+        Ok(c) => c.clone(),
+        Err(e) => {
+            state.queue.update_status(
+                &queue_id,
+                queue::QueueItemStatus::Failed,
+                Some(e.to_string()),
+            );
+            queue::emit_queue_updated(Some(&app), &state.queue.get_items());
+            return;
+        }
+    };
+    let cruise = state.cruise_control.load(Ordering::SeqCst);
+    let project_root = PathBuf::from(&queue_item.project_root);
+
+    let mut record = create_initial_task_record(&cfg, &queue_item.prompt, &project_root, cruise);
+    let task_id = record.task_id.clone();
+    state.queue.set_task_id(&queue_id, &task_id);
+    let _ = upsert_task_record(&record);
+
+    // Stage 1: Cloud Interpret
+    state.queue.update_status(
+        &queue_id,
+        queue::QueueItemStatus::Interpreting,
+        None,
+    );
+    queue::emit_queue_updated(Some(&app), &state.queue.get_items());
+
+    emit_stage_changed(
+        Some(&app),
+        &task_id,
+        "interpret",
+        "active",
+        Some(format!("Cloud interpret via {}", cfg.cloud_model)),
+    );
+    emit_ticker_log(
+        Some(&app),
+        &task_id,
+        "interpret",
+        "info",
+        format!(
+            "Stage 1 (interpret) → cloud/{} parsing task plan...",
+            cfg.cloud_model
+        ),
+    );
+
+    let interpret_res: Result<TaskPlan, String> = if cfg.cascade.enabled && cfg.cascade.consent {
+        let cascade_providers = pipeline::build_cascade_provider_list(&cfg);
+        let mut final_res = Err("No providers available in cascade".to_string());
+        for (pname, sprovider) in cascade_providers {
+            match run_interpret_stage_with_provider(&cfg, &project_root, &queue_item.prompt, &sprovider).await {
+                Ok(plan) => {
+                    record.provider_interpret = Some(pname.clone());
+                    append_journal_note(&record.task_id, "stage_provider", &format!("stage=interpret, provider={pname}"));
+                    final_res = Ok(plan);
+                    break;
+                }
+                Err(e) => {
+                    let err_code = if e.contains("429") {
+                        "429"
+                    } else if e.contains("500") {
+                        "500"
+                    } else if e.contains("502") {
+                        "502"
+                    } else if e.contains("503") {
+                        "503"
+                    } else {
+                        "429"
+                    };
+                    append_journal_note(&record.task_id, "cascade_attempt", &format!("stage=interpret provider={pname} error={err_code}"));
+                    emit_ticker_log(
+                        Some(&app),
+                        &record.task_id,
+                        "interpret",
+                        "warn",
+                        format!("cascade_attempt: stage=interpret provider={pname} error={err_code}"),
+                    );
+                    final_res = Err(e);
+                }
+            }
+        }
+        final_res
+    } else {
+        run_interpret_stage(&cfg, &project_root, &queue_item.prompt).await
+    };
+
+    match interpret_res {
+        Ok(plan) => {
+            if !plan.goal.trim().is_empty() {
+                record.title = plan.goal.trim().to_string();
+            }
+            emit_ticker_log(
+                Some(&app),
+                &record.task_id,
+                "interpret",
+                "ok",
+                format!(
+                    "Stage 1 complete — goal: \"{}\" ({} steps, risk={})",
+                    plan.goal,
+                    plan.steps.len(),
+                    plan.estimated_risk
+                ),
+            );
+            emit_stage_changed(
+                Some(&app),
+                &record.task_id,
+                "interpret",
+                "completed",
+                Some(plan.goal.clone()),
+            );
+            record.plan = Some(plan);
+            let _ = upsert_task_record(&record);
+        }
+        Err(err) => {
+            let err_kind = classify_cloud_error_from_str(&err);
+            record.stage_error_kind = Some(format!("{:?}", err_kind).to_ascii_lowercase());
+            emit_ticker_log(
+                Some(&app),
+                &record.task_id,
+                "interpret",
+                "bad",
+                format!("Stage 1 (interpret) failed: {err}"),
+            );
+            emit_stage_changed(
+                Some(&app),
+                &record.task_id,
+                "interpret",
+                "failed",
+                Some(err.clone()),
+            );
+            record.failed_stage = Some("interpret".to_string());
+            record.stage_error = Some(err.clone());
+            let _ = save_and_return_record(record);
+            state.queue.update_status(
+                &queue_id,
+                queue::QueueItemStatus::Failed,
+                Some(err),
+            );
+            queue::emit_queue_updated(Some(&app), &state.queue.get_items());
+            return;
+        }
+    }
+
+    // Stage 2: Local Execute + Enforcer under VRAM serialization lock
+    state.queue.update_status(
+        &queue_id,
+        queue::QueueItemStatus::LocalWorking,
+        None,
+    );
+    queue::emit_queue_updated(Some(&app), &state.queue.get_items());
+
+    let plan_ref = record.plan.clone().unwrap();
+    emit_stage_changed(
+        Some(&app),
+        &record.task_id,
+        "execute",
+        "active",
+        Some(format!("Executing {} local step(s)", plan_ref.steps.len())),
+    );
+    emit_ticker_log(
+        Some(&app),
+        &record.task_id,
+        "execute",
+        "info",
+        format!(
+            "Stage 2 (execute) → running {} planned step(s) locally on Ollama under VRAM lock...",
+            plan_ref.steps.len()
+        ),
+    );
+
+    let exec_res = {
+        let _vram_guard = state.queue.vram_lock.lock().await;
+        run_execute_stage_with_events(
+            Some(&app),
+            &cfg,
+            &project_root,
+            &record.task_id,
+            &plan_ref,
+            cruise,
+        )
+        .await
+    };
+
+    match exec_res {
+        Ok((step_logs, action_cards)) => {
+            let (posture, auto_c, queued_c, denied_c) =
+                build_posture_summary(&cfg, cruise, &action_cards);
+            record.posture_summary = posture;
+            record.auto_executed_count = auto_c;
+            record.queued_count = queued_c;
+            record.denied_count = denied_c;
+            record.step_logs = step_logs;
+            record.action_cards = action_cards;
+            let _ = upsert_task_record(&record);
+            state.queue.update_card_counts(&queue_id, queued_c, auto_c, denied_c);
+            emit_ticker_log(
+                Some(&app),
+                &record.task_id,
+                "execute",
+                "ok",
+                format!(
+                    "Stage 2 complete — auto-executed={}, queued_for_approval={}, blocked={}",
+                    auto_c, queued_c, denied_c
+                ),
+            );
+            emit_stage_changed(
+                Some(&app),
+                &record.task_id,
+                "execute",
+                "completed",
+                None,
+            );
+        }
+        Err(err) => {
+            emit_ticker_log(
+                Some(&app),
+                &record.task_id,
+                "execute",
+                "bad",
+                format!("Stage 2 (execute) failed: {err}"),
+            );
+            emit_stage_changed(
+                Some(&app),
+                &record.task_id,
+                "execute",
+                "failed",
+                Some(err.clone()),
+            );
+            record.failed_stage = Some("execute".to_string());
+            record.stage_error = Some(err.clone());
+            let _ = save_and_return_record(record);
+            state.queue.update_status(
+                &queue_id,
+                queue::QueueItemStatus::Failed,
+                Some(err),
+            );
+            queue::emit_queue_updated(Some(&app), &state.queue.get_items());
+            return;
+        }
+    }
+
+    // Stage 3: Cloud Verify
+    state.queue.update_status(
+        &queue_id,
+        queue::QueueItemStatus::Verifying,
+        None,
+    );
+    queue::emit_queue_updated(Some(&app), &state.queue.get_items());
+
+    emit_stage_changed(
+        Some(&app),
+        &record.task_id,
+        "verify",
+        "active",
+        Some("Verifying condensed diffs against plan".to_string()),
+    );
+    emit_ticker_log(
+        Some(&app),
+        &record.task_id,
+        "verify",
+        "info",
+        format!(
+            "Stage 3 (verify) → cloud/{} reviewing condensed summaries & diffs...",
+            cfg.cloud_model
+        ),
+    );
+
+    let verify_res: Result<VerificationResult, String> = if cfg.cascade.enabled && cfg.cascade.consent {
+        let cascade_providers = pipeline::build_cascade_provider_list(&cfg);
+        let mut final_res = Err("No providers available in cascade".to_string());
+        for (pname, sprovider) in cascade_providers {
+            match run_verify_stage_with_provider(&cfg, &record.prompt, &plan_ref, &record.step_logs, &record.action_cards, &sprovider).await {
+                Ok(ver) => {
+                    record.provider_verify = Some(pname.clone());
+                    append_journal_note(&record.task_id, "stage_provider", &format!("stage=verify, provider={pname}"));
+                    final_res = Ok(ver);
+                    break;
+                }
+                Err(e) => {
+                    let err_code = if e.contains("429") { "429" } else if e.contains("500") { "500" } else if e.contains("502") { "502" } else if e.contains("503") { "503" } else { "429" };
+                    append_journal_note(&record.task_id, "cascade_attempt", &format!("stage=verify provider={pname} error={err_code}"));
+                    emit_ticker_log(
+                        Some(&app),
+                        &record.task_id,
+                        "verify",
+                        "warn",
+                        format!("cascade_attempt: stage=verify provider={pname} error={err_code}"),
+                    );
+                    final_res = Err(e);
+                }
+            }
+        }
+        final_res
+    } else {
+        run_verify_stage(
+            &cfg,
+            &record.prompt,
+            &plan_ref,
+            &record.step_logs,
+            &record.action_cards,
+        )
+        .await
+    };
+
+    match verify_res {
+        Ok(ver) => {
+            emit_ticker_log(
+                Some(&app),
+                &record.task_id,
+                "verify",
+                "ok",
+                format!(
+                    "Stage 3 complete — verdict: {} ({})",
+                    ver.verdict.to_uppercase(),
+                    ver.rationale
+                ),
+            );
+            emit_stage_changed(
+                Some(&app),
+                &record.task_id,
+                "verify",
+                "completed",
+                Some(ver.verdict.clone()),
+            );
+            emit_stage_changed(
+                Some(&app),
+                &record.task_id,
+                "done",
+                "completed",
+                Some(ver.verdict.clone()),
+            );
+            record.verification = Some(ver);
+        }
+        Err(err) => {
+            let err_kind = classify_cloud_error_from_str(&err);
+            record.stage_error_kind = Some(format!("{:?}", err_kind).to_ascii_lowercase());
+            emit_ticker_log(
+                Some(&app),
+                &record.task_id,
+                "verify",
+                "bad",
+                format!("Stage 3 (verify) failed: {err}"),
+            );
+            emit_stage_changed(
+                Some(&app),
+                &record.task_id,
+                "verify",
+                "failed",
+                Some(err.clone()),
+            );
+            record.failed_stage = Some("verify".to_string());
+            record.stage_error = Some(err);
+        }
+    }
+
+    let _ = save_and_return_record(record.clone());
+
+    if record.queued_count > 0 {
+        state.queue.update_status(
+            &queue_id,
+            queue::QueueItemStatus::WaitingApproval,
+            None,
+        );
+    } else if record.failed_stage.is_some() {
+        state.queue.update_status(
+            &queue_id,
+            queue::QueueItemStatus::Failed,
+            record.stage_error,
+        );
+    } else {
+        state.queue.update_status(
+            &queue_id,
+            queue::QueueItemStatus::Completed,
+            None,
+        );
+    }
+    queue::emit_queue_updated(Some(&app), &state.queue.get_items());
+}
+
+async fn start_background_queue_worker(app: AppHandle) {
+    loop {
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        let state = app.state::<AppState>();
+
+        let items = state.queue.get_items();
+        let is_running = items.iter().any(|i| {
+            matches!(
+                i.status,
+                queue::QueueItemStatus::Interpreting
+                    | queue::QueueItemStatus::LocalWorking
+                    | queue::QueueItemStatus::Verifying
+            )
+        });
+        if is_running {
+            continue;
+        }
+
+        let mut target_id = None;
+        for item in &items {
+            if item.status == queue::QueueItemStatus::Queued
+                || item.status == queue::QueueItemStatus::WaitingForDependency
+            {
+                if state.queue.is_dependency_blocked(&item.queue_id) {
+                    if item.status != queue::QueueItemStatus::WaitingForDependency {
+                        state.queue.update_status(
+                            &item.queue_id,
+                            queue::QueueItemStatus::WaitingForDependency,
+                            None,
+                        );
+                        queue::emit_queue_updated(Some(&app), &state.queue.get_items());
+                    }
+                } else {
+                    if item.status == queue::QueueItemStatus::WaitingForDependency {
+                        state.queue.update_status(
+                            &item.queue_id,
+                            queue::QueueItemStatus::Queued,
+                            None,
+                        );
+                        queue::emit_queue_updated(Some(&app), &state.queue.get_items());
+                    }
+                    target_id = Some(item.queue_id.clone());
+                    break;
+                }
+            }
+        }
+
+        if let Some(queue_id) = target_id {
+            let app_handle = app.clone();
+            tauri::async_runtime::spawn(async move {
+                execute_queued_pipeline(app_handle, queue_id).await;
+            });
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     if let Err(e) = migration::run_migration_if_needed() {
@@ -2008,10 +2560,18 @@ pub fn run() {
     let app_state = AppState {
         config: Mutex::new(initial_cfg),
         cruise_control: AtomicBool::new(false),
+        queue: Arc::new(queue::QueueManager::new()),
     };
 
     tauri::Builder::default()
         .manage(app_state)
+        .setup(|app| {
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                start_background_queue_worker(handle).await;
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_config,
             update_config,
@@ -2055,6 +2615,12 @@ pub fn run() {
             get_task_run_log,
             get_hardware_profile,
             apply_hardware_recommended_models,
+            enqueue_task,
+            get_queue_items,
+            cancel_queue_item,
+            remove_queue_item,
+            reorder_queue_item,
+            clear_completed_queue_items,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Kodiak tauri application");
@@ -2079,10 +2645,7 @@ mod acceptance_tests {
         fs::write(&parse_file, original_code).unwrap();
 
         // Criterion 6: Fresh AppState initializes Cruise Control to OFF (false)
-        let fresh_state = AppState {
-            config: Mutex::new(AppConfig::default()),
-            cruise_control: AtomicBool::new(false),
-        };
+        let fresh_state = AppState::default();
         assert!(!fresh_state.cruise_control.load(Ordering::SeqCst));
 
         // Criterion 2.1: Default config seeds with empty whitelist
