@@ -28,18 +28,27 @@ Conventional cloud coding agents and fragile CLI wrappers require blanket filesy
 
 ## Core Principles & The Kodiak Charter
 
-Kodiak enforces a strict **Four-Charter Security Model**:
+Kodiak is governed by six binding architectural tenets, mechanically enforced at every phase of execution (inspectable in-app via **About → The Charter**):
 
-### 1. Your Files Stay Home (Local-First Isolation)
-Kodiak touches nothing outside explicitly whitelisted project directories. Cloud synthesis is strictly isolated to sanitized architectural plans and metadata. Local models (`local-delegation_local-ollama` running `llama3.2:3b` and `qwen2.5-coder:7b`/`14b`) handle raw file inspection, register maps, compiler output parsing, and unified diff reviews at zero cloud token cost.
+### §1. Your Files Stay Home (Local-First Isolation & Privacy)
+Kodiak touches nothing outside explicitly whitelisted project directories. Raw source files and unredacted directory trees never leave your machine. Cloud synthesis is strictly isolated to sanitized architectural plans and metadata. Local models (`local-delegation_local-ollama` running `llama3.2:3b` and `qwen2.5-coder:7b`/`14b`) handle all raw file reads, register maps, compiler output parsing, and unified diff reviews at zero cloud token cost.
 
-### 2. Nothing Happens Without You (Human Authority)
-File writes, command executions, and deletions require explicit human consent or must match strict, downward-only grant levels (`READ`, `CREATE`, `BUILD`, `AUTONOMOUS`). An unbypassable hard deny-list protects root system directories, SSH keys, cloud credentials, `.env` secrets, shell profiles, and `.git/` history—even when operating in `AUTONOMOUS` mode.
+### §2. Nothing Happens Without You (Human Authority)
+File writes, command executions, and deletions require explicit human consent or must match strict, downward-only grant levels (`READ`, `CREATE`, `BUILD`, `AUTONOMOUS`). There is no persistent permission creep: capability grants die with the task.
 
-### 3. Standby Failover & Automated Cascade
-Kodiak uses **Proton Lumo** (via the local `lumo-tamer` bridge) as its primary zero-access cloud reasoning engine. When cloud quotas are exhausted or rate limits (`429`/`503`) hit, Kodiak never crashes or loses state. It either executes an opt-in **Automated Failover Cascade** across configured standby OpenAI-compatible endpoints (Google Gemini 3.0-Flash / 2.5-Pro, Groq, OpenRouter) or presents interactive **Choice Cards** allowing you to pivot to local Ollama execution (`qwen2.5-coder:7b`, `qwen2.5-coder:14b`) or defer the task.
+### §3. Some Things Are Always No (Hard Limits & Unbypassable Deny-List)
+An unbypassable hard deny-list protects root system directories, SSH keys, cloud credentials, `.env` secrets, shell profiles, and `.git/` history—blocked globally and impossible to grant even under `AUTONOMOUS` mode.
 
-### 4. Integrated Projects Wiki & AI Knowledge Hub (`kodiak-projectswiki`)
+### §4. Honest Limits (Epistemics & Receipts)
+Kodiak must know what it knows and show its receipts. It displays verified Memory Delivery Chips in the prompt header, refuses to draft from unsourceable assumed facts (the REQUEST mandate), halts destructive diffs modifying $\ge 40\%$ of an existing file, and classifies errors honestly instead of retrying hopelessly.
+
+### §5. Local First & Standby Failover Cascade (Momentum Preservation)
+Everything sensitive runs locally. Kodiak uses **Proton Lumo** (via the local `lumo-tamer` bridge) as its primary zero-access cloud reasoning engine. When cloud quotas are exhausted or rate limits (`429`/`503`) hit, Kodiak never crashes or loses state. It either executes an opt-in **Automated Failover Cascade** across configured standby OpenAI-compatible endpoints (Google Gemini 3.0-Flash / 2.5-Pro, Groq, OpenRouter) or presents interactive **Choice Cards** allowing you to pivot to local Ollama execution (`qwen2.5-coder:7b`, `qwen2.5-coder:14b`) or defer the task.
+
+### §6. A Paper Trail for Everything (Auditability)
+Every decision, grant, migration, probe, rejection, and provider call is permanently committed to an append-only local journal (`~/.local/share/kodiak/journal.jsonl`) and per-run diagnostic logs (`~/.local/share/kodiak/runs/<task-id>/run.log`), readable by you, sendable by no one.
+
+### §7. Integrated Projects Wiki & AI Knowledge Hub (`kodiak-projectswiki`)
 An optional, loosely coupled companion subsystem that transforms scattered hardware, firmware, software, and 3D printing projects into a unified, searchable local knowledge portal. It indexes PDFs, schematics, and manuals, synthesizes standardized documentation via local Ollama models at zero cloud cost, and serves an interactive **MkDocs Material** portal at `http://wiki.local:8000` (with zero-sudo fallback to `http://127.0.0.1:8000`).
 
 ---
@@ -51,29 +60,37 @@ Kodiak's backend pipelines decouple reasoning from execution across an asynchron
 ```mermaid
 flowchart TD
     Prompt["1. User Prompt & Scoped Memory"] --> Plan["2. Cloud Synthesis & Plan (Proton Lumo / Cascade)"]
-    Plan --> Enforcer{"3. Enforcer (Grant Matrix & Hard Deny Check)"}
+    Plan --> Enforcer{"3. Enforcer (§4 Grant Matrix & §3 Hard Deny Check)"}
     
     Enforcer -->|Blocked by Deny-List| Reject["Hard Abort & Security Alert"]
     Enforcer -->|Permitted / Scoped| Delegation["4. Local Delegation (local-delegation_local-ollama)"]
     
     subgraph Local Execution Engine
-        Delegation --> Summary["Zero-Token Context Summaries (llama3.2:3b)"]
-        Delegation --> CodeGen["Raw File Inspection & Diff Drafting (qwen2.5-coder:7b / 14b)"]
-        Delegation --> Failover["Standby Cascade / Interactive Choice Card"]
+        Delegation --> Summary["§1 Zero-Token Context Summaries (llama3.2:3b)"]
+        Delegation --> CodeGen["§1 Raw File Inspection & Diff Drafting (qwen2.5-coder:7b / 14b)"]
+        Delegation --> Failover["§5 Standby Cascade / Interactive Choice Card"]
     end
     
-    Summary & CodeGen & Failover --> Approval{"5. Action Audit & Human Approval"}
+    Summary & CodeGen & Failover --> Approval{"5. Action Audit & §2 Human Approval"}
     Approval -->|Approved / Covered by Grant| Apply["Atomic Filesystem Write / Subprocess Exec"]
     Approval -->|Declined| Discard["Discard Diff & Log Rejection"]
     
-    Apply & Discard & Reject --> Journal[("6. Append-Only Audit Journal\n(~/.local/share/kodiak/journal.jsonl)")]
+    Apply & Discard & Reject --> Journal[("6. §6 Append-Only Audit Journal\n(~/.local/share/kodiak/journal.jsonl)")]
 ```
 
 ---
 
 ## Feature Highlights
 
-### Granular Grant Matrix & Destructive Diff Interceptor
+### §4.1 Hard Deny List
+Globally protects critical paths regardless of active posture:
+- `.git/` internal objects, hooks, and index
+- SSH keys (`id_rsa`, `id_ed25519`, `authorized_keys`)
+- Cloud credentials (`~/.aws`, `~/.gcp`, `~/.config/gcloud`, `*.pem`, `*.key`)
+- Environment secrets (`.env`, `.env.local`, `credentials.json`)
+- Shell profiles (`~/.bashrc`, `~/.zshrc`, `/etc/passwd`, `/etc/shadow`)
+
+### §4.2 Granular Grant Matrix & Destructive Diff Interceptor
 Permissions are configured per whitelisted directory and never escalate without explicit session approval:
 - **`READ`**: Inspect files and propose unified diffs only; every modification queues for manual human approval.
 - **`CREATE`**: Includes `READ` plus permission to create new, pre-planned files (never overwrites existing files).
