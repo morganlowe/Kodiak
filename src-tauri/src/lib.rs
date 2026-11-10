@@ -190,6 +190,24 @@ async fn set_wiki_enabled(state: State<'_, AppState>, enabled: bool) -> Result<A
     *guard = cfg.clone();
     Ok(cfg)
 }
+#[tauri::command]
+fn set_exclusion_list(state: State<'_, AppState>, list: Vec<String>) -> Result<AppConfig, String> {
+    let mut cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
+    cfg.exclusion_list = list;
+    save_config(&cfg)?;
+    *state.config.lock().map_err(|e| e.to_string())? = cfg.clone();
+    Ok(cfg)
+}
+
+#[tauri::command]
+fn set_custom_css(state: State<'_, AppState>, css: Option<String>) -> Result<AppConfig, String> {
+    let mut cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
+    cfg.custom_css = css;
+    save_config(&cfg)?;
+    *state.config.lock().map_err(|e| e.to_string())? = cfg.clone();
+    Ok(cfg)
+}
+}
 
 #[tauri::command]
 fn detect_projects_in_dir(dir_path: String) -> Vec<String> {
