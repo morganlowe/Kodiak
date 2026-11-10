@@ -152,6 +152,8 @@ interface AppConfig {
   run_log_level?: string;
   run_log_max_mb?: number;
   run_log_keep_runs?: number;
+  exclusion_list?: string[];
+  custom_css?: string;
 }
 
 interface TaskRunLogResponse {
@@ -876,6 +878,95 @@ function cardStatusBadge(card: ActionCard): string {
   }
 }
 
+function applyCustomCss(css?: string) {
+  let styleEl = document.getElementById("kodiak-custom-css") as HTMLStyleElement | null;
+  if (!styleEl) {
+    styleEl = document.createElement("style");
+    styleEl.id = "kodiak-custom-css";
+    document.head.appendChild(styleEl);
+  }
+  styleEl.textContent = css || "";
+}
+
+async function handleExcludeProject(projPath: string) {
+  if (!state.config) return;
+  const currentList = state.config.exclusion_list ? [...state.config.exclusion_list] : [];
+  if (!currentList.includes(projPath)) {
+    currentList.push(projPath);
+  }
+  state.config.exclusion_list = currentList;
+  try {
+    state.config = await invoke<AppConfig>("set_exclusion_list", { list: currentList });
+    state.uiBannerInfo = `Excluded "${projPath.split("/").filter(Boolean).pop() ?? projPath}" from sidebar. Restore anytime in Settings.`;
+    await refreshAllState();
+  } catch (err) {
+    state.uiBannerError = `Failed to exclude project: ${String(err)}`;
+    renderApp();
+  }
+}
+
+function showProjectContextMenu(x: number, y: number, projPath: string) {
+  const existing = document.getElementById("kodiak-context-menu");
+  if (existing) existing.remove();
+
+  const menu = document.createElement("div");
+  menu.id = "kodiak-context-menu";
+  menu.style.position = "fixed";
+  menu.style.left = `${x}px`;
+  menu.style.top = `${y}px`;
+  menu.style.zIndex = "999999";
+  menu.style.background = "#181b22";
+  menu.style.border = "1px solid rgba(255, 255, 255, 0.15)";
+  menu.style.borderRadius = "6px";
+  menu.style.boxShadow = "0 8px 24px rgba(0, 0, 0, 0.6)";
+  menu.style.padding = "4px";
+  menu.style.minWidth = "170px";
+
+  menu.innerHTML = `
+    <button type="button" id="ctx-exclude-btn" style="width:100%; text-align:left; background:transparent; border:none; color:#f3f4f6; padding:7px 10px; border-radius:4px; font-size:0.8rem; cursor:pointer; display:flex; align-items:center; gap:8px; font-weight:500;">
+      <span style="color:#ef4444; font-size:0.9rem;">🚫</span> Exclude from Listing
+    </button>
+  `;
+
+  document.body.appendChild(menu);
+
+  const rect = menu.getBoundingClientRect();
+  if (rect.right > window.innerWidth) {
+    menu.style.left = `${window.innerWidth - rect.width - 8}px`;
+  }
+  if (rect.bottom > window.innerHeight) {
+    menu.style.top = `${window.innerHeight - rect.height - 8}px`;
+  }
+
+  const btn = menu.querySelector("#ctx-exclude-btn") as HTMLElement;
+  if (btn) {
+    btn.addEventListener("mouseenter", () => {
+      btn.style.background = "rgba(239, 68, 68, 0.15)";
+      btn.style.color = "#fca5a5";
+    });
+    btn.addEventListener("mouseleave", () => {
+      btn.style.background = "transparent";
+      btn.style.color = "#f3f4f6";
+    });
+    btn.addEventListener("click", async () => {
+      menu.remove();
+      await handleExcludeProject(projPath);
+    });
+  }
+
+  const dismiss = (ev?: MouseEvent) => {
+    if (ev && menu.contains(ev.target as Node)) return;
+    menu.remove();
+    document.removeEventListener("click", dismiss);
+    document.removeEventListener("contextmenu", dismiss);
+  };
+
+  setTimeout(() => {
+    document.addEventListener("click", dismiss);
+    document.addEventListener("contextmenu", dismiss);
+  }, 10);
+}
+
 async function refreshAllState(): Promise<void> {
   try {
     const [cfg, cruise, health, hist, journal, mems, hwProfile, qItems, uInbox, pDash] = await Promise.all([
@@ -891,6 +982,7 @@ async function refreshAllState(): Promise<void> {
       invoke<MultiProjectDashboardResponse>("get_project_dashboard").catch(() => null),
     ]);
     state.config = cfg;
+    applyCustomCss(cfg?.custom_css);
     state.cruiseControl = cruise;
     state.health = health;
     state.history = hist;
@@ -1523,16 +1615,23 @@ function renderSidebar(): string {
     return `<aside class="sidebar is-collapsed"><div class="sidebar__top"><button type="button" class="side-icon-btn" id="sidebar-toggle-btn" title="Expand sidebar">»</button></div></aside>`;
   }
   const cfg = state.config;
+  const exclusion = new Set(cfg?.exclusion_list ?? []);
   const renderProjectButton = (w: WhitelistEntry) => {
     const name = w.path.split("/").filter(Boolean).pop() ?? w.path;
     const isActive = cfg?.active_project === w.path;
-    return `<button type="button" class="side-item ${isActive ? "is-active" : ""}" data-select-project="${escapeHtml(w.path)}" title="${escapeHtml(w.path)}">
+    return `<button type="button" class="side-item ${isActive ? "is-active" : ""}" data-select-project="${escapeHtml(w.path)}" title="${escapeHtml(w.path)} (Right-click to exclude)">
       <span class="side-item__label" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;">${escapeHtml(name)}</span>
       <span class="badge badge--neutral" style="font-size:0.65rem; flex-shrink:0;">${escapeHtml(w.level)}</span>
     </button>`;
   };
 
-  const allProjectsHtml = (cfg?.whitelist ?? []).map(renderProjectButton).join("");
+  const visibleWhitelist = (cfg?.whitelist ?? []).filter((w) => {
+    const name = w.path.split("/").filter(Boolean).pop() ?? w.path;
+    return !exclusion.has(w.path) && !exclusion.has(name);
+  });
+  const allProjectsHtml = visibleWhitelist.length > 0
+    ? visibleWhitelist.map(renderProjectButton).join("")
+    : `<p class="muted" style="font-size:0.75rem; padding-inline-start:0.35rem; margin:0.2rem 0;">(No projects in view)</p>`;
   const activeEntry = (cfg?.whitelist ?? []).find((w) => w.path === cfg?.active_project);
   const collapsedProjectHtml = activeEntry
     ? renderProjectButton(activeEntry)
@@ -3196,6 +3295,36 @@ function renderSettingsTab(): string {
       }
     </section>
 
+    <!-- Project Exclusion List -->
+    <section class="panel-card">
+      <div class="panel-header">
+        <div class="row-inline">
+          <h2 class="panel-title">🚫 Excluded Projects</h2>
+          <span class="badge badge--neutral">${(cfg.exclusion_list ?? []).length}</span>
+        </div>
+        <span class="muted">Projects excluded from the sidebar listing. Right-click any project in the sidebar to exclude it, or restore it here.</span>
+      </div>
+      ${
+        (cfg.exclusion_list ?? []).length === 0
+          ? `<p class="muted" style="font-size:0.85rem; padding:0.5rem 0;">No projects currently excluded.</p>`
+          : `<div class="queue-grid">
+              ${(cfg.exclusion_list ?? [])
+                .map(
+                  (excludedPath) => `
+                  <div class="row-between" style="padding:0.65rem 0.9rem; border:1px solid var(--wiki-border); border-radius:var(--wiki-radius-sm); margin-bottom:0.4rem;">
+                    <div class="row-inline" style="gap:0.5rem;">
+                      <span class="mono"><strong>${escapeHtml(excludedPath)}</strong></span>
+                    </div>
+                    <button type="button" class="btn btn--sm restore-excluded-btn" data-restore-path="${escapeHtml(excludedPath)}" title="Restore to sidebar project listing">
+                      ↺ Restore
+                    </button>
+                  </div>`
+                )
+                .join("")}
+            </div>`
+      }
+    </section>
+
     <!-- Cloud & Providers ([[alt_provider]]) -->
     <section class="panel-card ${editingProv ? "is-editing" : ""}" id="edit-alt-provider-panel">
       <div class="panel-header">
@@ -3566,6 +3695,26 @@ function renderSettingsTab(): string {
           <input type="checkbox" id="cfg-dry-run" ${cfg.dry_run ? "checked" : ""} />
           <span><strong>Dry-Run Mode:</strong> Run Interpret → Plan → Local Drafting, but suppress all file writes and shell execution</span>
         </label>
+      </div>
+
+      <!-- Custom CSS Editor -->
+      <div class="panel-card" style="margin-block-start:1rem; border:1px solid var(--wiki-border); border-radius:var(--wiki-radius-sm); padding:1rem;">
+        <div class="panel-header" style="margin-block-end:0.5rem;">
+          <div class="row-inline">
+            <h3 class="panel-title" style="font-size:1rem;">🎨 Custom CSS (Main Window)</h3>
+            <span class="badge badge--neutral">Live Inject</span>
+          </div>
+          <span class="muted" style="font-size:0.8rem;">Inject custom CSS overrides into the Kodiak desktop interface at runtime. Persists across restarts in config.toml.</span>
+        </div>
+        <div class="form-field">
+          <textarea
+            id="cfg-custom-css"
+            class="form-input mono"
+            rows="6"
+            style="width:100%; font-family:monospace; font-size:0.8rem; line-height:1.4; resize:vertical;"
+            placeholder="/* Enter custom CSS here. Example:&#10;.sidebar { background-color: #12151c !important; }&#10;.btn--primary { border-radius: 8px !important; }&#10;*/"
+          >${escapeHtml(cfg.custom_css ?? "")}</textarea>
+        </div>
       </div>
 
       <div class="row-between" style="margin-block-start:0.75rem;">
@@ -4644,6 +4793,13 @@ function bindEvents(): void {
       await invoke<AppConfig>("update_config", { newConfig: state.config });
       await refreshAllState();
     });
+    el.addEventListener("contextmenu", (ev) => {
+      ev.preventDefault();
+      const p = el.getAttribute("data-select-project");
+      if (p) {
+        showProjectContextMenu(ev.clientX, ev.clientY, p);
+      }
+    });
   });
   document.querySelectorAll<HTMLElement>("[data-open-task]").forEach((el) => {
     el.addEventListener("click", () => openTaskReadOnly(el.getAttribute("data-open-task") ?? ""));
@@ -5550,6 +5706,10 @@ function bindEvents(): void {
     state.config.run_log_max_mb = runLogMaxMb > 0 ? runLogMaxMb : 50;
     state.config.run_log_keep_runs = runLogKeepRuns > 0 ? runLogKeepRuns : 20;
 
+    const customCssVal = (document.getElementById("cfg-custom-css") as HTMLTextAreaElement)?.value;
+    state.config.custom_css = customCssVal && customCssVal.trim().length > 0 ? customCssVal : undefined;
+    applyCustomCss(state.config.custom_css);
+
     if (!state.config.cascade) {
       state.config.cascade = {
         enabled: false,
@@ -5568,6 +5728,24 @@ function bindEvents(): void {
       state.uiBannerError = String(err);
       renderApp();
     }
+  });
+
+  // Settings: Restore excluded project
+  document.querySelectorAll<HTMLElement>(".restore-excluded-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const p = btn.getAttribute("data-restore-path");
+      if (!p || !state.config) return;
+      const list = (state.config.exclusion_list ?? []).filter((item) => item !== p);
+      state.config.exclusion_list = list;
+      try {
+        state.config = await invoke<AppConfig>("set_exclusion_list", { list });
+        state.uiBannerInfo = `Restored "${p.split("/").filter(Boolean).pop() ?? p}" to sidebar project listing.`;
+        await refreshAllState();
+      } catch (err) {
+        state.uiBannerError = `Failed to restore project: ${String(err)}`;
+        renderApp();
+      }
+    });
   });
 
   // Settings: Apply hardware-recommended models
@@ -6624,6 +6802,17 @@ listen<QueueEvent>("kodiak://queue-event", (e) => {
     state.queueItems = e.payload.items;
     renderApp();
   }
+});
+
+window.addEventListener("contextmenu", (e) => {
+  const target = e.target as HTMLElement | null;
+  if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+    return;
+  }
+  if (target?.closest("[data-select-project]")) {
+    return;
+  }
+  e.preventDefault();
 });
 
 refreshAllState();

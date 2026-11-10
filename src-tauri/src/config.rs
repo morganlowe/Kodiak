@@ -148,39 +148,6 @@ pub struct AppConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_css: Option<String>,
 }
-    pub lumo_url: String,
-    pub lumo_api_key: String,
-    pub cloud_model: String,
-    #[serde(default, alias = "cloud_tier", skip_serializing_if = "Option::is_none")]
-    pub tier: Option<String>,
-    pub ollama_url: String,
-    pub fast_model: String,
-    pub coder_model: String,
-    pub heavy_model: String,
-    pub command_timeout_secs: u64,
-    pub local_idle_timeout_secs: u64,
-    pub local_total_timeout_secs: u64,
-    pub memory_step_budget_chars: usize,
-    pub memory_auto_sanitize: bool,
-    pub destructive_diff_threshold: f64,
-    pub dry_run: bool,
-    pub wiki_dir: String,
-    pub wiki_enabled: bool,
-    pub wiki_configured: bool,
-    pub projects_dir: String,
-    pub active_project: Option<String>,
-    pub whitelist: Vec<WhitelistEntry>,
-    #[serde(default)]
-    pub alt_provider: Vec<AltProviderConfig>,
-    #[serde(default, deserialize_with = "deserialize_cascade")]
-    pub cascade: CascadeConfig,
-    #[serde(default = "default_run_log_level")]
-    pub run_log_level: String,
-    #[serde(default = "default_run_log_max_mb")]
-    pub run_log_max_mb: usize,
-    #[serde(default = "default_run_log_keep_runs")]
-    pub run_log_keep_runs: usize,
-}
 
 impl Default for AppConfig {
     fn default() -> Self {
@@ -206,6 +173,7 @@ impl Default for AppConfig {
             projects_dir: "~/Projects".to_string(),
             active_project: None,
             // §2.1 binding rule: seeds on first run with whitelist = [] (EMPTY)
+            whitelist: Vec::new(),
             exclusion_list: Vec::new(),
             custom_css: None,
 

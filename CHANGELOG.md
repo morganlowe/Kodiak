@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet — planned work will be listed here as it lands._
 
+## [1.1.2] — 2026-11-10
+
+### Added
+
+- **Right-Click Project Exclusions**:
+  - Custom right-click context menu on sidebar project items to easily exclude directories from view without deleting whitelist configuration.
+  - Excluded directories persist across restarts in `~/.config/kodiak/config.toml` (`exclusion_list`).
+  - Dedicated **Settings → 🚫 Excluded Projects** panel to inspect and restore excluded directories with 1 click.
+  - Suppressed default browser navigation context menu (Back/Forward/Reload) across the desktop app.
+- **Runtime Custom CSS Engine**:
+  - Live CSS style injection engine with dynamic `<style id="kodiak-custom-css">` mounting.
+  - **Settings → 🎨 Custom CSS (Main Window)** editor to write, test, and save custom styles directly in `config.toml`.
+  - Instant live preview on saving settings without requiring app restarts.
+- **Windows Packaging & Release Workflow**:
+  - Windows platform support: generated multi-resolution icon bundle (`icon.ico`, `icon.icns`, and full PNG mipmaps) matching Linux desktop icons.
+  - GitHub Actions multi-platform release matrix building on both `ubuntu-22.04` (deb, AppImage) and `windows-latest` (MSI and NSIS setup installer).
+  - Documentation and prerequisites for Windows 10/11 installation and building from source.
+
+### Fixed
+
+- **AppConfig Struct Integrity**: Resolved duplicate field definitions and missing `whitelist` in default initialization.
+- **Tauri IPC Command Registration**: Added missing `set_exclusion_list` and `set_custom_css` handlers to the Tauri command dispatcher.
+- **Outdated Documentation**: Corrected version references in package installation examples for Arch Linux (`kodiak-1.1.2-1`) and Debian/Ubuntu (`kodiak_1.1.2-1_amd64.deb`).
+
 ## [1.1.1] — 2026-11-10
 
 ### Fixed
@@ -111,7 +135,8 @@ _Nothing yet — planned work will be listed here as it lands._
 - Split Arch `PKGBUILD` producing `kodiak` and `kodiak-projectswiki` packages with dependency hooks (`python-mkdocs-material`, `python-requests`, `python-toml`).
 - Debian/Ubuntu `.deb` binary packages with `apt` dependency resolution.
 
-[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/morganlowe/Kodiak/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/morganlowe/Kodiak/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/morganlowe/Kodiak/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/morganlowe/Kodiak/releases/tag/v1.0.0

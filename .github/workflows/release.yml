@@ -6,8 +6,19 @@ on:
       - 'v*.*.*'
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  release:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'ubuntu-22.04'
+            args: '--bundles deb,appimage'
+          - platform: 'windows-latest'
+            args: '--bundles msi,nsis'
+
+    runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -16,33 +27,28 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux system dependencies (Ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Build Tauri app & create GitHub release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          components: rustfmt
-
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --locked --version 2
-
-      - name: Build Tauri app (Linux, macOS, Windows)
-        run: |
-          # Build for Linux
-          cargo tauri build --bundler deb
-          # Build for macOS (requires macOS runner; placeholder)
-          # Build for Windows (requires Windows runner; placeholder)
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
-          generate_release_notes: true
-          files: |
-            target/release/bundle/**/*.deb
-            target/release/bundle/**/*.AppImage
-            target/release/bundle/**/*.dmg
-            target/release/bundle/**/*.msi
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Kodiak ${{ github.ref_name }}'
+          releaseBody: 'See CHANGELOG.md for release details.'
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}

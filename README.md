@@ -7,7 +7,7 @@
 
   [![Version: v1.1.2](https://img.shields.io/badge/Version-v1.1.2-success.svg)](#)
   [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-  [![Platform: Linux | Arch | Debian/Ubuntu](https://img.shields.io/badge/Platform-Linux_%7C_Arch_%7C_Debian%2FUbuntu-orange.svg)](#installation--packaging)
+  [![Platform: Linux | Windows | Arch | Debian](https://img.shields.io/badge/Platform-Linux_%7C_Windows_%7C_Arch_%7C_Debian-orange.svg)](#prebuilt-packages)
   [![Tech: Rust | Tauri v2 | TypeScript](https://img.shields.io/badge/Stack-Rust_%7C_Tauri_v2_%7C_TypeScript-red.svg)](#)
   [![AI: Ollama | Proton Lumo](https://img.shields.io/badge/AI-Ollama_%7C_Proton_Lumo-purple.svg)](#)
 
@@ -116,6 +116,8 @@ Engineered specifically for Linux desktop environments:
 - **Zero-Jump Scroll Persistence**: Dual-`requestAnimationFrame` (dual-RAF) viewport locking prevents scroll resets during live streaming and background runs.
 - **Custom Slim Scrollbars**: Clean dark theme (`docs/THEME.md`) with custom WebKit scrollbars that eliminate bulky GTK stepper collisions.
 - **Collapsible Workspace Panels**: Toggle Project Whitelists, Alternate Providers, Memory Bank, and the Local Decision Journal in one keystroke.
+- **Right-Click Project Exclusions**: Right-click any project in the left sidebar to exclude it from the active workspace listing. Excluded directories are safely stored in `exclusion_list` and can be restored or managed in **Settings → Excluded Projects**.
+- **Live Custom CSS Styling**: Inject custom styles into the main interface in real-time from **Settings → Custom CSS (Main Window)**, persisting across restarts in `config.toml`.
 
 ---
 
@@ -167,24 +169,49 @@ The compiled binary is produced at `src-tauri/target/release/kodiak`. A default 
 Kodiak provides a split `PKGBUILD` producing the desktop orchestrator (`/usr/bin/kodiak`) and the optional documentation hub (`kodiak-projectswiki`, installed to `/usr/share/kodiak/projectswiki/` with dependency hooks for `python-mkdocs-material`, `python-requests`, and `python-toml`).
 
 ```bash
-sudo pacman -U kodiak-1.0.0-1-x86_64.pkg.tar.zst kodiak-projectswiki-1.0.0-1-any.pkg.tar.zst
+sudo pacman -U kodiak-1.1.2-1-x86_64.pkg.tar.zst kodiak-projectswiki-1.1.2-1-any.pkg.tar.zst
 ```
 
-> **Core orchestrator only?** Omit `kodiak-projectswiki-1.0.0-1-any.pkg.tar.zst`.
+> **Core orchestrator only?** Omit `kodiak-projectswiki-1.1.2-1-any.pkg.tar.zst`.
 
-Or build from source via `makepkg`:
+Or build and install directly from source via `makepkg` or `make`:
 
 ```bash
 git clone https://github.com/morganlowe/Kodiak.git
 cd kodiak
-makepkg -sfci
+make install
 ```
 
 ### Debian / Ubuntu
 
 ```bash
-sudo dpkg -i dist/deb/kodiak_1.0.0-1_amd64.deb dist/deb/kodiak-projectswiki_1.0.0-1_all.deb
+sudo dpkg -i dist/deb/kodiak_1.1.2-1_amd64.deb dist/deb/kodiak-projectswiki_1.1.2-1_all.deb
 sudo apt-get install -f
+```
+
+### Windows (10 & 11)
+
+Windows builds are generated automatically on release and available from the [GitHub Releases](https://github.com/morganlowe/Kodiak/releases) page:
+
+- **NSIS Setup Installer (`.exe`)**: `kodiak_1.1.2_x64-setup.exe` (Recommended)
+- **WiX Installer (`.msi`)**: `kodiak_1.1.2_x64_en-US.msi`
+
+#### Windows Prerequisites
+- [Ollama for Windows](https://ollama.com/download/windows) running on `http://127.0.0.1:11434`
+- Pull required models in PowerShell:
+  ```powershell
+  ollama pull llama3.2:3b
+  ollama pull qwen2.5-coder:7b
+  ```
+- Microsoft Edge WebView2 runtime (standard on Windows 10/11)
+
+#### Building from Source on Windows
+```powershell
+git clone https://github.com/morganlowe/Kodiak.git
+cd Kodiak
+npm install
+npm run build
+cargo tauri build
 ```
 
 ### Systemd User Integration

@@ -207,7 +207,6 @@ fn set_custom_css(state: State<'_, AppState>, css: Option<String>) -> Result<App
     *state.config.lock().map_err(|e| e.to_string())? = cfg.clone();
     Ok(cfg)
 }
-}
 
 #[tauri::command]
 fn detect_projects_in_dir(dir_path: String) -> Vec<String> {
@@ -2962,6 +2961,8 @@ pub fn run() {
             batch_reject_cards,
             get_project_dashboard,
             set_active_project,
+            set_exclusion_list,
+            set_custom_css,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Kodiak tauri application");
