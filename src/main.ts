@@ -323,6 +323,44 @@ interface ActionCard {
   suggested_default?: string | null;
 }
 
+interface BatchCardTarget {
+  task_id: string;
+  card_id: string;
+}
+
+interface TestHookResult {
+  project_dir: string;
+  command: string;
+  success: boolean;
+  exit_code: number | null;
+  raw_output: string;
+  digested_summary: string | null;
+}
+
+interface BatchApprovalResult {
+  approved_count: number;
+  rejected_count: number;
+  affected_projects: string[];
+  test_hook_results: TestHookResult[];
+}
+
+interface UnifiedInboxItem {
+  task_id: string;
+  task_title: string;
+  project_dir: string;
+  card: ActionCard;
+  line_ranges: [number, number][];
+  has_conflict: boolean;
+  conflicting_tasks: string[];
+  conflict_description: string | null;
+}
+
+interface UnifiedInboxResponse {
+  items: UnifiedInboxItem[];
+  total_pending: number;
+  conflict_count: number;
+}
+
 interface VerificationResult {
   verdict: string;
   rationale: string;
@@ -463,6 +501,13 @@ const state: {
   queueItems: QueueItem[];
   queueDrawerOpen: boolean;
   queueWaitForApproval: boolean;
+  queueDrawerTab: "queue" | "inbox";
+  unifiedInbox: UnifiedInboxResponse | null;
+  selectedInboxCardIds: string[];
+  inboxRunTestHook: boolean;
+  lastBatchApprovalResult: BatchApprovalResult | null;
+  batchApproving: boolean;
+  inboxFilter: "all" | "conflicts" | "safe";
 } = {
   tab: "workbench",
   config: null,
@@ -470,6 +515,13 @@ const state: {
   queueItems: [],
   queueDrawerOpen: false,
   queueWaitForApproval: true,
+  queueDrawerTab: "queue",
+  unifiedInbox: null,
+  selectedInboxCardIds: [],
+  inboxRunTestHook: true,
+  lastBatchApprovalResult: null,
+  batchApproving: false,
+  inboxFilter: "all",
   health: null,
   cruiseControl: false,
   promptText: "",
@@ -784,7 +836,7 @@ function cardStatusBadge(card: ActionCard): string {
 
 async function refreshAllState(): Promise<void> {
   try {
-    const [cfg, cruise, health, hist, journal, mems, hwProfile, qItems] = await Promise.all([
+    const [cfg, cruise, health, hist, journal, mems, hwProfile, qItems, uInbox] = await Promise.all([
       invoke<AppConfig>("get_config"),
       invoke<boolean>("get_cruise_control"),
       invoke<HealthStatus>("check_health"),
@@ -793,6 +845,7 @@ async function refreshAllState(): Promise<void> {
       invoke<MemoryEntry[]>("get_memories"),
       invoke<HardwareProfile>("get_hardware_profile").catch(() => null),
       invoke<QueueItem[]>("get_queue_items").catch(() => []),
+      invoke<UnifiedInboxResponse>("get_unified_inbox").catch(() => null),
     ]);
     state.config = cfg;
     state.cruiseControl = cruise;
@@ -802,6 +855,7 @@ async function refreshAllState(): Promise<void> {
     state.memories = mems;
     if (hwProfile) state.hardwareProfile = hwProfile;
     if (qItems) state.queueItems = qItems;
+    if (uInbox) state.unifiedInbox = uInbox;
 
     try {
       const [wDetails, wProjects] = await Promise.all([
@@ -863,8 +917,14 @@ function renderHeader(): string {
         <button
           type="button"
           id="queue-drawer-toggle-btn"
-          class="btn btn--sm ${state.queueItems.some((i) => i.status === 'interpreting' || i.status === 'local_working' || i.status === 'verifying') ? 'btn--primary' : ''}"
-          title="Toggle Multi-Task Queue Drawer (Slice 2)"
+          class="btn btn--sm ${
+            state.unifiedInbox && state.unifiedInbox.conflict_count > 0
+              ? 'btn--warn'
+              : state.queueItems.some((i) => i.status === 'interpreting' || i.status === 'local_working' || i.status === 'verifying')
+              ? 'btn--primary'
+              : ''
+          }"
+          title="Toggle Multi-Task Queue & Unified Approval Inbox"
         >
           <span>📋 Queue</span>
           ${
@@ -876,6 +936,13 @@ function renderHeader(): string {
                     ? 'var(--accent)'
                     : '#4b5563'
                 }; color:#fff; font-size:0.7rem; margin-inline-start:0.3rem;">${state.queueItems.length}</span>`
+              : ""
+          }
+          ${
+            state.unifiedInbox && state.unifiedInbox.total_pending > 0
+              ? `<span class="nav-tab__badge" style="background:${
+                  state.unifiedInbox.conflict_count > 0 ? '#ef4444' : '#a855f7'
+                }; color:#fff; font-size:0.7rem; margin-inline-start:0.3rem;" title="${state.unifiedInbox.total_pending} card(s) pending approval across all tasks${state.unifiedInbox.conflict_count > 0 ? ' (' + state.unifiedInbox.conflict_count + ' diff conflict!)' : ''}">📥 ${state.unifiedInbox.total_pending}${state.unifiedInbox.conflict_count > 0 ? ' ⚠️' : ''}</span>`
               : ""
           }
         </button>
@@ -3628,104 +3695,286 @@ function renderQueueDrawer(): string {
     (i) => i.status === "interpreting" || i.status === "local_working" || i.status === "verifying"
   );
 
-  const itemsHtml = items.length === 0
-    ? `<div style="text-align:center; padding:3rem 1rem; color:var(--md-default-fg-color--light);">
-         <span style="font-size:2rem; display:block; margin-bottom:0.75rem;">📋</span>
-         <strong>No tasks currently queued</strong>
-         <p style="font-size:0.85rem; margin-top:0.35rem;">Enter a prompt in the workbench bar and hit Enter to queue tasks asynchronously without blocking!</p>
-       </div>`
-    : items.map((item, idx) => {
-        let badgeHtml = "";
-        let pulseClass = "";
-        switch (item.status) {
-          case "queued":
-            badgeHtml = `<span class="badge badge--neutral">Queued #${idx + 1}</span>`;
-            break;
-          case "interpreting":
-            badgeHtml = `<span class="badge badge--info" style="background:#0284c7; color:#fff;">Stage 1: Interpreting...</span>`;
-            pulseClass = "is-active";
-            break;
-          case "waiting_for_dependency":
-            badgeHtml = `<span class="badge badge--warn" title="Paused until earlier tasks in this repository are reviewed">⏳ Waiting for Dependency</span>`;
-            break;
-          case "local_working":
-            badgeHtml = `<span class="badge badge--ok" style="background:#16a34a; color:#fff;" title="Active local model inference under VRAM lock">⚡ Local Working (VRAM)</span>`;
-            pulseClass = "is-active";
-            break;
-          case "verifying":
-            badgeHtml = `<span class="badge badge--info" style="background:#2563eb; color:#fff;">Stage 3: Verifying...</span>`;
-            pulseClass = "is-active";
-            break;
-          case "waiting_approval":
-            badgeHtml = `<span class="badge" style="background:#a855f7; color:#fff;">✋ Waiting Approval (${item.pending_cards_count})</span>`;
-            break;
-          case "completed":
-            badgeHtml = `<span class="badge badge--ok">✓ Completed</span>`;
-            break;
-          case "failed":
-            badgeHtml = `<span class="badge badge--bad">✕ Failed</span>`;
-            break;
-          case "cancelled":
-            badgeHtml = `<span class="badge badge--neutral">Cancelled</span>`;
-            break;
-        }
+  const inbox = state.unifiedInbox;
+  const inboxTotal = inbox?.total_pending ?? 0;
+  const inboxConflicts = inbox?.conflict_count ?? 0;
 
-        const projName = item.project_root.split("/").pop() || item.project_root;
-        const canCancel = item.status === "queued" || item.status === "interpreting" || item.status === "waiting_for_dependency";
-        const canRemove = item.status === "completed" || item.status === "failed" || item.status === "cancelled";
-        const canReorder = item.status === "queued" || item.status === "waiting_for_dependency";
+  // Tab Navigation Header Pills (§2.2 Slice 2)
+  const tabNavHtml = `
+    <div class="queue-drawer__tabs">
+      <button type="button" class="queue-tab-btn ${state.queueDrawerTab === "queue" ? "is-active" : ""}" id="queue-tab-btn-tasks">
+        <span>📋 Tasks (${items.length})</span>
+        ${runningItem ? `<span class="badge badge--ok pulse" style="font-size:0.65rem; padding:0.1rem 0.35rem;">Active</span>` : ""}
+      </button>
+      <button type="button" class="queue-tab-btn ${state.queueDrawerTab === "inbox" ? "is-active" : ""}" id="queue-tab-btn-inbox">
+        <span>📥 Approval Inbox (${inboxTotal})</span>
+        ${inboxConflicts > 0 ? `<span class="badge badge--bad" style="font-size:0.65rem; padding:0.1rem 0.35rem;">⚠️ ${inboxConflicts} conflict${inboxConflicts > 1 ? "s" : ""}</span>` : ""}
+      </button>
+    </div>
+  `;
 
-        return `
-          <div class="queue-item-card ${pulseClass}">
-            <div class="row-between" style="align-items:flex-start;">
-              ${badgeHtml}
-              <div class="queue-item-card__controls">
-                ${canReorder && idx > 0 ? `<button type="button" class="btn btn--sm queue-move-up-btn" data-queue-id="${escapeHtml(item.queue_id)}" data-new-idx="${idx - 1}" title="Move up">▲</button>` : ""}
-                ${canReorder && idx < items.length - 1 ? `<button type="button" class="btn btn--sm queue-move-down-btn" data-queue-id="${escapeHtml(item.queue_id)}" data-new-idx="${idx + 1}" title="Move down">▼</button>` : ""}
-                ${canCancel ? `<button type="button" class="btn btn--sm queue-cancel-btn" data-queue-id="${escapeHtml(item.queue_id)}" title="Cancel this queued task">Cancel</button>` : ""}
-                ${canRemove ? `<button type="button" class="btn btn--sm queue-remove-btn" data-queue-id="${escapeHtml(item.queue_id)}" title="Remove from queue list">✕</button>` : ""}
+  let bodyContent = "";
+
+  if (state.queueDrawerTab === "queue") {
+    const itemsHtml = items.length === 0
+      ? `<div style="text-align:center; padding:3rem 1rem; color:var(--md-default-fg-color--light);">
+           <span style="font-size:2rem; display:block; margin-bottom:0.75rem;">📋</span>
+           <strong>No tasks currently queued</strong>
+           <p style="font-size:0.85rem; margin-top:0.35rem;">Enter a prompt in the workbench bar and hit Enter to queue tasks asynchronously without blocking!</p>
+         </div>`
+      : items.map((item, idx) => {
+          let badgeHtml = "";
+          let pulseClass = "";
+          switch (item.status) {
+            case "queued":
+              badgeHtml = `<span class="badge badge--neutral">Queued #${idx + 1}</span>`;
+              break;
+            case "interpreting":
+              badgeHtml = `<span class="badge badge--info" style="background:#0284c7; color:#fff;">Stage 1: Interpreting...</span>`;
+              pulseClass = "is-active";
+              break;
+            case "waiting_for_dependency":
+              badgeHtml = `<span class="badge badge--warn" title="Paused until earlier tasks in this repository are reviewed">⏳ Waiting for Dependency</span>`;
+              break;
+            case "local_working":
+              badgeHtml = `<span class="badge badge--ok" style="background:#16a34a; color:#fff;" title="Active local model inference under VRAM lock">⚡ Local Working (VRAM)</span>`;
+              pulseClass = "is-active";
+              break;
+            case "verifying":
+              badgeHtml = `<span class="badge badge--info" style="background:#2563eb; color:#fff;">Stage 3: Verifying...</span>`;
+              pulseClass = "is-active";
+              break;
+            case "waiting_approval":
+              badgeHtml = `<span class="badge" style="background:#a855f7; color:#fff;">✋ Waiting Approval (${item.pending_cards_count})</span>`;
+              break;
+            case "completed":
+              badgeHtml = `<span class="badge badge--ok">✓ Completed</span>`;
+              break;
+            case "failed":
+              badgeHtml = `<span class="badge badge--bad">✕ Failed</span>`;
+              break;
+            case "cancelled":
+              badgeHtml = `<span class="badge badge--neutral">Cancelled</span>`;
+              break;
+          }
+
+          const projName = item.project_root.split("/").pop() || item.project_root;
+          const canCancel = item.status === "queued" || item.status === "interpreting" || item.status === "waiting_for_dependency";
+          const canRemove = item.status === "completed" || item.status === "failed" || item.status === "cancelled";
+          const canReorder = item.status === "queued" || item.status === "waiting_for_dependency";
+
+          return `
+            <div class="queue-item-card ${pulseClass}">
+              <div class="row-between" style="align-items:flex-start;">
+                ${badgeHtml}
+                <div class="queue-item-card__controls">
+                  ${canReorder && idx > 0 ? `<button type="button" class="btn btn--sm queue-move-up-btn" data-queue-id="${escapeHtml(item.queue_id)}" data-new-idx="${idx - 1}" title="Move up">▲</button>` : ""}
+                  ${canReorder && idx < items.length - 1 ? `<button type="button" class="btn btn--sm queue-move-down-btn" data-queue-id="${escapeHtml(item.queue_id)}" data-new-idx="${idx + 1}" title="Move down">▼</button>` : ""}
+                  ${canCancel ? `<button type="button" class="btn btn--sm queue-cancel-btn" data-queue-id="${escapeHtml(item.queue_id)}" title="Cancel this queued task">Cancel</button>` : ""}
+                  ${canRemove ? `<button type="button" class="btn btn--sm queue-remove-btn" data-queue-id="${escapeHtml(item.queue_id)}" title="Remove from queue list">✕</button>` : ""}
+                </div>
               </div>
-            </div>
-            <div class="queue-item-card__prompt">${escapeHtml(item.prompt)}</div>
-            <div class="queue-item-card__meta">
-              <span>📁 <strong>${escapeHtml(projName)}</strong></span>
-              ${item.task_id ? `<span class="mono" style="font-size:0.72rem;">${escapeHtml(item.task_id)}</span>` : ""}
-            </div>
-            ${item.error ? `<div class="banner banner--error" style="padding:0.4rem 0.6rem; font-size:0.75rem; margin-top:0.25rem;">${escapeHtml(item.error)}</div>` : ""}
-            ${item.status === "waiting_approval" && item.task_id ? `
-              <div style="margin-top:0.25rem;">
-                <button type="button" class="btn btn--sm btn--primary queue-view-task-btn" data-task-id="${escapeHtml(item.task_id)}" style="width:100%;">
-                  Review ${item.pending_cards_count} Pending Card(s) →
-                </button>
+              <div class="queue-item-card__prompt">${escapeHtml(item.prompt)}</div>
+              <div class="queue-item-card__meta">
+                <span>📁 <strong>${escapeHtml(projName)}</strong></span>
+                ${item.task_id ? `<span class="mono" style="font-size:0.72rem;">${escapeHtml(item.task_id)}</span>` : ""}
               </div>
-            ` : ""}
+              ${item.error ? `<div class="banner banner--error" style="padding:0.4rem 0.6rem; font-size:0.75rem; margin-top:0.25rem;">${escapeHtml(item.error)}</div>` : ""}
+              ${item.status === "waiting_approval" && item.task_id ? `
+                <div style="margin-top:0.25rem;">
+                  <button type="button" class="btn btn--sm btn--primary queue-view-task-btn" data-task-id="${escapeHtml(item.task_id)}" style="width:100%;">
+                    Review ${item.pending_cards_count} Pending Card(s) →
+                  </button>
+                </div>
+              ` : ""}
+            </div>
+          `;
+        }).join("");
+
+    bodyContent = `
+      <div style="padding:0.6rem 1.25rem; background:var(--wiki-surface); border-bottom:1px solid var(--wiki-border); font-size:0.82rem; display:flex; align-items:center; justify-content:space-between;">
+        <label class="row-inline" style="gap:0.4rem; cursor:pointer; user-select:none;">
+          <input type="checkbox" id="queue-wait-approval-toggle" ${state.queueWaitForApproval ? "checked" : ""} />
+          <span>Wait for previous task approval in same repository</span>
+        </label>
+      </div>
+      <div class="queue-drawer__body">
+        ${itemsHtml}
+      </div>
+    `;
+  } else {
+    // UNIFIED INBOX TAB (§2.2 Slice 2)
+    const allInboxItems = inbox?.items ?? [];
+    const filteredItems = allInboxItems.filter((it) => {
+      if (state.inboxFilter === "conflicts") return it.has_conflict;
+      if (state.inboxFilter === "safe") return !it.has_conflict;
+      return true;
+    });
+
+    const safeCount = allInboxItems.filter((i) => !i.has_conflict).length;
+    const conflictCount = allInboxItems.filter((i) => i.has_conflict).length;
+    const selectedCount = state.selectedInboxCardIds.length;
+
+    // Test Hook Result Notification
+    let testHookBanner = "";
+    if (state.lastBatchApprovalResult && state.lastBatchApprovalResult.test_hook_results.length > 0) {
+      testHookBanner = state.lastBatchApprovalResult.test_hook_results.map((hook) => `
+        <div class="inbox-test-hook-panel">
+          <div class="row-between" style="align-items:center;">
+            <div class="row-inline" style="gap:0.4rem; align-items:center;">
+              <span class="badge ${hook.success ? 'badge--ok' : 'badge--bad'}">${hook.success ? '✓ Tests Passed' : '✕ Tests Failed'}</span>
+              <strong style="font-size:0.8rem;">${escapeHtml(hook.command)}</strong>
+            </div>
+            <span class="mono" style="font-size:0.72rem; color:var(--md-default-fg-color--light);">${escapeHtml(hook.project_dir.split('/').pop() || hook.project_dir)}</span>
           </div>
-        `;
-      }).join("");
+          ${hook.digested_summary ? `
+            <div class="inbox-digest-box">
+              <div style="font-weight:600; font-size:0.72rem; margin-bottom:0.25rem; text-transform:uppercase; letter-spacing:0.04em;">⚡ Local llama3.2:3b Compiler Digest:</div>
+              <div style="white-space:pre-wrap; font-size:0.75rem; line-height:1.4;">${escapeHtml(hook.digested_summary)}</div>
+            </div>
+          ` : ""}
+          <details style="font-size:0.73rem; margin-top:0.2rem;">
+            <summary style="cursor:pointer; color:var(--md-default-fg-color--light);">View Raw Output (${hook.raw_output.length} bytes)</summary>
+            <pre class="inbox-diff-preview" style="margin-top:0.3rem;">${escapeHtml(hook.raw_output)}</pre>
+          </details>
+        </div>
+      `).join("");
+    }
+
+    // Toolbar
+    const toolbarHtml = `
+      <div class="inbox-toolbar">
+        <div class="inbox-toolbar__row">
+          <div class="inbox-filter-group">
+            <button type="button" class="inbox-filter-btn ${state.inboxFilter === 'all' ? 'is-active' : ''}" data-inbox-filter="all">All (${allInboxItems.length})</button>
+            <button type="button" class="inbox-filter-btn ${state.inboxFilter === 'safe' ? 'is-active' : ''}" data-inbox-filter="safe">Safe (${safeCount})</button>
+            <button type="button" class="inbox-filter-btn ${state.inboxFilter === 'conflicts' ? 'is-active' : ''}" data-inbox-filter="conflicts">Conflicts (${conflictCount})</button>
+          </div>
+          <div class="row-inline" style="gap:0.35rem;">
+            <button type="button" id="inbox-select-safe-btn" class="btn btn--sm" title="Select all safe, non-conflicting cards">Select Safe</button>
+            <button type="button" id="inbox-select-all-btn" class="btn btn--sm" title="Select all visible cards">All</button>
+            <button type="button" id="inbox-deselect-all-btn" class="btn btn--sm" title="Clear selection">Clear</button>
+          </div>
+        </div>
+        <div class="inbox-toolbar__row" style="border-top:1px solid rgba(255,255,255,0.06); padding-top:0.5rem;">
+          <label class="row-inline" style="gap:0.4rem; cursor:pointer; user-select:none; font-size:0.78rem;">
+            <input type="checkbox" id="inbox-test-hook-checkbox" ${state.inboxRunTestHook ? "checked" : ""} />
+            <span>Run local test hook (e.g. <code>cargo check</code>) after apply</span>
+          </label>
+          <div class="inbox-batch-actions">
+            <button type="button" id="inbox-batch-reject-btn" class="btn btn--sm" ${selectedCount === 0 || state.batchApproving ? 'disabled' : ''} title="Reject selected cards with a reason">✕ Reject (${selectedCount})</button>
+            <button type="button" id="inbox-batch-approve-btn" class="btn btn--sm btn--primary" ${selectedCount === 0 || state.batchApproving ? 'disabled' : ''} title="Approve and execute selected cards sequentially">
+              ${state.batchApproving ? "Applying..." : `✓ Approve (${selectedCount})`}
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Group items by project
+    const projectGroups: Record<string, UnifiedInboxItem[]> = {};
+    for (const item of filteredItems) {
+      if (!projectGroups[item.project_dir]) {
+        projectGroups[item.project_dir] = [];
+      }
+      projectGroups[item.project_dir].push(item);
+    }
+
+    const itemsHtml = filteredItems.length === 0
+      ? `<div style="text-align:center; padding:3rem 1rem; color:var(--md-default-fg-color--light);">
+           <span style="font-size:2rem; display:block; margin-bottom:0.75rem;">🎉</span>
+           <strong>No cards match this filter</strong>
+           <p style="font-size:0.85rem; margin-top:0.35rem;">All tasks are clear or pending cards are filtered out.</p>
+         </div>`
+      : Object.entries(projectGroups).map(([projDir, pItems]) => {
+          const projName = projDir.split("/").pop() || projDir;
+          const cardsHtml = pItems.map((item) => {
+            const cardKey = `${item.task_id}:${item.card.card_id}`;
+            const isSelected = state.selectedInboxCardIds.includes(cardKey);
+
+            let rangesBadge = "";
+            if (item.line_ranges.length > 0) {
+              const rangesStr = item.line_ranges.map(([s, e]) => s === e ? `L${s}` : `L${s}-${e}`).join(", ");
+              rangesBadge = `<span class="badge badge--neutral" style="font-size:0.7rem;">${rangesStr}</span>`;
+            } else if (item.card.target_path) {
+              rangesBadge = `<span class="badge badge--neutral" style="font-size:0.7rem;">Whole file</span>`;
+            }
+
+            return `
+              <div class="inbox-card ${item.has_conflict ? 'has-conflict' : ''} ${isSelected ? 'is-selected' : ''}">
+                <div class="row-between" style="align-items:flex-start;">
+                  <label class="row-inline" style="gap:0.5rem; cursor:pointer; align-items:flex-start;">
+                    <input type="checkbox" class="inbox-card-checkbox" data-card-key="${escapeHtml(cardKey)}" ${isSelected ? 'checked' : ''} style="margin-top:0.25rem;" />
+                    <div>
+                      <div class="row-inline" style="gap:0.35rem; align-items:center; flex-wrap:wrap;">
+                        <span class="badge badge--warn" style="font-size:0.68rem; text-transform:uppercase;">${escapeHtml(item.card.action_class)}</span>
+                        ${rangesBadge}
+                        <code style="font-size:0.76rem; word-break:break-all;">${escapeHtml(item.card.target_path || item.card.title)}</code>
+                      </div>
+                      <div style="font-size:0.82rem; font-weight:500; margin-top:0.25rem;">${escapeHtml(item.card.title)}</div>
+                    </div>
+                  </label>
+                  <button type="button" class="btn btn--sm inbox-jump-task-btn" data-task-id="${escapeHtml(item.task_id)}" title="Open task in workbench">View Task →</button>
+                </div>
+
+                ${item.has_conflict ? `
+                  <div class="inbox-conflict-banner">
+                    <div style="font-weight:600; display:flex; align-items:center; gap:0.3rem;">
+                      <span>⚠️ Diff Conflict Collision Detected</span>
+                    </div>
+                    <div style="font-size:0.75rem;">${escapeHtml(item.conflict_description || "Overlaps with another queued task")}</div>
+                    <div style="font-size:0.72rem; opacity:0.85;">Conflicting task: ${escapeHtml(item.conflicting_tasks.join(", "))}</div>
+                  </div>
+                ` : ""}
+
+                ${item.card.diff_or_command ? `
+                  <pre class="inbox-diff-preview">${escapeHtml(item.card.diff_or_command.slice(0, 600))}${item.card.diff_or_command.length > 600 ? '\n... (truncated)' : ''}</pre>
+                ` : ""}
+
+                <div class="row-between" style="font-size:0.73rem; color:var(--md-default-fg-color--light); align-items:center;">
+                  <span>Task: <strong>${escapeHtml(item.task_title || item.task_id)}</strong></span>
+                  <span class="mono">${escapeHtml(item.card.card_id)}</span>
+                </div>
+              </div>
+            `;
+          }).join("");
+
+          return `
+            <div class="inbox-group">
+              <div class="inbox-group__title">
+                <span>📁 ${escapeHtml(projName)}</span>
+                <span class="mono" style="font-size:0.68rem; font-weight:normal; text-transform:none;">${escapeHtml(projDir)}</span>
+              </div>
+              ${cardsHtml}
+            </div>
+          `;
+        }).join("");
+
+    bodyContent = `
+      ${toolbarHtml}
+      <div class="queue-drawer__body">
+        ${testHookBanner}
+        ${itemsHtml}
+      </div>
+    `;
+  }
 
   return `
     <div class="queue-drawer-backdrop" id="queue-drawer-backdrop">
       <div class="queue-drawer" onclick="event.stopPropagation();">
         <div class="queue-drawer__header">
           <div class="row-inline" style="gap:0.5rem; align-items:center;">
-            <h2 class="panel-title" style="margin:0;">📋 Task Queue</h2>
-            <span class="badge badge--neutral">${items.length}</span>
-            ${runningItem ? `<span class="badge badge--ok pulse" style="font-size:0.7rem;">Active</span>` : ""}
+            <h2 class="panel-title" style="margin:0;">📋 Task Queue & Inbox</h2>
           </div>
           <div class="row-inline" style="gap:0.5rem; align-items:center;">
-            <button type="button" id="clear-completed-queue-btn" class="btn btn--sm" title="Clear completed, failed, and cancelled tasks">Clear Finished</button>
+            ${state.queueDrawerTab === "queue"
+              ? `<button type="button" id="clear-completed-queue-btn" class="btn btn--sm" title="Clear completed, failed, and cancelled tasks">Clear Finished</button>`
+              : `<button type="button" id="refresh-inbox-btn" class="btn btn--sm" title="Refresh Unified Inbox and scan diffs">↻ Refresh</button>`}
             <button type="button" id="close-queue-drawer-btn" class="btn btn--sm" title="Close drawer">✕</button>
           </div>
         </div>
-        <div style="padding:0.6rem 1.25rem; background:var(--wiki-surface); border-bottom:1px solid var(--wiki-border); font-size:0.82rem; display:flex; align-items:center; justify-content:space-between;">
-          <label class="row-inline" style="gap:0.4rem; cursor:pointer; user-select:none;">
-            <input type="checkbox" id="queue-wait-approval-toggle" ${state.queueWaitForApproval ? "checked" : ""} />
-            <span>Wait for previous task approval in same repository</span>
-          </label>
-        </div>
-        <div class="queue-drawer__body">
-          ${itemsHtml}
-        </div>
+        ${tabNavHtml}
+        ${bodyContent}
       </div>
     </div>
   `;
@@ -5791,6 +6040,164 @@ function bindEvents(): void {
   });
 
   document.querySelectorAll<HTMLElement>(".queue-view-task-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const taskId = btn.getAttribute("data-task-id");
+      if (!taskId) return;
+      const found = state.history.find((t) => t.task_id === taskId);
+      if (found) {
+        state.currentTask = found;
+        state.readOnlyHistorical = false;
+        state.tab = "workbench";
+        state.queueDrawerOpen = false;
+        renderApp();
+      }
+    });
+  });
+
+  // Unified Inbox events (§2.2 Slice 2 Phase B)
+  document.getElementById("queue-tab-btn-tasks")?.addEventListener("click", () => {
+    state.queueDrawerTab = "queue";
+    renderApp();
+  });
+
+  document.getElementById("queue-tab-btn-inbox")?.addEventListener("click", () => {
+    state.queueDrawerTab = "inbox";
+    renderApp();
+  });
+
+  document.getElementById("refresh-inbox-btn")?.addEventListener("click", async () => {
+    try {
+      state.unifiedInbox = await invoke<UnifiedInboxResponse>("get_unified_inbox");
+      renderApp();
+    } catch (err) {
+      state.uiBannerError = `Cannot refresh inbox: ${err}`;
+      renderApp();
+    }
+  });
+
+  document.querySelectorAll<HTMLElement>(".inbox-filter-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const filter = btn.getAttribute("data-inbox-filter") as "all" | "conflicts" | "safe" | null;
+      if (filter) {
+        state.inboxFilter = filter;
+        renderApp();
+      }
+    });
+  });
+
+  document.querySelectorAll<HTMLInputElement>(".inbox-card-checkbox").forEach((chk) => {
+    chk.addEventListener("change", () => {
+      const cardKey = chk.getAttribute("data-card-key");
+      if (!cardKey) return;
+      if (chk.checked) {
+        if (!state.selectedInboxCardIds.includes(cardKey)) {
+          state.selectedInboxCardIds.push(cardKey);
+        }
+      } else {
+        state.selectedInboxCardIds = state.selectedInboxCardIds.filter((k) => k !== cardKey);
+      }
+      renderApp();
+    });
+  });
+
+  document.getElementById("inbox-select-safe-btn")?.addEventListener("click", () => {
+    if (!state.unifiedInbox) return;
+    const safeKeys = state.unifiedInbox.items
+      .filter((i) => !i.has_conflict)
+      .map((i) => `${i.task_id}:${i.card.card_id}`);
+    state.selectedInboxCardIds = safeKeys;
+    renderApp();
+  });
+
+  document.getElementById("inbox-select-all-btn")?.addEventListener("click", () => {
+    if (!state.unifiedInbox) return;
+    const allKeys = state.unifiedInbox.items
+      .filter((it) => {
+        if (state.inboxFilter === "conflicts") return it.has_conflict;
+        if (state.inboxFilter === "safe") return !it.has_conflict;
+        return true;
+      })
+      .map((i) => `${i.task_id}:${i.card.card_id}`);
+    state.selectedInboxCardIds = allKeys;
+    renderApp();
+  });
+
+  document.getElementById("inbox-deselect-all-btn")?.addEventListener("click", () => {
+    state.selectedInboxCardIds = [];
+    renderApp();
+  });
+
+  document.getElementById("inbox-test-hook-checkbox")?.addEventListener("change", (e) => {
+    state.inboxRunTestHook = (e.target as HTMLInputElement).checked;
+  });
+
+  document.getElementById("inbox-batch-approve-btn")?.addEventListener("click", async () => {
+    if (state.selectedInboxCardIds.length === 0 || state.batchApproving) return;
+    const targets: BatchCardTarget[] = state.selectedInboxCardIds.map((k) => {
+      const idx = k.indexOf(":");
+      return {
+        task_id: k.slice(0, idx),
+        card_id: k.slice(idx + 1),
+      };
+    });
+
+    state.batchApproving = true;
+    state.uiBannerError = null;
+    renderApp();
+
+    try {
+      const res = await invoke<BatchApprovalResult>("batch_approve_cards", {
+        targets,
+        runTestHook: state.inboxRunTestHook,
+      });
+      state.lastBatchApprovalResult = res;
+      state.selectedInboxCardIds = [];
+      state.uiBannerInfo = `Batch approved ${res.approved_count} card(s) across ${res.affected_projects.length} project(s).`;
+      await refreshAllState();
+    } catch (err) {
+      state.uiBannerError = `Batch approval error: ${err}`;
+      renderApp();
+    } finally {
+      state.batchApproving = false;
+      renderApp();
+    }
+  });
+
+  document.getElementById("inbox-batch-reject-btn")?.addEventListener("click", async () => {
+    if (state.selectedInboxCardIds.length === 0 || state.batchApproving) return;
+    const reasonPrompt = window.prompt("Reason for rejecting selected card(s):", "Rejected in batch review");
+    if (reasonPrompt === null) return; // user cancelled prompt
+
+    const cleanReason = reasonPrompt.trim() || "Rejected by user in batch review";
+    const targets: BatchCardTarget[] = state.selectedInboxCardIds.map((k) => {
+      const idx = k.indexOf(":");
+      return {
+        task_id: k.slice(0, idx),
+        card_id: k.slice(idx + 1),
+      };
+    });
+
+    state.batchApproving = true;
+    renderApp();
+
+    try {
+      const rejectedCount = await invoke<number>("batch_reject_cards", {
+        targets,
+        reason: cleanReason,
+      });
+      state.selectedInboxCardIds = [];
+      state.uiBannerInfo = `Batch rejected ${rejectedCount} card(s).`;
+      await refreshAllState();
+    } catch (err) {
+      state.uiBannerError = `Batch rejection error: ${err}`;
+      renderApp();
+    } finally {
+      state.batchApproving = false;
+      renderApp();
+    }
+  });
+
+  document.querySelectorAll<HTMLElement>(".inbox-jump-task-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const taskId = btn.getAttribute("data-task-id");
       if (!taskId) return;

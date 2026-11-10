@@ -3,6 +3,7 @@ pub mod enforcer;
 pub mod events;
 pub mod hardware;
 pub mod history;
+pub mod inbox;
 pub mod memory;
 pub mod migration;
 pub mod pipeline;
@@ -22,8 +23,9 @@ use history::{
     ChoiceCard, TaskPlan, TaskRecord, VerificationResult,
 };
 use memory::{delete_memory_entry, load_all_memories, save_memory_entry, MemoryEntry};
+use prompts::DIGEST_LOG_PROMPT_PREFIX;
 use pipeline::{
-    ai_build_wiki_project_service, build_posture_summary, check_system_health,
+    ai_build_wiki_project_service, build_posture_summary, call_ollama_generate, check_system_health,
     classify_cloud_error_from_str, complete_wiki_setup_service, create_initial_task_record,
     detect_projects_in_dir_service, fetch_provider_models, get_detailed_wiki_status, get_wiki_setup_info_service,
     list_wiki_projects_service, ping_alt_provider, probe_cloud_health, rebuild_wiki_assets_service,
@@ -2104,6 +2106,206 @@ fn clear_completed_queue_items(
     Ok(items)
 }
 
+#[tauri::command]
+fn get_unified_inbox(_state: State<'_, AppState>) -> Result<inbox::UnifiedInboxResponse, String> {
+    let all = load_history()?;
+    let mut items = Vec::new();
+
+    for task in all {
+        for card in task.action_cards {
+            if card.status == "pending_approval" {
+                let line_ranges = inbox::extract_diff_line_ranges(&card.diff_or_command);
+                items.push(inbox::UnifiedInboxItem {
+                    task_id: task.task_id.clone(),
+                    task_title: task.title.clone(),
+                    project_dir: task.project_dir.clone(),
+                    card,
+                    line_ranges,
+                    has_conflict: false,
+                    conflicting_tasks: Vec::new(),
+                    conflict_description: None,
+                });
+            }
+        }
+    }
+
+    inbox::detect_conflicts(&mut items);
+    let total_pending = items.len();
+    let conflict_count = items.iter().filter(|i| i.has_conflict).count();
+
+    Ok(inbox::UnifiedInboxResponse {
+        items,
+        total_pending,
+        conflict_count,
+    })
+}
+
+#[tauri::command]
+async fn batch_approve_cards(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    targets: Vec<inbox::BatchCardTarget>,
+    run_test_hook: Option<bool>,
+) -> Result<inbox::BatchApprovalResult, String> {
+    let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
+    let cruise = state.cruise_control.load(Ordering::SeqCst);
+
+    let mut approved_count = 0;
+    let mut rejected_count = 0;
+    let mut affected_projects = Vec::new();
+
+    for target in targets {
+        let all = load_history()?;
+        let record_opt = all.into_iter().find(|r| r.task_id == target.task_id);
+        if let Some(record) = record_opt {
+            let proj = record.project_dir.clone();
+            match apply_card_approval(&cfg, cruise, record, &target.card_id).await {
+                Ok(updated) => {
+                    approved_count += 1;
+                    if !affected_projects.contains(&proj) {
+                        affected_projects.push(proj);
+                    }
+                    state.queue.sync_from_task_record(
+                        &updated.task_id,
+                        updated.queued_count,
+                        updated.auto_executed_count,
+                        updated.denied_count,
+                        updated.queued_count == 0,
+                    );
+                    emit_ticker_log(
+                        Some(&app),
+                        &target.task_id,
+                        "execute",
+                        "ok",
+                        format!("Batch approval: card `{}` approved and executed", target.card_id),
+                    );
+                }
+                Err(err) => {
+                    emit_ticker_log(
+                        Some(&app),
+                        &target.task_id,
+                        "execute",
+                        "bad",
+                        format!("Batch approval failed on card `{}`: {err}", target.card_id),
+                    );
+                    rejected_count += 1;
+                }
+            }
+        }
+    }
+
+    queue::emit_queue_updated(Some(&app), &state.queue.get_items());
+
+    let mut test_hook_results = Vec::new();
+    if run_test_hook.unwrap_or(false) {
+        for proj in &affected_projects {
+            let ppath = Path::new(proj);
+            let governing_grant = find_governing_whitelist(ppath, &cfg.whitelist);
+            match governing_grant {
+                Ok((_, grant)) if grant >= GrantLevel::Build => {
+                    if let Some(cmd) = inbox::detect_project_test_command(ppath) {
+                        emit_ticker_log(
+                            Some(&app),
+                            "batch-hook",
+                            "execute",
+                            "info",
+                            format!("Post-approval test hook: running `{cmd}` in `{proj}`..."),
+                        );
+                        let run_res = run_shell_command_bounded(ppath, &cmd, cfg.command_timeout_secs).await;
+                        let (success, exit_code, raw_out) = match run_res {
+                            Ok(out) => (true, Some(0), out),
+                            Err(err) => (false, Some(1), err),
+                        };
+
+                        let digested_summary = if !success || raw_out.contains("error:") || raw_out.contains("warning:") {
+                            let _vram_guard = state.queue.vram_lock.lock().await;
+                            let prompt = format!("{DIGEST_LOG_PROMPT_PREFIX}\n\n{raw_out}");
+                            let dig_res = call_ollama_generate(&cfg, &cfg.fast_model, &prompt, 0.1).await;
+                            drop(_vram_guard);
+                            dig_res.ok().map(|(_, summary)| summary)
+                        } else {
+                            None
+                        };
+
+                        let status_log = if success { "ok" } else { "bad" };
+                        let summary_preview = digested_summary.as_deref().unwrap_or(if success { "Tests passed cleanly." } else { "Tests reported errors." });
+                        emit_ticker_log(
+                            Some(&app),
+                            "batch-hook",
+                            "execute",
+                            status_log,
+                            format!("Post-approval test hook `{cmd}`: {summary_preview}"),
+                        );
+
+                        test_hook_results.push(inbox::TestHookResult {
+                            project_dir: proj.clone(),
+                            command: cmd,
+                            success,
+                            exit_code,
+                            raw_output: raw_out,
+                            digested_summary,
+                        });
+                    }
+                }
+                _ => {
+                    emit_ticker_log(
+                        Some(&app),
+                        "batch-hook",
+                        "execute",
+                        "warn",
+                        format!("Skipped test hook for `{proj}`: directory grant is below BUILD posture."),
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(inbox::BatchApprovalResult {
+        approved_count,
+        rejected_count,
+        affected_projects,
+        test_hook_results,
+    })
+}
+
+#[tauri::command]
+fn batch_reject_cards(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    targets: Vec<inbox::BatchCardTarget>,
+    reason: String,
+) -> Result<usize, String> {
+    let cruise = state.cruise_control.load(Ordering::SeqCst);
+    let mut rejected_count = 0;
+
+    for target in targets {
+        let all = load_history()?;
+        let record_opt = all.into_iter().find(|r| r.task_id == target.task_id);
+        if let Some(record) = record_opt {
+            if let Ok(updated) = apply_card_rejection(cruise, record, &target.card_id, &reason) {
+                rejected_count += 1;
+                state.queue.sync_from_task_record(
+                    &updated.task_id,
+                    updated.queued_count,
+                    updated.auto_executed_count,
+                    updated.denied_count,
+                    updated.queued_count == 0,
+                );
+                emit_ticker_log(
+                    Some(&app),
+                    &target.task_id,
+                    "execute",
+                    "warn",
+                    format!("Batch rejection: card `{}` rejected ({reason})", target.card_id),
+                );
+            }
+        }
+    }
+
+    queue::emit_queue_updated(Some(&app), &state.queue.get_items());
+    Ok(rejected_count)
+}
+
 async fn execute_queued_pipeline(app: AppHandle, queue_id: String) {
     let state = app.state::<AppState>();
     let queue_item = match state.queue.get_item(&queue_id) {
@@ -2621,6 +2823,9 @@ pub fn run() {
             remove_queue_item,
             reorder_queue_item,
             clear_completed_queue_items,
+            get_unified_inbox,
+            batch_approve_cards,
+            batch_reject_cards,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Kodiak tauri application");

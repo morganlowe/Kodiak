@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet — planned work will be listed here as it lands._
 
+## [1.1.1] — 2026-11-10
+
+### Added
+
+**Unified Queue Inbox & Batch Action Reviews (§2.2 Slice 2 Phase B)**
+
+- **Unified Queue Inbox (`src-tauri/src/inbox.rs`, `src/main.ts`)**: aggregates pending action cards across all queued and historical tasks into a single filterable inbox view inside the slide-over Queue Drawer.
+- **Diff Stack Overlap & Conflict Detection**:
+  - Unified diff hunk header parser (`extract_diff_line_ranges`) extracting inclusive 1-based line ranges `[start, end]`.
+  - Conflict detection engine (`detect_conflicts`) comparing proposed diff hunks across queued tasks targeting the same repository and same file path.
+  - Automatic collision flagging (`has_conflict = true`) with descriptive collision notes when proposed changes intersect, preventing destructive overwrite of overlapping line edits before approval.
+- **Batch Approval & Rejection IPC Commands**:
+  - `batch_approve_cards`: sequentially applies approved action cards under Grant Matrix and Deny-List verification, updates audit journal and task records, and synchronizes queue item counts.
+  - `batch_reject_cards`: bulk-rejects selected cards with user-specified rationale, records decision audit entries, and skips dependent downstream steps.
+- **Post-Approval Local Test Hooks**:
+  - Project verification command detector (`detect_project_test_command`) supporting `cargo check` (Rust), `npm test` (JavaScript/TypeScript), `pytest` (Python), and `make test` (C/C++/Makefiles).
+  - Post-approval execution hook automatically running project test commands when directory grants satisfy `BUILD` or `AUTONOMOUS` posture.
+  - **Local Compiler Log Digestion**: when test commands report compiler errors or warnings, automatically digests terminal logs via local `llama3.2:3b` under `vram_lock` serialization, returning a concise actionable summary.
+- **Unified Inbox UI & Filter Controls (`src/theme.css`, `src/main.ts`)**:
+  - Sub-navigation tabs in the Queue Drawer: `[📋 Tasks (N)]` and `[📥 Approval Inbox (N)]` with real-time conflict warning pills (`⚠️ N conflict(s)`).
+  - Top navigation bar Queue button enhanced with live inbox counters and red conflict alert badges.
+  - Filter bar supporting `All`, `Safe Only`, and `Conflicts Only` views.
+  - Bulk selection controls: `Select Safe` (auto-selects all non-conflicting cards), `Select All`, and `Clear`.
+  - Prominent red/amber diff collision banners displaying conflicting task IDs and overlapping line intervals.
+  - Expandable post-approval test hook result panel displaying exit codes, command names, digested compiler summaries, and raw terminal outputs.
+
 ## [1.1.0] — 2026-11-10
 
 ### Added
@@ -78,6 +104,7 @@ _Nothing yet — planned work will be listed here as it lands._
 - Split Arch `PKGBUILD` producing `kodiak` and `kodiak-projectswiki` packages with dependency hooks (`python-mkdocs-material`, `python-requests`, `python-toml`).
 - Debian/Ubuntu `.deb` binary packages with `apt` dependency resolution.
 
-[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/morganlowe/Kodiak/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/morganlowe/Kodiak/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/morganlowe/Kodiak/releases/tag/v1.0.0

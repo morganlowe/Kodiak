@@ -853,6 +853,47 @@ All 8 named regression tests pass with zero regressions:
   - Updated `ProjectsWiki/docs/extra.css` header height to `3.5rem` and `.md-header__topic` font size to `2.4rem` to match the visual height of the bear logo.
   - Increased root document scale from 94% to 100% (102%–104% on ultrawide/high-DPI) for enhanced readability.
 
+---
+
+## 24. Unified Queue Inbox, Diff Conflict Detection, and Post-Approval Test Hooks (§2.2 Slice 2 Phase B)
+
+**Date:** 2026-11-10  
+**Context:**  
+With asynchronous multi-task queuing established, multiple tasks targeting the same or different repositories generate pending action cards across history. Reviewing them individually required jumping back and forth across separate task records. Furthermore, when two queued tasks propose edits to overlapping line intervals in the same file, applying them without collision awareness risks silent file corruption or conflicting hunks. Finally, after batch-applying code changes, developers need immediate feedback on whether the changes compile and pass tests.
+
+### 24.1 Architecture & Implementation
+- **Unified Diff Hunk Extraction & Line Range Parsing (`src-tauri/src/inbox.rs`)**:
+  - `extract_diff_line_ranges(diff_text: &str)` parses unified diff headers (`@@ -old,len +new,len @@`) into inclusive 1-based intervals `(start_line, end_line)`.
+  - Handles single-line hunks without length specifiers (e.g. `+10` $\rightarrow$ `[10, 10]`) and multiline ranges (e.g. `+10,15` $\rightarrow$ `[10, 24]`).
+- **Diff Conflict Detection Engine**:
+  - `detect_conflicts(items: &mut [UnifiedInboxItem])` inspects all pending cards targeting the same project root and file path across different tasks.
+  - Interval intersection: `ranges_overlap(r1, r2)` detects interval collisions (`r1.0 <= r2.1 && r2.0 <= r1.1`).
+  - Cards modifying the same target without explicit diff hunk headers (e.g. full-file overwrite or creation) are inherently flagged as whole-file modifications.
+  - Automatically marks `has_conflict = true`, populates `conflicting_tasks`, and sets a clear collision description detailing exact overlapping lines (e.g. `Overlapping diff lines [10-25] vs [18-35] on 'src/lib.rs'`).
+- **Post-Approval Local Test Hooks & Compiler Log Digestion**:
+  - `detect_project_test_command(project_path: &Path)` auto-detects repository test frameworks:
+    - `Cargo.toml` $\rightarrow$ `cargo check`
+    - `package.json` $\rightarrow$ `npm test`
+    - `pytest.ini` / `pyproject.toml` / `setup.py` $\rightarrow$ `pytest`
+    - `Makefile` $\rightarrow$ `make test`
+  - **Security Invariant**: strictly checked against the Grant Matrix — only directories at `BUILD` or `AUTONOMOUS` allow post-approval test execution; lower grants (`READ`, `CREATE`) emit audit warnings and bypass subprocess execution.
+  - **Local Model Digestion under VRAM Lock**: when compiler/test errors or warnings occur, raw output is digested via local `llama3.2:3b` under `state.queue.vram_lock` protection, providing a concise compiler diagnostics summary at zero cloud token cost.
+- **Batch IPC Commands**:
+  - `get_unified_inbox`: aggregates pending cards across all tasks, extracts hunk ranges, runs conflict analysis, and returns `UnifiedInboxResponse`.
+  - `batch_approve_cards`: sequentially applies target approvals under canonical path verification and deny-list checks, synchronizes task records and queue state, and optionally executes project test hooks.
+  - `batch_reject_cards`: bulk-rejects selected cards with a user-provided rationale, skipping downstream dependent steps and synchronizing the queue.
+
+### 24.2 Unified Inbox UI & Filter Stack (`src/main.ts`, `src/theme.css`)
+- **Queue Drawer Sub-Navigation Tabs**:
+  - Drawer header features sub-navigation tabs `[📋 Tasks (N)]` and `[📥 Approval Inbox (N)]`.
+  - The top-bar Queue button and inbox tab display live badges and amber/red conflict indicators (`⚠️ N conflict(s)`) when diff collisions are detected.
+- **Filter & Selection Toolbar**:
+  - Filter pills for `All`, `Safe Only` (zero diff conflicts), and `Conflicts Only`.
+  - One-click bulk selection buttons: `Select Safe`, `All`, and `Clear`.
+  - Prominent diff conflict warning banners displaying colliding task titles and line ranges.
+  - Post-approval test hook result banner displaying test command status, exit codes, and digested `llama3.2:3b` summaries.
+
+
 
 
 
