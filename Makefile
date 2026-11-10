@@ -14,7 +14,7 @@ build:
 pkg: pkg-bundle
 
 pkg-bundle:
-	makepkg -sf --noconfirm
+	BUILDDIR=/tmp/kodiak-makepkg makepkg -sf --noconfirm
 	mkdir -p $(ARCH_BUNDLE_DIR)
 	cp -f kodiak-*.pkg.tar.* $(ARCH_BUNDLE_DIR)/
 
@@ -24,7 +24,7 @@ deb:
 
 ## One-command compile & install on any Arch/CachyOS machine
 install:
-	makepkg -sfci --noconfirm
+	BUILDDIR=/tmp/kodiak-makepkg makepkg -sfci --noconfirm
 
 dev:
 	npx --no-install tauri dev

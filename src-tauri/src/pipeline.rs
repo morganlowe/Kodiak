@@ -778,17 +778,30 @@ pub enum StageProvider {
     Alternate(crate::config::AltProviderConfig),
 }
 
+fn format_reqwest_error(e: &reqwest::Error) -> String {
+    let mut err_str = e.to_string();
+    let mut source = std::error::Error::source(e);
+    while let Some(s) = source {
+        let msg = s.to_string();
+        if !err_str.contains(&msg) {
+            err_str.push_str(&format!(" ({msg})"));
+        }
+        source = s.source();
+    }
+    err_str
+}
+
 pub async fn call_alt_provider_chat(
     provider: &crate::config::AltProviderConfig,
     _stage: &str,
     system_prompt: &str,
     user_prompt: &str,
 ) -> Result<String, String> {
-    let client = Client::builder()
-        .no_proxy()
-        .timeout(Duration::from_secs(60))
-        .build()
-        .map_err(|e| format!("HTTP client error: {e}"))?;
+    let mut builder = Client::builder().timeout(Duration::from_secs(60));
+    if provider.base_url.contains("127.0.0.1") || provider.base_url.contains("localhost") {
+        builder = builder.no_proxy();
+    }
+    let client = builder.build().map_err(|e| format!("HTTP client error: {e}"))?;
 
     let trimmed_base = provider.base_url.trim_end_matches('/');
     let url = if trimmed_base.ends_with("/chat/completions") {
@@ -816,14 +829,20 @@ pub async fn call_alt_provider_chat(
         "stream": false
     });
 
-    let resp = client
+    let mut req = client
         .post(&url)
         .header("Authorization", format!("Bearer {}", provider.api_key))
-        .header("Content-Type", "application/json")
+        .header("Content-Type", "application/json");
+
+    if provider.base_url.contains("generativelanguage.googleapis.com") {
+        req = req.header("x-goog-api-key", &provider.api_key);
+    }
+
+    let resp = req
         .json(&payload)
         .send()
         .await
-        .map_err(|e| format!("Alternate provider '{}' unreachable at {url}: {e}", provider.name))?;
+        .map_err(|e| format!("Alternate provider '{}' unreachable at {url}: {}", provider.name, format_reqwest_error(&e)))?;
 
     let status = resp.status();
     if !status.is_success() {
@@ -858,11 +877,11 @@ pub struct ProviderTestResult {
 }
 
 pub async fn ping_alt_provider(provider: &crate::config::AltProviderConfig) -> Result<ProviderTestResult, String> {
-    let client = Client::builder()
-        .no_proxy()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .map_err(|e| format!("HTTP client error: {e}"))?;
+    let mut builder = Client::builder().timeout(Duration::from_secs(10));
+    if provider.base_url.contains("127.0.0.1") || provider.base_url.contains("localhost") {
+        builder = builder.no_proxy();
+    }
+    let client = builder.build().map_err(|e| format!("HTTP client error: {e}"))?;
 
     let trimmed_base = provider.base_url.trim_end_matches('/');
     let url = if trimmed_base.ends_with("/chat/completions") {
@@ -881,10 +900,16 @@ pub async fn ping_alt_provider(provider: &crate::config::AltProviderConfig) -> R
     });
 
     let start_instant = std::time::Instant::now();
-    match client
+    let mut req = client
         .post(&url)
         .header("Authorization", format!("Bearer {}", provider.api_key))
-        .header("Content-Type", "application/json")
+        .header("Content-Type", "application/json");
+
+    if provider.base_url.contains("generativelanguage.googleapis.com") {
+        req = req.header("x-goog-api-key", &provider.api_key);
+    }
+
+    match req
         .json(&payload)
         .send()
         .await
@@ -920,7 +945,7 @@ pub async fn ping_alt_provider(provider: &crate::config::AltProviderConfig) -> R
             Ok(ProviderTestResult {
                 success: false,
                 status_code: status,
-                message: format!("Connection failed ({latency_ms}ms): {e}"),
+                message: format!("Connection failed ({latency_ms}ms): {}", format_reqwest_error(&e)),
                 latency_ms: Some(latency_ms),
             })
         }
@@ -932,11 +957,11 @@ pub async fn fetch_provider_models(
     api_key: &str,
     provider_name: Option<&str>,
 ) -> Result<Vec<String>, String> {
-    let client = Client::builder()
-        .no_proxy()
-        .timeout(Duration::from_secs(12))
-        .build()
-        .map_err(|e| format!("HTTP client error: {e}"))?;
+    let mut builder = Client::builder().timeout(Duration::from_secs(12));
+    if base_url.contains("127.0.0.1") || base_url.contains("localhost") {
+        builder = builder.no_proxy();
+    }
+    let client = builder.build().map_err(|e| format!("HTTP client error: {e}"))?;
 
     let base_trimmed = base_url.trim().trim_end_matches('/');
     let prov_name_lower = provider_name.unwrap_or("").to_lowercase();
@@ -2126,6 +2151,15 @@ pub async fn run_execute_stage_with_events(
     }
 
     for step in &plan.steps {
+        if let Some(app_handle) = app {
+            use tauri::Manager;
+            if let Some(state) = app_handle.try_state::<crate::AppState>() {
+                if state.queue.get_items().iter().any(|i| i.task_id.as_deref() == Some(task_id) && i.status == crate::queue::QueueItemStatus::Cancelled) {
+                    emit_ticker_log(app, task_id, "execute", "warn", "Task execution stopped by user.");
+                    return Err("Task execution stopped by user.".to_string());
+                }
+            }
+        }
         let norm_target = step.target_path.trim_start_matches("./");
         let is_read_tool = matches!(
             step.route_tool.as_str(),

@@ -1969,7 +1969,23 @@ async fn resolve_choice_local(
 ) -> Result<TaskRecord, String> {
     let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
     let cruise = state.cruise_control.load(Ordering::SeqCst);
-    execute_choice_local(Some(&app), &cfg, cruise, &task_id).await
+    let updated = execute_choice_local(Some(&app), &cfg, cruise, &task_id).await?;
+    let pending_cards = updated
+        .action_cards
+        .iter()
+        .filter(|c| c.status == "pending_approval")
+        .count();
+    let is_done = updated.verification.is_some()
+        || (updated.failed_stage.is_none() && updated.plan.is_some() && pending_cards == 0);
+    state.queue.sync_from_task_record(
+        &task_id,
+        pending_cards,
+        updated.auto_executed_count,
+        updated.denied_count,
+        is_done,
+    );
+    queue::emit_queue_updated(Some(&app), &state.queue.get_items());
+    Ok(updated)
 }
 
 #[tauri::command]
@@ -1982,7 +1998,31 @@ async fn resolve_choice_alt_provider(
 ) -> Result<TaskRecord, String> {
     let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
     let cruise = state.cruise_control.load(Ordering::SeqCst);
-    execute_choice_alt_provider(Some(&app), &cfg, cruise, &task_id, &provider_name, consent_given).await
+    let updated = execute_choice_alt_provider(
+        Some(&app),
+        &cfg,
+        cruise,
+        &task_id,
+        &provider_name,
+        consent_given,
+    )
+    .await?;
+    let pending_cards = updated
+        .action_cards
+        .iter()
+        .filter(|c| c.status == "pending_approval")
+        .count();
+    let is_done = updated.verification.is_some()
+        || (updated.failed_stage.is_none() && updated.plan.is_some() && pending_cards == 0);
+    state.queue.sync_from_task_record(
+        &task_id,
+        pending_cards,
+        updated.auto_executed_count,
+        updated.denied_count,
+        is_done,
+    );
+    queue::emit_queue_updated(Some(&app), &state.queue.get_items());
+    Ok(updated)
 }
 
 #[tauri::command]
@@ -2448,14 +2488,35 @@ async fn execute_queued_pipeline(app: AppHandle, queue_id: String) {
         }
         Err(err) => {
             let err_kind = classify_cloud_error_from_str(&err);
-            record.stage_error_kind = Some(format!("{:?}", err_kind).to_ascii_lowercase());
-            emit_ticker_log(
-                Some(&app),
-                &record.task_id,
-                "interpret",
-                "bad",
-                format!("Stage 1 (interpret) failed: {err}"),
-            );
+            if err_kind == CloudErrorKind::QuotaExhausted {
+                record.stage_error_kind = Some("quota_exhausted".to_string());
+                record.choice_cards.push(ChoiceCard {
+                    card_id: format!("choice-interpret-{}", Utc::now().timestamp_millis()),
+                    stage: "interpret".to_string(),
+                    error_text: err.clone(),
+                    timestamp: Utc::now().to_rfc3339(),
+                    status: "pending".to_string(),
+                    chosen_option: None,
+                    chosen_at: None,
+                    chosen_provider: None,
+                });
+                emit_ticker_log(
+                    Some(&app),
+                    &record.task_id,
+                    "interpret",
+                    "warn",
+                    "Cloud quota exhausted — waiting for your decision".to_string(),
+                );
+            } else {
+                record.stage_error_kind = Some(format!("{:?}", err_kind).to_ascii_lowercase());
+                emit_ticker_log(
+                    Some(&app),
+                    &record.task_id,
+                    "interpret",
+                    "bad",
+                    format!("Stage 1 (interpret) failed: {err}"),
+                );
+            }
             emit_stage_changed(
                 Some(&app),
                 &record.task_id,
@@ -2472,6 +2533,15 @@ async fn execute_queued_pipeline(app: AppHandle, queue_id: String) {
                 Some(err),
             );
             queue::emit_queue_updated(Some(&app), &state.queue.get_items());
+            return;
+        }
+    }
+
+    // Check if task was cancelled before starting Stage 2
+    if let Some(item) = state.queue.get_item(&queue_id) {
+        if item.status == queue::QueueItemStatus::Cancelled {
+            emit_ticker_log(Some(&app), &record.task_id, "execute", "warn", "Task stopped by user.");
+            emit_stage_changed(Some(&app), &record.task_id, "done", "failed", Some("Cancelled by user".to_string()));
             return;
         }
     }
@@ -2574,6 +2644,15 @@ async fn execute_queued_pipeline(app: AppHandle, queue_id: String) {
         }
     }
 
+    // Check if task was cancelled before starting Stage 3
+    if let Some(item) = state.queue.get_item(&queue_id) {
+        if item.status == queue::QueueItemStatus::Cancelled {
+            emit_ticker_log(Some(&app), &record.task_id, "verify", "warn", "Task stopped by user.");
+            emit_stage_changed(Some(&app), &record.task_id, "done", "failed", Some("Cancelled by user".to_string()));
+            return;
+        }
+    }
+
     // Stage 3: Cloud Verify
     state.queue.update_status(
         &queue_id,
@@ -2668,14 +2747,35 @@ async fn execute_queued_pipeline(app: AppHandle, queue_id: String) {
         }
         Err(err) => {
             let err_kind = classify_cloud_error_from_str(&err);
-            record.stage_error_kind = Some(format!("{:?}", err_kind).to_ascii_lowercase());
-            emit_ticker_log(
-                Some(&app),
-                &record.task_id,
-                "verify",
-                "bad",
-                format!("Stage 3 (verify) failed: {err}"),
-            );
+            if err_kind == CloudErrorKind::QuotaExhausted {
+                record.stage_error_kind = Some("quota_exhausted".to_string());
+                record.choice_cards.push(ChoiceCard {
+                    card_id: format!("choice-verify-{}", Utc::now().timestamp_millis()),
+                    stage: "verify".to_string(),
+                    error_text: err.clone(),
+                    timestamp: Utc::now().to_rfc3339(),
+                    status: "pending".to_string(),
+                    chosen_option: None,
+                    chosen_at: None,
+                    chosen_provider: None,
+                });
+                emit_ticker_log(
+                    Some(&app),
+                    &record.task_id,
+                    "verify",
+                    "warn",
+                    "Cloud quota exhausted — waiting for your decision".to_string(),
+                );
+            } else {
+                record.stage_error_kind = Some(format!("{:?}", err_kind).to_ascii_lowercase());
+                emit_ticker_log(
+                    Some(&app),
+                    &record.task_id,
+                    "verify",
+                    "bad",
+                    format!("Stage 3 (verify) failed: {err}"),
+                );
+            }
             emit_stage_changed(
                 Some(&app),
                 &record.task_id,
@@ -5618,6 +5718,39 @@ tier = "low"
         });
 
         assert_eq!(record.choice_cards.len(), 1);
+        assert_eq!(record.choice_cards[0].status, "pending");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[tokio::test]
+    async fn test_queued_pipeline_quota_exhausted_creates_choice_card() {
+        let cfg = AppConfig::default();
+        let temp_dir = std::env::temp_dir().join(format!("test-proj-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let mut record = create_initial_task_record(&cfg, "Test quota", &temp_dir, false);
+        let err = "Cloud Lumo Bridge returned HTTP 429 Too Many Requests (quota_exhausted): {\"error\":{\"message\":\"You have reached your weekly quota\"}}".to_string();
+        let err_kind = classify_cloud_error_from_str(&err);
+        assert_eq!(err_kind, CloudErrorKind::QuotaExhausted);
+
+        if err_kind == CloudErrorKind::QuotaExhausted {
+            record.stage_error_kind = Some("quota_exhausted".to_string());
+            record.choice_cards.push(ChoiceCard {
+                card_id: format!("choice-interpret-{}", Utc::now().timestamp_millis()),
+                stage: "interpret".to_string(),
+                error_text: err.clone(),
+                timestamp: Utc::now().to_rfc3339(),
+                status: "pending".to_string(),
+                chosen_option: None,
+                chosen_at: None,
+                chosen_provider: None,
+            });
+        }
+
+        assert_eq!(record.stage_error_kind.as_deref(), Some("quota_exhausted"));
+        assert_eq!(record.choice_cards.len(), 1);
+        assert_eq!(record.choice_cards[0].stage, "interpret");
         assert_eq!(record.choice_cards[0].status, "pending");
 
         let _ = std::fs::remove_dir_all(&temp_dir);

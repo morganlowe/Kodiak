@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet — planned work will be listed here as it lands._
 
+## [1.1.1] — 2026-11-10
+
+### Fixed
+
+- **Alternate Provider TLS Root Certificates**: added `rustls-tls-webpki-roots` to `reqwest` in `Cargo.toml`. Previously, requests to external providers (such as Google Gemini at `https://generativelanguage.googleapis.com`) failed during TLS negotiation due to missing Mozilla root certificates in the default `rustls` configuration.
+- **Proxy Loopback Bypassing**: configured `no_proxy()` to apply selectively to local test and Ollama endpoints (`127.0.0.1` and `localhost`), enabling external AI endpoints to route cleanly across host network setups.
+- **Gemini OpenAI-Compatible Endpoint Headers**: added `x-goog-api-key` header to alternate provider requests to ensure Google Gemini OpenAI compatibility.
+- **Detailed Transport Error Reporting**: enhanced reqwest error formatting (`format_reqwest_error`) to extract and report the underlying root-cause chain instead of a truncated top-level message.
+- **Safe Makepkg Build Directory Isolation**: updated `Makefile` to pass `BUILDDIR=/tmp/kodiak-makepkg` to `makepkg`, isolating `$srcdir` from the repository root to avoid wiping local `./src`.
+
+### Added
+
+- **Task Stop / Cancel Control**:
+  - Interactive **⏹ Stop Task** button in the Workbench action bar and Live Event Ticker header.
+  - Runtime cancellation checks in `run_execute_stage_with_events` and `execute_queued_pipeline`, allowing immediate abort of active pipelines and background tasks.
+  - Cancellation capability across active and waiting queue tasks in the Task Queue drawer.
+
 ## [1.1.0] — 2026-11-10
 
 ### Added
@@ -94,6 +111,7 @@ _Nothing yet — planned work will be listed here as it lands._
 - Split Arch `PKGBUILD` producing `kodiak` and `kodiak-projectswiki` packages with dependency hooks (`python-mkdocs-material`, `python-requests`, `python-toml`).
 - Debian/Ubuntu `.deb` binary packages with `apt` dependency resolution.
 
-[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/morganlowe/Kodiak/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/morganlowe/Kodiak/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/morganlowe/Kodiak/releases/tag/v1.0.0

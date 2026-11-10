@@ -732,6 +732,15 @@ function handlePipelineEvent(ev: PipelineEvent): void {
           checkCloudStatusToast();
         }
       }
+      if (ev.task_id && !state.readOnlyHistorical) {
+        refreshAllState().then(() => {
+          const found = state.history.find((h) => h.task_id === ev.task_id);
+          if (found) {
+            state.currentTask = found;
+            renderApp();
+          }
+        });
+      }
       break;
     }
     case "ticker_log":
@@ -891,6 +900,15 @@ async function refreshAllState(): Promise<void> {
     if (qItems) state.queueItems = qItems;
     if (uInbox) state.unifiedInbox = uInbox;
     if (pDash) state.dashboardData = pDash;
+
+    if (!state.readOnlyHistorical) {
+      if (state.currentTask) {
+        const fresh = hist.find((h) => h.task_id === state.currentTask!.task_id);
+        if (fresh) state.currentTask = fresh;
+      } else if (hist.length > 0) {
+        state.currentTask = hist[0];
+      }
+    }
 
     try {
       const [wDetails, wProjects] = await Promise.all([
@@ -1263,6 +1281,13 @@ function renderWorkbenchTab(): string {
                 : "▶ Run Pipeline"
             }
           </button>
+          ${
+            state.runningPipeline || state.queueItems.some((i) => i.status === "interpreting" || i.status === "local_working" || i.status === "verifying")
+              ? `<button type="button" id="stop-active-task-btn" class="btn btn--bad" title="Stop and abort the active task">
+                   ⏹ Stop Task
+                 </button>`
+              : ""
+          }
         </div>
       </div>
     </section>
@@ -1276,6 +1301,11 @@ function renderWorkbenchTab(): string {
             <div class="panel-header">
               <h2 class="panel-title">Live Event Ticker</h2>
               <div class="row-inline">
+                ${
+                  state.runningPipeline || state.queueItems.some((i) => i.status === "interpreting" || i.status === "local_working" || i.status === "verifying")
+                    ? `<button type="button" id="ticker-stop-btn" class="btn btn--bad btn--sm" title="Stop the active task">⏹ Stop Task</button>`
+                    : ""
+                }
                 <button type="button" id="ticker-copy-all-btn" class="btn btn--sm" title="Copy all ticker log lines as text">Copy All Lines</button>
                 <span class="muted">${state.tickerLocked ? "Scroll locked" : "Auto-scroll (pauses on hover)"}</span>
                 <button type="button" id="ticker-lock-btn" class="btn btn--sm">${state.tickerLocked ? "Unlock scroll" : "Lock scroll"}</button>
@@ -3709,7 +3739,7 @@ function renderAboutTab(): string {
         <div style="flex:1; min-width:240px;">
           <div class="row-inline" style="gap:0.75rem; align-items:baseline;">
             <h1 style="margin:0; font-size:1.8rem; font-weight:700; color:var(--md-default-fg-color);">Kodiak</h1>
-            <span class="badge badge--ok" style="font-size:0.85rem;">v1.1.0</span>
+            <span class="badge badge--ok" style="font-size:0.85rem;">v1.1.1</span>
           </div>
           <p style="margin:0.35rem 0 0.5rem 0; font-size:1.05rem; font-weight:500; color:var(--md-default-fg-color);">
             The bear who runs the job site — local-first AI task delegation
@@ -3939,7 +3969,7 @@ function renderQueueDrawer(): string {
           }
 
           const projName = item.project_root.split("/").pop() || item.project_root;
-          const canCancel = item.status === "queued" || item.status === "interpreting" || item.status === "waiting_for_dependency";
+          const canCancel = item.status !== "completed" && item.status !== "failed" && item.status !== "cancelled";
           const canRemove = item.status === "completed" || item.status === "failed" || item.status === "cancelled";
           const canReorder = item.status === "queued" || item.status === "waiting_for_dependency";
 
@@ -3964,6 +3994,20 @@ function renderQueueDrawer(): string {
                 <div style="margin-top:0.25rem;">
                   <button type="button" class="btn btn--sm btn--primary queue-view-task-btn" data-task-id="${escapeHtml(item.task_id)}" style="width:100%;">
                     Review ${item.pending_cards_count} Pending Card(s) →
+                  </button>
+                </div>
+              ` : ""}
+              ${item.status === "failed" && item.task_id ? `
+                <div style="margin-top:0.25rem;">
+                  <button type="button" class="btn btn--sm btn--warn queue-view-task-btn" data-task-id="${escapeHtml(item.task_id)}" style="width:100%;">
+                    View Task / Choice Card →
+                  </button>
+                </div>
+              ` : ""}
+              ${item.status === "completed" && item.task_id ? `
+                <div style="margin-top:0.25rem;">
+                  <button type="button" class="btn btn--sm queue-view-task-btn" data-task-id="${escapeHtml(item.task_id)}" style="width:100%;">
+                    View Completed Task →
                   </button>
                 </div>
               ` : ""}
@@ -4850,6 +4894,8 @@ function bindEvents(): void {
       });
       state.promptText = "";
       state.uiBannerInfo = `Task queued (#${item.queue_id}) — running asynchronously via multi-task queue.`;
+      resetLiveRun(false);
+      STAGE_ORDER.forEach((s) => (state.stages[s] = "idle"));
       const qItems = await invoke<QueueItem[]>("get_queue_items");
       state.queueItems = qItems;
       renderApp();
@@ -4858,6 +4904,35 @@ function bindEvents(): void {
       renderApp();
     }
   });
+
+  // Stop / Cancel active task on demand
+  const handleStopActiveTask = async () => {
+    try {
+      const activeItem = state.queueItems.find(
+        (i) => i.status === "interpreting" || i.status === "local_working" || i.status === "verifying" || i.status === "queued"
+      );
+      if (activeItem) {
+        await invoke<QueueItem>("cancel_queue_item", { queueId: activeItem.queue_id });
+      }
+      state.runningPipeline = false;
+      state.uiBannerInfo = "Task stopped by user.";
+      STAGE_ORDER.forEach((s) => {
+        if (state.stages[s] === "active") state.stages[s] = "failed";
+      });
+      state.ticker.push({
+        level: "warn",
+        message: "Task execution stopped by user.",
+        timestamp: new Date().toLocaleTimeString(),
+      });
+      await refreshAllState();
+      renderApp();
+    } catch (err) {
+      state.uiBannerError = `Cannot stop task: ${String(err)}`;
+      renderApp();
+    }
+  };
+  document.getElementById("stop-active-task-btn")?.addEventListener("click", handleStopActiveTask);
+  document.getElementById("ticker-stop-btn")?.addEventListener("click", handleStopActiveTask);
 
   // Retry failed stage only (§7)
   document.getElementById("retry-stage-btn")?.addEventListener("click", async (ev) => {
