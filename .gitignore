@@ -40,4 +40,8 @@ ProjectsWiki/docs/*.md
 !ProjectsWiki/docs/index.md
 !ProjectsWiki/docs/demo-project.md
 
+# Internal development docs & proposals (local only)
+docs/internal/
+docs/proposals/
+
 

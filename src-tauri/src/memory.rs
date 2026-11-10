@@ -1,4 +1,4 @@
-//! Local Memory Bank (`~/.local/share/foreman/memory/*.md`) (§1 Slice 2.1).
+//! Local Memory Bank (`~/.local/share/kodiak/memory/*.md`) (§1 Slice 2.1).
 //! Plain Markdown files with YAML frontmatter.
 
 use crate::config::{load_or_seed_config, memory_dir_path, GrantLevel};

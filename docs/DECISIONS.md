@@ -770,5 +770,35 @@ All 8 named regression tests pass with zero regressions:
     - `restart` and `status` cleanly route to `systemctl --user` when the systemd service is active.
     - In `ProjectsWiki/sync_api.py`, increased `RestartSec` from 3 to 5 and added idempotent unit file generation.
 
+## 21. Release Integrity & Repository Hardening (v1.0.0 Gate)
+
+### 21.1 Foreman Residue Classification & Storage Path Retention Strategy
+- **Context & Audit**:
+  - A comprehensive case-insensitive sweep across `src-tauri/`, `src/`, `scripts/`, `Makefile`, `PKGBUILD`, and `config.example.toml` identified 35 occurrences of `foreman`.
+  - The runtime storage path logic in `src-tauri/src/config.rs` already defaults to `~/.local/share/kodiak` and `~/.config/kodiak`. `src-tauri/src/migration.rs` provides automated, atomic first-launch migration from legacy `foreman` paths to `kodiak`.
+- **Decision & Strategy**:
+  - **Storage Paths & Migration**: Retained all migration routines in `src-tauri/src/migration.rs` and the `FOREMAN_DATA_DIR` environment fallback in `src-tauri/src/config.rs`. Silent removal or path breakage would orphan existing user history and journals.
+  - **Packaging Directives**: Retained `conflicts=('foreman') replaces=('foreman')` in `PKGBUILD` and `Conflicts: foreman / Replaces: foreman` in `scripts/build_deb.sh` to allow system package managers (pacman, dpkg) to replace the legacy packages cleanly.
+  - **Prose & Doc Comment Updates**: Surgically updated stale doc comments in `src-tauri/src/enforcer.rs` (lines 8, 146), `src-tauri/src/history.rs` (line 1), `src-tauri/src/memory.rs` (line 1), and a journal format string in `src-tauri/src/lib.rs` (line 1333) so log strings and internal module documentation reflect active `~/.local/share/kodiak/` paths.
+  - **Test Fixtures**: Retained legacy fixture names in unit tests where migration from `foreman` is explicitly validated.
+
+### 21.2 Slice 2 Roadmap Restoration & Path Alignment
+- **Context**:
+  - `SLICE2_PROPOSAL.md` was displaced during the v1.0.0 release sweep.
+- **Decision**:
+  - Restored and repaired the proposal under `docs/internal/SLICE2_PROPOSAL.md` (and `docs/proposals/`).
+  - Replaced all "Foreman" product references with "Kodiak".
+  - Renumbered legacy charter references: mapped the hard deny-list to Charter §2 and capability grants to the Granular Grant Matrix in Feature Highlights.
+  - Reconciled storage path to `~/.local/share/kodiak/history.json` with an explicit migration note.
+  - **STOP GATE Outcome**: Per Aureus's explicit directive, all proposal files and folders (`docs/internal/`, `docs/proposals/`) remain strictly private and local-only; ignored globally in `.gitignore` and omitted from GitHub tracking.
+
+### 21.3 Formalization of Security Policy & Minimal CI
+- **Context**:
+  - The repository lacked a formal `SECURITY.md` and had zero automated CI workflows.
+- **Decision**:
+  - **Security Policy (`SECURITY.md`)**: Created root security policy under 40 lines specifying private disclosure via GitHub Security Advisories, establishing v1.0.0 support, and defining the four high-priority review surfaces (grant matrix, hard deny-list, filesystem boundaries, and atomic write path).
+  - **Minimal CI (`.github/workflows/ci.yml`)**: Added GitHub Actions workflow running on `ubuntu-latest` (Node 20 + Rust stable) executing `npm ci && npm run tsc` and `cargo check --manifest-path src-tauri/Cargo.toml`. Added `"tsc": "tsc --noEmit"` to `package.json` to mirror the CI typecheck command cleanly.
+
+
 
 

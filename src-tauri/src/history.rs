@@ -1,4 +1,4 @@
-//! Task history persistence (`~/.local/share/foreman/history.json`) (§5.7 & Slice 2 §3.2 Schema v2).
+//! Task history persistence (`~/.local/share/kodiak/history.json`) (§5.7 & Slice 2 §3.2 Schema v2).
 
 use crate::config::history_file_path;
 use crate::enforcer::ActionClass;

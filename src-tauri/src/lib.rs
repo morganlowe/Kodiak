@@ -1330,7 +1330,7 @@ fn delete_memory(
         cruise,
         cfg.dry_run,
         "memory_deleted",
-        &format!("Memory entry @{id} deleted from ~/.local/share/foreman/memory/ by user"),
+        &format!("Memory entry @{id} deleted from ~/.local/share/kodiak/memory/ by user"),
     );
 
     load_all_memories()

@@ -5,7 +5,7 @@
 //! 2. Canonical path resolution inside whitelisted directories (no `..` traversal, no symlink escape).
 //! 3. Per-directory Grant Matrix (`READ` < `CREATE` < `BUILD` < `AUTONOMOUS`) composing downward only.
 //! 4. Plan action-class verification (`read | create | overwrite | mkdir | execute`).
-//! 5. Local decision journal logging (`~/.local/share/foreman/journal.jsonl`).
+//! 5. Local decision journal logging (`~/.local/share/kodiak/journal.jsonl`).
 
 use crate::config::{expand_tilde, journal_file_path, GrantLevel, WhitelistEntry};
 use chrono::Utc;
@@ -143,7 +143,7 @@ pub fn get_pipeline_generated_files_from_journal(project_root: &Path, journal_pa
         .collect()
 }
 
-/// Queries default journal (`~/.local/share/foreman/journal.jsonl`) to determine all files
+/// Queries default journal (`~/.local/share/kodiak/journal.jsonl`) to determine all files
 /// in `project_root` that were created by pipeline steps and have NOT been marked as user-authored (§2 Slice 2.2).
 pub fn get_pipeline_generated_files(project_root: &Path) -> Vec<String> {
     if let Ok(path) = journal_file_path() {
