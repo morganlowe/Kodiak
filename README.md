@@ -570,6 +570,20 @@ Copyright © 2026 **Morgan Lowe**. Licensed under the **[Apache License, Version
 
 </details>
 
+### Reference Dev Machine ("Frank")
+
+You do not need a multi-GPU workstation or enterprise server rack to build and run Kodiak. The entire system was built and runs daily on **Frank**, a compact 13-inch laptop with 6 GB of VRAM:
+
+| Component | Specification |
+| :--- | :--- |
+| **System** | ASUS ProArt PX13 (13-inch laptop) |
+| **CPU** | AMD Ryzen AI 9 HX 370 (12 cores / 24 threads, Radeon 890M iGPU) |
+| **GPU** | NVIDIA GeForce RTX 4050 Laptop GPU (6 GB VRAM) |
+| **Memory** | 32 GB System RAM |
+| **Storage** | 2 TB NVMe SSD |
+| **Operating System** | CachyOS Linux (Arch-based, KDE Plasma) |
+| **Local AI Stack** | Ollama (`llama3.2:3b`, `qwen2.5-coder:7b` in-VRAM, `qwen2.5-coder:14b` hybrid offload) |
+
 <div align="center">
   <br />
   <img src="src/assets/morninglion-industries-logo.png" alt="Morninglion Industries Logo" width="160" />
