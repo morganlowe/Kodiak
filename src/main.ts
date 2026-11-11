@@ -2844,6 +2844,7 @@ function renderWikiSetupWizard(): string {
     case 3: {
       const isHostsConfigured = info?.hosts_configured ?? false;
       const port80Configured = info?.port80_configured ?? false;
+      const isWindows = typeof navigator !== "undefined" && (navigator.userAgent.includes("Windows") || navigator.platform?.includes("Win"));
 
       stepBodyHtml = `
         <div style="display:flex; flex-direction:column; gap:1rem;">
@@ -2863,13 +2864,13 @@ function renderWikiSetupWizard(): string {
             ${
               isHostsConfigured
                 ? `<p class="muted" style="font-size:0.8rem; margin:0;">
-                    Your <code>/etc/hosts</code> contains an entry for <code>127.0.0.1 wiki.local</code>.
+                    Your hosts file contains an entry for <code>127.0.0.1 wiki.local</code>.
                     ${port80Configured ? "Binding to port 80 allows clean URL <code>http://wiki.local</code>." : "MkDocs will serve at <code>http://wiki.local:8000</code> or <code>http://127.0.0.1:8000</code>."}
                   </p>`
                 : `<div style="font-size:0.8rem; display:flex; flex-direction:column; gap:0.4rem;">
-                    <span class="muted">To resolve <code>http://wiki.local</code> seamlessly in any browser without ports, add this line to your <code>/etc/hosts</code>:</span>
+                    <span class="muted">To resolve <code>http://wiki.local</code> seamlessly in any browser without ports, add this line to your <code>${isWindows ? "C:\\Windows\\System32\\drivers\\etc\\hosts" : "/etc/hosts"}</code>:</span>
                     <pre class="mono" style="background:rgba(0,0,0,0.3); padding:0.4rem 0.6rem; border-radius:4px; margin:0;">127.0.0.1 wiki.local</pre>
-                    <span class="muted" style="font-size:0.75rem;">No root required right now — if not present, Kodiak connects to <code>http://127.0.0.1:8000</code> automatically.</span>
+                    <span class="muted" style="font-size:0.75rem;">No administrator rights required right now — Kodiak connects to <code>http://127.0.0.1:8000</code> automatically.</span>
                   </div>`
             }
           </div>
@@ -2884,10 +2885,10 @@ function renderWikiSetupWizard(): string {
               />
               <div>
                 <label for="wizard-enable-service-cb" style="font-weight:600; font-size:0.85rem; cursor:pointer;">
-                  Enable systemd User Service (<code>wiki.service</code>)
+                  ${isWindows ? "Manage Background Daemon with Kodiak" : "Enable systemd User Service (<code>wiki.service</code>)"}
                 </label>
                 <div class="muted" style="font-size:0.78rem;">
-                  Automatically runs the MkDocs server and Sync API in the background at user login.
+                  ${isWindows ? "Automatically coordinates the MkDocs server and Sync API in the background while Kodiak runs." : "Automatically runs the MkDocs server and Sync API in the background at user login."}
                 </div>
               </div>
             </div>

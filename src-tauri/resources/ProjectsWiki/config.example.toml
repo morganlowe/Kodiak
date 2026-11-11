@@ -1,0 +1,31 @@
+# Kodiak ProjectsWiki Configuration Template
+# Copy to ~/.config/kodiak/wiki.toml to customize your local wiki deployment.
+
+# Directory where your local project repositories and hardware builds are stored.
+# Set this to your actual projects directory (e.g. "~/Projects" or "/home/user/src").
+projects_dir = "~/Projects"
+
+# Domain name for browser access (default: "wiki.local")
+# If "127.0.0.1 wiki.local" is present in /etc/hosts, browse at http://wiki.local:8000
+# Zero-Sudo Fallback: If unconfigured, browse directly at http://127.0.0.1:8000
+site_domain = "wiki.local"
+
+# Local Ollama intelligence configuration for doc synthesis & AI tuning
+ollama_url = "http://127.0.0.1:11434"
+ollama_model = "qwen2.5-coder:7b"
+
+# Service ports
+port_web = 8000
+port_api = 8765
+
+# Externalized project overrides JSON (persists manual title, category, and overview edits across rebuilds)
+overrides_file = "~/.config/kodiak/project_overrides.json"
+
+# Neutral default project taxonomy: category name -> keyword pattern / folder slug matches
+[categories]
+"Hardware & Electronics" = ["hardware", "pcb", "circuit", "kicad", "schematic", "sensor", "display", "eink", "oled"]
+"Embedded & Firmware" = ["esp32", "rp2040", "pico", "arduino", "firmware", "iot", "wifi", "ble"]
+"Software & Tools" = ["software", "cli", "app", "python", "rust", "desktop", "web", "tool", "server"]
+"Robotics & Mechanical" = ["robot", "mechanical", "motor", "cad", "3d", "stl", "engine"]
+"Audio & Media" = ["audio", "midi", "synth", "sampler", "sound", "dsp"]
+"General & Prototypes" = []

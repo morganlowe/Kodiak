@@ -253,33 +253,91 @@ pub async fn start_lumo_bridge_service(cfg: &AppConfig) -> Result<HealthStatus, 
     )
 }
 
-/// Starts the ProjectsWiki server via `systemctl --user start projects-wiki.service` (if present)
-/// or `<wiki_dir>/wiki.sh start`, then polls until reachable.
+/// Resolves the default python command for the current platform ("python" on Windows, "python3" on Unix).
+pub fn resolve_python_cmd() -> &'static str {
+    if cfg!(windows) {
+        "python"
+    } else {
+        "python3"
+    }
+}
+
+/// Starts the ProjectsWiki server via standalone `kodiak-projectswiki.exe`, systemd user service,
+/// `<wiki_dir>/wiki_server.py serve`, or `<wiki_dir>/wiki.sh start`, then polls until reachable.
 pub async fn start_wiki_service(cfg: &AppConfig) -> Result<HealthStatus, String> {
     let wiki_dir = resolve_wiki_dir(cfg);
     let projects_dir = resolve_projects_dir(cfg);
+    let wiki_exe = wiki_dir.join("kodiak-projectswiki.exe");
+    let wiki_server_py = wiki_dir.join("wiki_server.py");
     let wiki_sh = wiki_dir.join("wiki.sh");
     let home_unit = dirs::config_dir()
         .map(|d| d.join("systemd/user/projects-wiki.service"))
         .unwrap_or_default();
 
-    if home_unit.exists() {
-        let _ = Command::new("systemctl")
-            .args(["--user", "start", "projects-wiki.service"])
-            .output();
-    } else if wiki_sh.exists() {
-        let _ = Command::new("bash")
-            .arg(&wiki_sh)
-            .arg("start")
-            .env("PROJECTS_DIR", &projects_dir)
-            .current_dir(&wiki_dir)
-            .output()
-            .map_err(|e| format!("Failed to run {}: {e}", wiki_sh.display()))?;
-    } else {
-        return Err(format!(
-            "Neither ~/.config/systemd/user/projects-wiki.service nor {} was found.",
-            wiki_sh.display()
-        ));
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        if wiki_exe.exists() {
+            let mut cmd = Command::new(&wiki_exe);
+            cmd.arg("serve")
+                .env("PROJECTS_DIR", &projects_dir)
+                .current_dir(&wiki_dir)
+                .creation_flags(CREATE_NO_WINDOW);
+            let _ = cmd.spawn().map_err(|e| format!("Failed to spawn {}: {e}", wiki_exe.display()))?;
+        } else if wiki_server_py.exists() {
+            let mut cmd = Command::new(resolve_python_cmd());
+            cmd.arg(&wiki_server_py)
+                .arg("serve")
+                .env("PROJECTS_DIR", &projects_dir)
+                .current_dir(&wiki_dir)
+                .creation_flags(CREATE_NO_WINDOW);
+            let _ = cmd.spawn().map_err(|e| format!("Failed to spawn wiki_server.py: {e}"))?;
+        } else {
+            return Err(format!(
+                "Neither {} nor {} was found in {}.",
+                wiki_exe.display(),
+                wiki_server_py.display(),
+                wiki_dir.display()
+            ));
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        if home_unit.exists() {
+            let _ = Command::new("systemctl")
+                .args(["--user", "start", "projects-wiki.service"])
+                .output();
+        } else if wiki_exe.exists() {
+            let mut cmd = Command::new(&wiki_exe);
+            cmd.arg("serve")
+                .env("PROJECTS_DIR", &projects_dir)
+                .current_dir(&wiki_dir);
+            let _ = cmd.spawn().map_err(|e| format!("Failed to spawn {}: {e}", wiki_exe.display()))?;
+        } else if wiki_sh.exists() {
+            let _ = Command::new("bash")
+                .arg(&wiki_sh)
+                .arg("start")
+                .env("PROJECTS_DIR", &projects_dir)
+                .current_dir(&wiki_dir)
+                .output()
+                .map_err(|e| format!("Failed to run {}: {e}", wiki_sh.display()))?;
+        } else if wiki_server_py.exists() {
+            let mut cmd = Command::new(resolve_python_cmd());
+            cmd.arg(&wiki_server_py)
+                .arg("serve")
+                .env("PROJECTS_DIR", &projects_dir)
+                .current_dir(&wiki_dir);
+            let _ = cmd.spawn().map_err(|e| format!("Failed to spawn wiki_server.py: {e}"))?;
+        } else {
+            return Err(format!(
+                "Neither ~/.config/systemd/user/projects-wiki.service nor {} was found in {}.",
+                wiki_sh.display(),
+                wiki_dir.display()
+            ));
+        }
     }
 
     for _ in 0..20 {
@@ -293,25 +351,52 @@ pub async fn start_wiki_service(cfg: &AppConfig) -> Result<HealthStatus, String>
     Err("Wiki start command invoked, but neither 127.0.0.1:80 nor 127.0.0.1:8000 became reachable within 8 seconds.".to_string())
 }
 
-/// Stops the ProjectsWiki server via `systemctl --user stop projects-wiki.service` or `<wiki_dir>/wiki.sh stop`.
+/// Stops the ProjectsWiki server via standalone `kodiak-projectswiki.exe`, systemctl, or `wiki.sh stop`.
 pub async fn stop_wiki_service(cfg: &AppConfig) -> Result<HealthStatus, String> {
     let wiki_dir = resolve_wiki_dir(cfg);
+    let wiki_server_py = wiki_dir.join("wiki_server.py");
     let wiki_sh = wiki_dir.join("wiki.sh");
     let home_unit = dirs::config_dir()
         .map(|d| d.join("systemd/user/projects-wiki.service"))
         .unwrap_or_default();
 
-    if home_unit.exists() {
-        let _ = Command::new("systemctl")
-            .args(["--user", "stop", "projects-wiki.service"])
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let _ = Command::new("taskkill")
+            .args(["/F", "/IM", "kodiak-projectswiki.exe", "/T"])
+            .creation_flags(CREATE_NO_WINDOW)
             .output();
+        if wiki_server_py.exists() {
+            let mut cmd = Command::new(resolve_python_cmd());
+            cmd.arg(&wiki_server_py)
+                .arg("stop")
+                .creation_flags(CREATE_NO_WINDOW);
+            let _ = cmd.output();
+        }
     }
-    if wiki_sh.exists() {
-        let _ = Command::new("bash")
-            .arg(&wiki_sh)
-            .arg("stop")
-            .current_dir(&wiki_dir)
-            .output();
+
+    #[cfg(not(windows))]
+    {
+        if home_unit.exists() {
+            let _ = Command::new("systemctl")
+                .args(["--user", "stop", "projects-wiki.service"])
+                .output();
+        }
+        if wiki_sh.exists() {
+            let _ = Command::new("bash")
+                .arg(&wiki_sh)
+                .arg("stop")
+                .current_dir(&wiki_dir)
+                .output();
+        } else if wiki_server_py.exists() {
+            let _ = Command::new(resolve_python_cmd())
+                .arg(&wiki_server_py)
+                .arg("stop")
+                .current_dir(&wiki_dir)
+                .output();
+        }
     }
 
     tokio::time::sleep(Duration::from_millis(500)).await;
@@ -325,42 +410,80 @@ pub async fn restart_wiki_service(cfg: &AppConfig) -> Result<HealthStatus, Strin
     start_wiki_service(cfg).await
 }
 
-/// Synchronizes the MkDocs documentation catalog by running `make_wiki.py`.
+/// Synchronizes the MkDocs documentation catalog by running standalone executable or `make_wiki.py`.
 pub async fn sync_wiki_catalog_service(cfg: &AppConfig) -> Result<String, String> {
     let wiki_dir = resolve_wiki_dir(cfg);
     let projects_dir = resolve_projects_dir(cfg);
+    let wiki_exe = wiki_dir.join("kodiak-projectswiki.exe");
+    let wiki_server_py = wiki_dir.join("wiki_server.py");
     let make_wiki = wiki_dir.join("make_wiki.py");
-    if !make_wiki.exists() {
-        return Err(format!("make_wiki.py not found in {}", wiki_dir.display()));
+
+    let mut cmd = if wiki_exe.exists() {
+        let mut c = Command::new(&wiki_exe);
+        c.arg("sync");
+        c
+    } else if wiki_server_py.exists() {
+        let mut c = Command::new(resolve_python_cmd());
+        c.arg(&wiki_server_py).arg("sync");
+        c
+    } else if make_wiki.exists() {
+        let mut c = Command::new(resolve_python_cmd());
+        c.arg(&make_wiki);
+        c
+    } else {
+        return Err(format!("Neither kodiak-projectswiki.exe nor make_wiki.py found in {}", wiki_dir.display()));
+    };
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
     }
 
-    let out = Command::new("python3")
-        .arg(&make_wiki)
-        .env("PROJECTS_DIR", &projects_dir)
+    let out = cmd.env("PROJECTS_DIR", &projects_dir)
         .current_dir(&wiki_dir)
         .output()
-        .map_err(|e| format!("Failed to run make_wiki.py: {e}"))?;
+        .map_err(|e| format!("Failed to run catalog sync: {e}"))?;
 
     let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
     let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
     if !out.status.success() {
-        return Err(format!("make_wiki.py failed: {stderr}"));
+        return Err(format!("Catalog sync failed: {stderr}"));
     }
     Ok(if stdout.is_empty() { "Catalog synced successfully.".to_string() } else { stdout })
 }
 
-/// Rebuilds accurate documentation and assets (manuals, photos, PDFs) via `rebuild_accurate_docs.py`.
+/// Rebuilds accurate documentation and assets (manuals, photos, PDFs) via `rebuild_accurate_docs.py` or standalone runner.
 pub async fn rebuild_wiki_assets_service(cfg: &AppConfig) -> Result<String, String> {
     let wiki_dir = resolve_wiki_dir(cfg);
     let projects_dir = resolve_projects_dir(cfg);
+    let wiki_exe = wiki_dir.join("kodiak-projectswiki.exe");
+    let wiki_server_py = wiki_dir.join("wiki_server.py");
     let rebuild_py = wiki_dir.join("rebuild_accurate_docs.py");
-    if !rebuild_py.exists() {
+
+    let mut cmd = if wiki_exe.exists() {
+        let mut c = Command::new(&wiki_exe);
+        c.arg("rebuild");
+        c
+    } else if wiki_server_py.exists() {
+        let mut c = Command::new(resolve_python_cmd());
+        c.arg(&wiki_server_py).arg("rebuild");
+        c
+    } else if rebuild_py.exists() {
+        let mut c = Command::new(resolve_python_cmd());
+        c.arg(&rebuild_py);
+        c
+    } else {
         return Err(format!("rebuild_accurate_docs.py not found in {}", wiki_dir.display()));
+    };
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
     }
 
-    let out = Command::new("python3")
-        .arg(&rebuild_py)
-        .env("PROJECTS_DIR", &projects_dir)
+    let out = cmd.env("PROJECTS_DIR", &projects_dir)
         .current_dir(&wiki_dir)
         .output()
         .map_err(|e| format!("Failed to run rebuild_accurate_docs.py: {e}"))?;
@@ -375,7 +498,7 @@ pub async fn rebuild_wiki_assets_service(cfg: &AppConfig) -> Result<String, Stri
     Ok(if stdout.is_empty() { "Assets rebuilt and catalog synced successfully.".to_string() } else { stdout })
 }
 
-/// Generates or refreshes a project's technical documentation using local Ollama models via `build_wiki.py`.
+/// Generates or refreshes a project's technical documentation using local Ollama models via `build_wiki.py` or standalone runner.
 pub async fn ai_build_wiki_project_service(
     cfg: &AppConfig,
     project_name: &str,
@@ -384,23 +507,40 @@ pub async fn ai_build_wiki_project_service(
 ) -> Result<String, String> {
     let wiki_dir = resolve_wiki_dir(cfg);
     let projects_dir = resolve_projects_dir(cfg);
+    let wiki_exe = wiki_dir.join("kodiak-projectswiki.exe");
+    let wiki_server_py = wiki_dir.join("wiki_server.py");
     let build_py = wiki_dir.join("build_wiki.py");
-    if !build_py.exists() {
-        return Err(format!("build_wiki.py not found in {}", wiki_dir.display()));
-    }
 
     let chosen_model = model.unwrap_or("qwen2.5-coder:7b");
-    let mut cmd = Command::new("python3");
-    cmd.arg(&build_py)
-        .arg("--project")
-        .arg(project_name)
-        .arg("--model")
-        .arg(chosen_model)
-        .env("PROJECTS_DIR", &projects_dir)
-        .current_dir(&wiki_dir);
+
+    let mut cmd = if wiki_exe.exists() {
+        let mut c = Command::new(&wiki_exe);
+        c.arg("build").arg("--project").arg(project_name).arg("--model").arg(chosen_model);
+        c
+    } else if wiki_server_py.exists() {
+        let mut c = Command::new(resolve_python_cmd());
+        c.arg(&wiki_server_py).arg("build").arg("--project").arg(project_name).arg("--model").arg(chosen_model);
+        c
+    } else if build_py.exists() {
+        let mut c = Command::new(resolve_python_cmd());
+        c.arg(&build_py).arg("--project").arg(project_name).arg("--model").arg(chosen_model);
+        c
+    } else {
+        return Err(format!("build_wiki.py not found in {}", wiki_dir.display()));
+    };
+
+    cmd.env("PROJECTS_DIR", &projects_dir).current_dir(&wiki_dir);
 
     if overwrite {
         cmd.arg("--overwrite");
+    } else {
+        cmd.arg("--no-overwrite");
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
     }
 
     let out = cmd.output().map_err(|e| format!("Failed to run build_wiki.py: {e}"))?;
@@ -657,7 +797,12 @@ pub async fn get_wiki_setup_info_service(cfg: &AppConfig) -> Result<WikiSetupInf
     let p_dir = resolve_projects_dir(cfg);
     let detected_projects = detect_projects_in_dir_service(&p_dir.to_string_lossy());
 
-    let hosts_configured = if let Ok(content) = std::fs::read_to_string("/etc/hosts") {
+    let hosts_path = if cfg!(windows) {
+        PathBuf::from(r"C:\Windows\System32\drivers\etc\hosts")
+    } else {
+        PathBuf::from("/etc/hosts")
+    };
+    let hosts_configured = if let Ok(content) = std::fs::read_to_string(&hosts_path) {
         content.lines().any(|l| {
             let t = l.trim();
             !t.starts_with('#') && t.contains("wiki.local")
@@ -672,21 +817,26 @@ pub async fn get_wiki_setup_info_service(cfg: &AppConfig) -> Result<WikiSetupInf
         false
     };
 
-    let home_unit = dirs::config_dir()
-        .map(|d| d.join("systemd/user/projects-wiki.service"))
-        .unwrap_or_default();
-    let service_enabled = home_unit.exists() && {
-        Command::new("systemctl")
-            .args(["--user", "is-enabled", "projects-wiki.service"])
+    let (service_enabled, service_active) = if cfg!(windows) {
+        (cfg.wiki_enabled, false)
+    } else {
+        let home_unit = dirs::config_dir()
+            .map(|d| d.join("systemd/user/projects-wiki.service"))
+            .unwrap_or_default();
+        let s_enabled = home_unit.exists() && {
+            Command::new("systemctl")
+                .args(["--user", "is-enabled", "projects-wiki.service"])
+                .output()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "enabled")
+                .unwrap_or(false)
+        };
+        let s_active = Command::new("systemctl")
+            .args(["--user", "is-active", "projects-wiki.service"])
             .output()
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "enabled")
-            .unwrap_or(false)
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "active")
+            .unwrap_or(false);
+        (s_enabled, s_active)
     };
-    let service_active = Command::new("systemctl")
-        .args(["--user", "is-active", "projects-wiki.service"])
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "active")
-        .unwrap_or(false);
 
     let wiki_dir = resolve_wiki_dir(cfg);
 
@@ -743,8 +893,8 @@ pub async fn complete_wiki_setup_service(
             }
         }
 
-        // Configure systemd service if requested
-        if payload.enable_service {
+        // Configure systemd service if requested (Linux only)
+        if payload.enable_service && !cfg!(windows) {
             let wiki_dir = resolve_wiki_dir(cfg);
             let wiki_sh = wiki_dir.join("wiki.sh");
             if let Some(config_dir) = dirs::config_dir() {

@@ -1,0 +1,47 @@
+site_name: Projects Wiki
+site_description: Interactive hardware, electronics, embedded systems, and software documentation hub
+theme:
+  name: material
+  logo: Bear-built-logo.png
+  favicon: Bear-built-logo.png
+  palette:
+    scheme: slate
+    primary: deep orange
+    accent: deep orange
+  features:
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.instant.progress
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+extra_css:
+  - extra.css
+
+extra_javascript:
+  - extra.js
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+
+nav:
+  - Explorer: index.md
+  - 'Hardware & Electronics':
+      - 'demo-project': demo-project.md

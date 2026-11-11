@@ -172,6 +172,9 @@ impl Default for AppConfig {
             memory_auto_sanitize: true,
             destructive_diff_threshold: 0.40,
             dry_run: false,
+            #[cfg(windows)]
+            wiki_dir: "ProjectsWiki".to_string(),
+            #[cfg(not(windows))]
             wiki_dir: "/usr/share/kodiak/projectswiki".to_string(),
             wiki_enabled: true,
             wiki_configured: false,
@@ -206,49 +209,81 @@ pub fn expand_tilde(path_str: &str) -> PathBuf {
 }
 
 /// Resolves the ProjectsWiki root directory, prioritizing local repository folder `./ProjectsWiki`,
-/// then explicitly configured `wiki_dir`, then system install `/usr/share/kodiak/ProjectsWiki`.
+/// then explicitly configured `wiki_dir`, executable bundle resources, then system install `/usr/share/kodiak/ProjectsWiki`.
 pub fn resolve_wiki_dir(cfg: &AppConfig) -> PathBuf {
     let configured = expand_tilde(&cfg.wiki_dir);
-    // 1. Explicitly configured path if it exists
-    if configured.exists() && (configured.join("wiki.sh").exists() || configured.join("mkdocs.yml").exists()) {
+    let is_valid = |p: &Path| {
+        p.exists()
+            && (p.join("wiki.sh").exists()
+                || p.join("mkdocs.yml").exists()
+                || p.join("kodiak-projectswiki.exe").exists()
+                || p.join("wiki_server.py").exists())
+    };
+
+    // 1. Explicitly configured path if it exists and is valid
+    if is_valid(&configured) {
         return configured;
     }
     // 2. Relative to current working directory: ./ProjectsWiki
     let cwd_wiki = PathBuf::from("ProjectsWiki");
-    if cwd_wiki.exists() && (cwd_wiki.join("wiki.sh").exists() || cwd_wiki.join("mkdocs.yml").exists()) {
+    if is_valid(&cwd_wiki) {
         if let Ok(canon) = cwd_wiki.canonicalize() {
             return canon;
         }
         return cwd_wiki;
     }
-    // 3. Relative to current executable directory: exe_dir/ProjectsWiki or exe_dir/../ProjectsWiki
+    // 3. Relative to current executable directory:
+    //    exe_dir/resources/ProjectsWiki (Tauri bundle on Windows)
+    //    exe_dir/ProjectsWiki
+    //    exe_dir/../resources/ProjectsWiki
+    //    exe_dir/../ProjectsWiki
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
+            let res_wiki = exe_dir.join("resources").join("ProjectsWiki");
+            if is_valid(&res_wiki) {
+                return res_wiki;
+            }
             let exe_wiki = exe_dir.join("ProjectsWiki");
-            if exe_wiki.exists() {
+            if is_valid(&exe_wiki) {
                 return exe_wiki;
             }
             if let Some(parent) = exe_dir.parent() {
+                let parent_res_wiki = parent.join("resources").join("ProjectsWiki");
+                if is_valid(&parent_res_wiki) {
+                    return parent_res_wiki;
+                }
                 let parent_wiki = parent.join("ProjectsWiki");
-                if parent_wiki.exists() {
+                if is_valid(&parent_wiki) {
                     return parent_wiki;
                 }
             }
         }
     }
-    // 4. Packaged install at /usr/share/kodiak/projectswiki or /usr/share/kodiak/ProjectsWiki
+    // 4. Windows LocalAppData check
+    #[cfg(windows)]
+    if let Some(local_app_data) = dirs::data_local_dir() {
+        let app_wiki = local_app_data.join("Programs").join("Kodiak").join("resources").join("ProjectsWiki");
+        if is_valid(&app_wiki) {
+            return app_wiki;
+        }
+        let direct_wiki = local_app_data.join("kodiak").join("ProjectsWiki");
+        if is_valid(&direct_wiki) {
+            return direct_wiki;
+        }
+    }
+    // 5. Packaged install at /usr/share/kodiak/projectswiki or /usr/share/kodiak/ProjectsWiki (Linux)
     let sys_wiki = PathBuf::from("/usr/share/kodiak/projectswiki");
-    if sys_wiki.exists() {
+    if is_valid(&sys_wiki) {
         return sys_wiki;
     }
     let sys_wiki_cap = PathBuf::from("/usr/share/kodiak/ProjectsWiki");
-    if sys_wiki_cap.exists() {
+    if is_valid(&sys_wiki_cap) {
         return sys_wiki_cap;
     }
-    // 5. Local workspace relative path
+    // 6. Local workspace relative path
     if let Ok(cwd) = std::env::current_dir() {
         let local_wiki = cwd.join("ProjectsWiki");
-        if local_wiki.exists() {
+        if is_valid(&local_wiki) {
             return local_wiki;
         }
     }

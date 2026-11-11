@@ -1,0 +1,1084 @@
+/* Modern viewport-wide color scheme & locked dark design tokens */
+:root,
+[data-md-color-scheme="slate"],
+[data-md-color-scheme="default"] {
+  color-scheme: dark;
+  accent-color: #e06338;
+
+  /* MkDocs Material Core Theme Overrides (Burnt Orange & Dark Slate/Charcoal) */
+  --md-primary-fg-color: #a42600;
+  --md-primary-fg-color--light: #b82d00;
+  --md-primary-fg-color--dark: #7a1c00;
+  --md-primary-bg-color: #e8e6e3;
+  --md-primary-bg-color--light: rgba(232, 230, 227, 0.72);
+  --md-accent-fg-color: #e06338;
+  --md-accent-fg-color--transparent: rgba(224, 99, 56, 0.16);
+  --md-accent-bg-color: #f0eeeb;
+
+  --md-default-bg-color: #171a21;
+  --md-default-bg-color--light: #191a1c;
+  --md-default-bg-color--lighter: #1f2022;
+  --md-default-bg-color--lightest: #26282c;
+
+  --md-default-fg-color: #bcbec4;
+  --md-default-fg-color--light: #8e9198;
+  --md-default-fg-color--lighter: #6e7178;
+  --md-default-fg-color--lightest: rgba(140, 145, 155, 0.16);
+
+  --md-code-bg-color: #1f222b;
+  --md-code-fg-color: #c5c8d0;
+  --md-typeset-color: #bcbec4;
+  --md-typeset-a-color: #e06338;
+
+  --md-footer-bg-color: #14161c;
+  --md-footer-bg-color--dark: #101217;
+
+  /* Wiki Component Tokens */
+  --wiki-accent: #e06338;
+  --wiki-accent-hover: #f07449;
+  --wiki-accent-fill: #a82800;
+  --wiki-accent-fill-hover: #bf3000;
+  --wiki-accent-contrast: #f0eeeb;
+  --wiki-accent-soft: rgba(216, 75, 28, 0.16);
+  --wiki-border: rgba(140, 145, 155, 0.16);
+  --wiki-border-hover: rgba(224, 99, 56, 0.55);
+  --wiki-surface: #1f2022;
+  --wiki-surface-toolbar: #191a1c;
+  --wiki-surface-elevated: #16181a;
+  --wiki-radius: 12px;
+  --wiki-radius-sm: 8px;
+
+  --scrollbar-thumb: #383b42;
+  --scrollbar-track: #171a21;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+@supports not (scrollbar-color: auto) {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+  }
+}
+
+/* Hide day/night palette toggle completely */
+.md-header__option[data-md-component="palette"],
+form.md-header__option {
+  display: none !important;
+}
+
+/* Header, Navigation Tabs & Search Bar */
+.md-header,
+.md-tabs {
+  background-color: #a42600 !important;
+  color: #e8e6e3 !important;
+}
+
+.md-header__button.md-logo {
+  margin-block: 0.1rem;
+  padding: 0.15rem 0.35rem;
+}
+
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+  height: 2.15rem;
+  width: auto;
+  filter: brightness(0) invert(0.92);
+  transition: transform 0.15s ease;
+}
+
+.md-header__button.md-logo:hover img {
+  transform: scale(1.06);
+}
+
+.md-search__form {
+  background-color: #7a1c00 !important;
+  border-radius: 6px;
+}
+
+.md-search__form:hover {
+  background-color: #8a2000 !important;
+}
+
+/* Base scale — comfortable, legible desktop scale */
+html,
+html[lang],
+:root {
+  font-size: 100% !important;
+}
+
+@media screen and (min-width: 60em) {
+  html,
+  html[lang],
+  :root {
+    font-size: 100% !important;
+  }
+}
+
+@media screen and (min-width: 76.25em) {
+  html,
+  html[lang],
+  :root {
+    font-size: 100% !important;
+  }
+}
+
+@media screen and (min-width: 100em) {
+  html,
+  html[lang],
+  :root {
+    font-size: 102% !important;
+  }
+}
+
+@media screen and (min-width: 125em) {
+  html,
+  html[lang],
+  :root {
+    font-size: 104% !important;
+  }
+}
+
+/* Prominent MkDocs Header & Logo-matching Title */
+.md-header {
+  height: 3.5rem !important;
+}
+
+.md-header__inner {
+  height: 3.5rem !important;
+  align-items: center !important;
+}
+
+.md-header__button.md-logo {
+  padding: 0.2rem 0.5rem !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.md-logo img,
+.md-logo svg {
+  height: 2.6rem !important;
+  max-height: 2.6rem !important;
+  width: auto !important;
+}
+
+.md-header__title {
+  height: 3.5rem !important;
+  line-height: 3.5rem !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.md-header__ellipsis {
+  display: flex !important;
+  align-items: center !important;
+  height: 3.5rem !important;
+}
+
+.md-header__topic {
+  font-size: 2.4rem !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+  letter-spacing: -0.02em !important;
+}
+
+.md-header__topic .md-ellipsis {
+  font-size: 2.4rem !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+}
+
+.md-tabs {
+  font-size: 0.85rem !important;
+}
+
+.md-tabs__link {
+  height: 2.2rem !important;
+  line-height: 2.2rem !important;
+  padding: 0 0.85rem !important;
+}
+
+/* Prominent Headings & Hero */
+.md-typeset h1 {
+  font-size: 1.85rem !important;
+  font-weight: 600 !important;
+  margin-block: 0.6rem 0.45rem !important;
+}
+
+.md-typeset h2 {
+  font-size: 1.45rem !important;
+  margin-block: 0.9rem 0.45rem !important;
+}
+
+.md-typeset h3 {
+  font-size: 1.2rem !important;
+  margin-block: 0.7rem 0.35rem !important;
+}
+
+.hero-subtitle {
+  font-size: 1.05rem !important;
+  line-height: 1.5 !important;
+  margin-block: -0.15rem 1.4rem !important;
+  max-inline-size: 75ch !important;
+}
+
+/* Comfortable Explorer Toolbar & Controls */
+.explorer-toolbar {
+  padding-block: 0.65rem !important;
+  padding-inline: 1rem !important;
+  gap: 0.7rem !important;
+  margin-block-end: 1rem !important;
+}
+
+.search-input-wrap {
+  flex: 1 1 280px !important;
+}
+
+.search-icon {
+  font-size: 1.15rem !important;
+  inset-inline-start: 0.85rem !important;
+}
+
+.explorer-search-input {
+  padding-block: 0.55rem !important;
+  padding-inline: 2.4rem 2.6rem !important;
+  font-size: 0.95rem !important;
+}
+
+.search-kbd {
+  inset-inline-end: 0.65rem !important;
+  font-size: 0.76rem !important;
+  padding-block: 0.1rem !important;
+  padding-inline: 0.45rem !important;
+}
+
+.explorer-select {
+  padding-block: 0.5rem !important;
+  padding-inline: 0.75rem !important;
+  font-size: 0.86rem !important;
+}
+
+.view-toggle-btn {
+  padding-block: 0.5rem !important;
+  padding-inline: 0.75rem !important;
+  font-size: 0.84rem !important;
+}
+
+.explorer-btn {
+  padding-block: 0.5rem !important;
+  padding-inline: 0.85rem !important;
+  font-size: 0.86rem !important;
+}
+
+.sync-icon {
+  font-size: 1rem !important;
+}
+
+/* Category Filter Pills */
+.category-pills {
+  gap: 0.5rem !important;
+  margin-block-end: 1rem !important;
+}
+
+.category-pill {
+  padding-block: 0.32rem !important;
+  padding-inline: 0.75rem !important;
+  font-size: 0.84rem !important;
+}
+
+/* Generous Project Cards */
+.projects-grid {
+  gap: 1rem !important;
+}
+
+.project-card {
+  padding: 1.15rem !important;
+  border-radius: 8px !important;
+}
+
+.card-category-badge {
+  font-size: 0.72rem !important;
+  padding-block: 0.15rem !important;
+  padding-inline: 0.6rem !important;
+}
+
+.project-card__title {
+  font-size: 1.14rem !important;
+  font-weight: 700 !important;
+}
+
+.project-card__dates {
+  font-size: 0.75rem !important;
+  gap: 0.6rem !important;
+}
+
+.project-card__summary {
+  font-size: 0.88rem !important;
+  line-height: 1.5 !important;
+}
+
+.project-card__peek-btn,
+.project-card__view-btn {
+  font-size: 0.84rem !important;
+}
+
+.md-typeset {
+  font-size: 0.94rem !important;
+  line-height: 1.6 !important;
+}
+
+.md-main,
+body {
+  background-color: #171a21 !important;
+}
+
+.md-nav,
+.md-sidebar__scrollwrap {
+  background-color: transparent !important;
+}
+
+.md-nav__item .md-nav__link--active {
+  color: var(--wiki-accent) !important;
+  font-weight: 600;
+}
+
+.md-typeset h1 {
+  color: #8a8d96 !important;
+  font-weight: 400;
+}
+
+.md-typeset h2,
+.md-typeset h3 {
+  color: #a4a7b0 !important;
+}
+
+.md-typeset code:not(pre code) {
+  background-color: #1e2024 !important;
+  color: #c8cad0 !important;
+  border-radius: 4px;
+}
+
+.md-typeset pre > code,
+.wiki-modal__body pre {
+  background-color: #1f222b !important;
+}
+
+/* Cross-document & same-document View Transitions */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition {
+    navigation: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+/* Hero subtitle */
+.hero-subtitle {
+  font-size: 1.05rem;
+  color: var(--md-default-fg-color--light);
+  margin-block: -0.4rem 1.5rem;
+  max-inline-size: 70ch;
+}
+
+/* Explorer container query context */
+.explorer-wrapper {
+  container: explorer / inline-size;
+  margin-block: 1rem 2.5rem;
+}
+
+/* Search & Action Toolbar */
+.explorer-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: safe center;
+  gap: 0.75rem;
+  background: var(--wiki-surface-toolbar);
+  border: 1px solid var(--wiki-border);
+  border-radius: var(--wiki-radius);
+  padding-block: 0.75rem;
+  padding-inline: 1rem;
+  margin-block-end: 1rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.22);
+}
+
+.search-input-wrap {
+  position: relative;
+  flex: 1 1 280px;
+  min-inline-size: 0;
+  display: flex;
+  align-items: safe center;
+}
+
+.search-icon {
+  position: absolute;
+  inset-inline-start: 0.85rem;
+  font-size: 1.1rem;
+  color: var(--md-default-fg-color--light);
+  pointer-events: none;
+}
+
+.explorer-search-input {
+  inline-size: 100%;
+  padding-block: 0.6rem;
+  padding-inline: 2.35rem 2.5rem;
+  border-radius: var(--wiki-radius-sm);
+  border: 1px solid var(--wiki-border);
+  background: var(--wiki-surface-elevated);
+  color: var(--md-default-fg-color);
+  font-size: 0.9rem;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.explorer-search-input:focus {
+  outline: none;
+  border-color: var(--wiki-accent);
+  box-shadow: 0 0 0 3px var(--wiki-accent-soft);
+}
+
+.search-kbd {
+  position: absolute;
+  inset-inline-end: 0.65rem;
+  padding-block: 0.1rem;
+  padding-inline: 0.45rem;
+  font-size: 0.75rem;
+  font-family: var(--md-code-font-family, monospace);
+  border-radius: 4px;
+  border: 1px solid var(--wiki-border);
+  color: var(--md-default-fg-color--light);
+  background: var(--wiki-surface);
+  pointer-events: none;
+}
+
+.toolbar-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: safe center;
+  gap: 0.5rem;
+  margin-inline-start: auto;
+}
+
+.explorer-select {
+  padding-block: 0.55rem;
+  padding-inline: 0.75rem;
+  border-radius: var(--wiki-radius-sm);
+  border: 1px solid var(--wiki-border);
+  background: var(--wiki-surface-elevated);
+  color: var(--md-default-fg-color);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.explorer-select option {
+  background: #191a1c;
+  color: var(--md-default-fg-color);
+}
+
+.view-toggle-group {
+  display: inline-flex;
+  border: 1px solid var(--wiki-border);
+  border-radius: var(--wiki-radius-sm);
+  overflow: clip;
+  background: var(--wiki-surface-elevated);
+}
+
+.view-toggle-btn {
+  padding-block: 0.5rem;
+  padding-inline: 0.7rem;
+  border: none;
+  background: transparent;
+  color: var(--md-default-fg-color--light);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.view-toggle-btn.is-active {
+  background: var(--wiki-accent-soft);
+  color: var(--wiki-accent);
+}
+
+/* Buttons */
+.explorer-btn {
+  display: inline-flex;
+  align-items: safe center;
+  gap: 0.35rem;
+  padding-block: 0.52rem;
+  padding-inline: 0.9rem;
+  border-radius: var(--wiki-radius-sm);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none !important;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: transform 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.explorer-btn:active {
+  transform: scale(0.98);
+}
+
+.explorer-btn--accent,
+.explorer-btn--primary {
+  background: var(--wiki-accent-fill);
+  color: var(--wiki-accent-contrast) !important;
+}
+
+.explorer-btn--accent:hover,
+.explorer-btn--primary:hover {
+  background: var(--wiki-accent-fill-hover);
+  color: var(--wiki-accent-contrast) !important;
+}
+
+.explorer-btn--ghost {
+  background: var(--wiki-surface-elevated);
+  color: var(--md-default-fg-color) !important;
+  border-color: var(--wiki-border);
+}
+
+.explorer-btn--ghost:hover {
+  border-color: var(--wiki-accent);
+  color: var(--wiki-accent) !important;
+}
+
+.explorer-btn[disabled] {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.sync-icon {
+  display: inline-block;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .explorer-btn.is-syncing .sync-icon {
+    animation: wiki-spin 0.8s linear infinite;
+  }
+}
+
+@keyframes wiki-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Category Filter Pills */
+.category-pills {
+  display: flex;
+  flex-wrap: wrap;
+  flex-wrap: balance;
+  gap: 0.5rem;
+  margin-block-end: 1rem;
+}
+
+.category-pill {
+  display: inline-flex;
+  align-items: safe center;
+  gap: 0.4rem;
+  padding-block: 0.4rem;
+  padding-inline: 0.8rem;
+  border-radius: 999px;
+  border: 1px solid var(--wiki-border);
+  background: var(--wiki-surface);
+  color: var(--md-default-fg-color--light);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.category-pill:hover {
+  border-color: var(--wiki-border-hover);
+  color: var(--md-default-fg-color);
+}
+
+.category-pill.is-active {
+  background: var(--wiki-accent-fill);
+  border-color: var(--wiki-accent-fill);
+  color: var(--wiki-accent-contrast);
+}
+
+.category-pill__count {
+  font-size: 0.7rem;
+  padding-block: 0.05rem;
+  padding-inline: 0.4rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+/* Status bar */
+.explorer-status-bar {
+  display: flex;
+  align-items: safe center;
+  justify-content: space-between;
+  margin-block-end: 1rem;
+  font-size: 0.82rem;
+  color: var(--md-default-fg-color--light);
+}
+
+.reset-filters-btn {
+  background: none;
+  border: none;
+  color: var(--wiki-accent);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+}
+
+.reset-filters-btn:hover {
+  text-decoration: underline;
+}
+
+/* Projects Grid using CSS Grid + Subgrid */
+.projects-grid {
+  inline-size: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  grid-auto-rows: auto 1fr auto;
+  gap: 1.15rem;
+}
+
+.project-card {
+  grid-row: span 3;
+  display: grid;
+  /* Same-cascade fallback before subgrid */
+  grid-template-rows: auto 1fr auto;
+  grid-template-rows: subgrid;
+  gap: 0.65rem;
+  background: var(--wiki-surface);
+  border: 1px solid var(--wiki-border);
+  border-radius: var(--wiki-radius);
+  padding-block: 1.15rem;
+  padding-inline: 1.2rem;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.project-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--wiki-border-hover);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.project-card__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-inline-size: 0;
+}
+
+.card-category-badge {
+  inline-size: fit-content;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-block: 0.15rem;
+  padding-inline: 0.55rem;
+  border-radius: 999px;
+  background: var(--wiki-accent-soft);
+  color: var(--wiki-accent);
+}
+
+.project-card__title {
+  margin: 0 !important;
+  font-size: 1.02rem !important;
+  font-weight: 700 !important;
+  line-height: 1.3 !important;
+}
+
+.project-card__title a {
+  color: var(--md-default-fg-color) !important;
+  text-decoration: none !important;
+}
+
+.project-card__title a:hover {
+  color: var(--wiki-accent) !important;
+}
+
+.project-card__dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  font-size: 0.7rem;
+  color: var(--md-default-fg-color--lighter, #6e7178);
+  font-variant-numeric: tabular-nums;
+}
+
+.project-card__summary {
+  margin: 0;
+  font-size: 0.83rem;
+  line-height: 1.5;
+  color: var(--md-default-fg-color--light);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  line-clamp: 3;
+  overflow: clip;
+}
+
+.project-card__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-block-start: 0.4rem;
+  border-block-start: 1px solid var(--wiki-border);
+}
+
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  flex-wrap: balance;
+  gap: 0.35rem;
+}
+
+.card-tag {
+  font-size: 0.68rem;
+  padding-block: 0.1rem;
+  padding-inline: 0.45rem;
+  border-radius: 4px;
+  background: var(--wiki-surface-elevated);
+  border: 1px solid var(--wiki-border);
+  color: var(--md-default-fg-color--light);
+  cursor: pointer;
+}
+
+.card-tag:hover {
+  border-color: var(--wiki-accent);
+  color: var(--wiki-accent);
+}
+
+.card-actions {
+  display: flex;
+  align-items: safe center;
+  gap: 0.5rem;
+}
+
+.card-action-link {
+  margin-inline-start: auto;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--wiki-accent) !important;
+  text-decoration: none !important;
+}
+
+.card-action-link:hover {
+  text-decoration: underline !important;
+}
+
+/* Compact List Mode via Container Query & Modifier Class */
+.projects-grid.is-list-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.projects-grid.is-list-view .project-card {
+  display: flex;
+  flex-direction: row;
+   flex-wrap: wrap;
+  align-items: safe center;
+  gap: 1rem;
+  padding-block: 0.75rem;
+  padding-inline: 1rem;
+}
+
+.projects-grid.is-list-view .project-card__header {
+  flex: 0 0 240px;
+}
+
+.projects-grid.is-list-view .project-card__summary {
+  flex: 1 1 260px;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+}
+
+.projects-grid.is-list-view .project-card__footer {
+  border-block-start: none;
+  padding-block-start: 0;
+  flex-direction: row;
+  align-items: safe center;
+  margin-inline-start: auto;
+}
+
+@container explorer (inline-size < 640px) {
+  .toolbar-controls {
+    inline-size: 100%;
+    justify-content: space-between;
+  }
+}
+
+/* Native <dialog> Modal for AJAX Quick-Peek */
+.wiki-modal {
+  inline-size: min(920px, 94dvw);
+  max-block-size: 86dvh;
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--wiki-border);
+  border-radius: var(--wiki-radius);
+  background: var(--wiki-surface-toolbar);
+  color: var(--md-default-fg-color);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65);
+  overflow: clip;
+}
+
+.wiki-modal[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.wiki-modal::backdrop {
+  background: rgba(10, 12, 16, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.wiki-modal__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: safe center;
+  gap: 0.75rem;
+  padding-block: 0.9rem;
+  padding-inline: 1.25rem;
+  background: var(--wiki-surface);
+  border-block-end: 1px solid var(--wiki-border);
+}
+
+.wiki-modal__title-group {
+  display: flex;
+  align-items: safe center;
+  gap: 0.65rem;
+  min-inline-size: 0;
+}
+
+.wiki-modal__title {
+  margin: 0 !important;
+  font-size: 1.1rem !important;
+  font-weight: 700 !important;
+  white-space: nowrap;
+  overflow: clip;
+  text-overflow: ellipsis;
+}
+
+.wiki-modal__actions {
+  display: flex;
+  align-items: safe center;
+  gap: 0.5rem;
+  margin-inline-start: auto;
+}
+
+.modal-close-btn {
+  display: inline-flex;
+   place-content: center;
+   place-items: center;
+  inline-size: 2rem;
+  block-size: 2rem;
+  border-radius: var(--wiki-radius-sm);
+  border: 1px solid var(--wiki-border);
+  background: var(--wiki-surface-elevated);
+  color: var(--md-default-fg-color);
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.modal-close-btn:hover {
+  border-color: var(--wiki-accent);
+  color: var(--wiki-accent);
+}
+
+.wiki-modal__body {
+  padding-block: 1.25rem;
+  padding-inline: 1.5rem;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+  flex: 1 1 auto;
+}
+
+.modal-loading {
+  padding-block: 3rem;
+  text-align: center;
+  color: var(--md-default-fg-color--light);
+  font-size: 0.95rem;
+}
+
+.empty-state {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding-block: 3rem;
+  padding-inline: 1.5rem;
+  background: var(--wiki-surface);
+  border: 1px dashed var(--wiki-border);
+  border-radius: var(--wiki-radius);
+  color: var(--md-default-fg-color--light);
+}
+
+/* Project Photo & Media Gallery Grid */
+.project-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.85rem;
+  margin-block: 1rem 1.75rem;
+}
+
+.media-thumb-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--wiki-surface);
+  border: 1px solid var(--wiki-border);
+  border-radius: var(--wiki-radius-sm);
+  overflow: clip;
+  text-decoration: none !important;
+  transition: transform 0.16s ease, border-color 0.16s ease;
+}
+
+.media-thumb-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--wiki-accent);
+}
+
+.media-thumb-card img {
+  display: block;
+  inline-size: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: var(--wiki-surface-elevated);
+}
+
+.media-thumb-caption {
+  padding-block: 0.4rem;
+  padding-inline: 0.55rem;
+  font-size: 0.72rem;
+  color: var(--md-default-fg-color--light);
+  white-space: nowrap;
+  overflow: clip;
+  text-overflow: ellipsis;
+}
+
+/* Boot Toggle Indicator */
+.boot-dot {
+  inline-size: 0.55rem;
+  block-size: 0.55rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.55);
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+#boot-toggle-btn[aria-pressed="true"] {
+  border-color: rgba(34, 197, 94, 0.55);
+}
+
+#boot-toggle-btn[aria-pressed="true"] .boot-dot {
+  background: #22c55e;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.75);
+}
+
+/* In-Modal Project Tune / Edit Drawer */
+.tune-drawer {
+  padding-block: 1rem;
+  padding-inline: 1.25rem;
+  background: var(--wiki-surface);
+  border-block-end: 1px solid var(--wiki-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.tune-drawer[hidden] {
+  display: none !important;
+}
+
+.tune-drawer__ai {
+  padding-block: 0.75rem;
+  padding-inline: 0.9rem;
+  border-radius: var(--wiki-radius-sm);
+  background: var(--wiki-accent-soft);
+  border: 1px solid var(--wiki-border-hover);
+}
+
+.tune-ai-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: safe center;
+  gap: 0.5rem;
+  margin-block-start: 0.4rem;
+}
+
+.tune-ai-row .tune-input {
+  flex: 1 1 260px;
+}
+
+.tune-drawer__grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.75rem;
+}
+
+.tune-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.tune-label {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--md-default-fg-color--light);
+}
+
+.tune-input,
+.tune-select,
+.tune-textarea {
+  padding-block: 0.5rem;
+  padding-inline: 0.75rem;
+  border-radius: var(--wiki-radius-sm);
+  border: 1px solid var(--wiki-border);
+  background: var(--wiki-surface-elevated);
+  color: var(--md-default-fg-color);
+  font-size: 0.85rem;
+  font-family: inherit;
+}
+
+.tune-textarea {
+  field-sizing: content;
+  height: auto;
+  inline-size: 100%;
+  min-block-size: 3.5lh;
+  max-block-size: 12lh;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.tune-input:focus,
+.tune-select:focus,
+.tune-textarea:focus {
+  outline: none;
+  border-color: var(--wiki-accent);
+  box-shadow: 0 0 0 2px var(--wiki-accent-soft);
+}
+
+.tune-drawer__footer {
+  display: flex;
+  align-items: safe center;
+  gap: 0.5rem;
+}
+
+.tune-status-msg {
+  font-size: 0.8rem;
+  color: var(--wiki-accent);
+  margin-inline-end: auto;
+}

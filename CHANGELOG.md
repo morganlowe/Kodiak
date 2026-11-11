@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet — planned work will be listed here as it lands._
 
+## [1.1.5] — 2026-11-10
+
+### Added
+
+- **Standalone Windows ProjectsWiki (`kodiak-projectswiki.exe`)**:
+  - Created cross-platform unified runner `ProjectsWiki/wiki_server.py` supporting `serve`, `sync`, `build`, `rebuild`, and `stop` subcommands across Windows and Linux.
+  - Automated Windows freeze build script (`scripts/build_windows_wiki.py`) using PyInstaller to package the complete Python runtime, MkDocs Material, PyYAML, and the ProjectsWiki Sync API into a self-contained executable.
+  - Bundled ProjectsWiki assets, templates, and documentation directly into Kodiak's Windows installer (`src-tauri/resources/ProjectsWiki`) — zero Python or pip setup required for Windows users.
+  - Cross-platform process execution in Tauri backend (`src-tauri/src/pipeline.rs`): runs `kodiak-projectswiki.exe` silently in the background with Windows `CREATE_NO_WINDOW` (no command prompt popups).
+  - Cross-platform directory resolution in `src-tauri/src/config.rs` (`resolve_wiki_dir`) supporting installer resource directories, local development paths, and `%LOCALAPPDATA%`.
+  - Platform-adaptive Wiki Setup Wizard in frontend (`src/main.ts`): provides Windows `hosts` path guidance (`C:\Windows\System32\drivers\etc\hosts`) and tailored background daemon management.
+
+### Removed / Changed
+
+- **Retired WiX / MSI Packaging in Favor of Single NSIS `.exe`**:
+  - Dropped `msi` bundle target from `src-tauri/tauri.conf.json` and GitHub Actions release matrix.
+  - Streamlined Windows distribution to a single, fast, self-contained NSIS installer (`Kodiak_1.1.5_x64-setup.exe`), cutting release build duration in CI.
+
 ## [1.1.4] — 2026-11-10
 
 ### Added
@@ -186,7 +204,8 @@ _Nothing yet — planned work will be listed here as it lands._
 - Split Arch `PKGBUILD` producing `kodiak` and `kodiak-projectswiki` packages with dependency hooks (`python-mkdocs-material`, `python-requests`, `python-toml`).
 - Debian/Ubuntu `.deb` binary packages with `apt` dependency resolution.
 
-[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.4...HEAD
+[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.5...HEAD
+[1.1.5]: https://github.com/morganlowe/Kodiak/compare/v1.1.4...v1.1.5
 [1.1.4]: https://github.com/morganlowe/Kodiak/compare/v1.1.3...v1.1.4
 [1.1.3]: https://github.com/morganlowe/Kodiak/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/morganlowe/Kodiak/compare/v1.1.1...v1.1.2
