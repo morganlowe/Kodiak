@@ -619,10 +619,6 @@ pub async fn rescan_projects_service(cfg: &mut AppConfig) -> Result<RescanResult
 
     let added_count = added_projects.len();
 
-    if added_count > 0 {
-        crate::config::save_config(cfg)?;
-    }
-
     if cfg.wiki_enabled {
         let _ = sync_wiki_catalog_service(cfg).await;
     }

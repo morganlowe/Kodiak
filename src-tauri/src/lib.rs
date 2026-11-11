@@ -218,6 +218,9 @@ fn detect_projects_in_dir(dir_path: String) -> Vec<String> {
 async fn rescan_projects_dir(state: State<'_, AppState>) -> Result<RescanResult, String> {
     let mut cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
     let res = rescan_projects_service(&mut cfg).await?;
+    if res.added_count > 0 {
+        save_config(&cfg)?;
+    }
     *state.config.lock().map_err(|e| e.to_string())? = cfg;
     Ok(res)
 }
