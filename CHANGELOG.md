@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet — planned work will be listed here as it lands._
 
+## [1.1.4] — 2026-11-10
+
+### Added
+
+- **Automatic & Manual Project Directory Rescan**:
+  - Automatically rescans the configured `projects_dir` (e.g. `~/Projects`) upon application launch via `rescan_projects_service` (`rescan_projects_dir`).
+  - Detects new project folders and subfolders containing project markers (`.ino` Arduino sketches, `.git` repositories, `Cargo.toml`, `package.json`, `Makefile`, `CMakeLists.txt`, `platformio.ini`, `pyproject.toml`).
+  - Automatically registers newly discovered projects into `cfg.whitelist` with `READ` grant level, persists `config.toml`, and updates documentation in the Projects Wiki catalog.
+  - Added a dedicated manual rescan button (`↻`) on the sidebar **Projects** header with spin animation, tooltip, and duplicate-prevention state locking.
+  - Added a companion **"↻ Rescan Directory"** button in **Settings** under *Project Whitelist & Grant Matrix*.
+- **Directory Search on Main Side Window**:
+  - Embedded real-time search input inside the sidebar's Projects section.
+  - Instant case-insensitive filtering matching both project directory names and full paths.
+  - Dynamic match counter badge (`matched / total`) displaying live results.
+  - Keyboard navigation: press `Enter` to activate the first filtered project; press `Escape` or click `✕` to clear the filter.
+  - Input focus and selection ranges are preserved during background UI re-renders.
+- **Persistent UI Collapsed States**:
+  - Persists all collapsible UI sections across application restarts and closes:
+    - Entire sidebar toggle (`sidebarCollapsed`)
+    - Projects list toggle (`sidebarProjectsCollapsed`)
+    - Memories list toggle (`sidebarMemoriesCollapsed`)
+    - Tasks list toggle (`sidebarTasksCollapsed`)
+    - Settings Project Whitelist toggle (`settingsProjectsCollapsed`)
+    - Local Decision Journal toggle (`journalCollapsed`)
+  - Dual-layer storage ensures settings are saved in Web Storage (`localStorage`) and synced to `AppConfig.ui_collapsed` in `~/.config/kodiak/config.toml`.
+
 ## [1.1.3] — 2026-11-10
 
 ### Added
@@ -160,7 +186,8 @@ _Nothing yet — planned work will be listed here as it lands._
 - Split Arch `PKGBUILD` producing `kodiak` and `kodiak-projectswiki` packages with dependency hooks (`python-mkdocs-material`, `python-requests`, `python-toml`).
 - Debian/Ubuntu `.deb` binary packages with `apt` dependency resolution.
 
-[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.3...HEAD
+[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.4...HEAD
+[1.1.4]: https://github.com/morganlowe/Kodiak/compare/v1.1.3...v1.1.4
 [1.1.3]: https://github.com/morganlowe/Kodiak/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/morganlowe/Kodiak/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/morganlowe/Kodiak/compare/v1.1.0...v1.1.1

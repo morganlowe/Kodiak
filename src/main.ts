@@ -156,6 +156,14 @@ interface AppConfig {
   run_log_keep_runs?: number;
   exclusion_list?: string[];
   custom_css?: string;
+  ui_collapsed?: Record<string, boolean>;
+}
+
+interface RescanResult {
+  projects_dir: string;
+  total_projects: number;
+  added_count: number;
+  added_projects: string[];
 }
 
 interface TaskRunLogResponse {
@@ -470,7 +478,7 @@ interface AltProviderFormDraft {
 }
 
 // Application UI state
-const state: {
+interface AppState {
   tab: ActiveTab;
   config: AppConfig | null;
   health: HealthStatus | null;
@@ -517,6 +525,8 @@ const state: {
   sidebarTasksCollapsed: boolean;
   settingsProjectsCollapsed: boolean;
   journalCollapsed: boolean;
+  projectSearchQuery: string;
+  rescanningProjects: boolean;
   editingAltProviderIdx: number | null;
   altProviderFormDraft: AltProviderFormDraft | null;
   fetchingLiveModels: boolean;
@@ -544,7 +554,50 @@ const state: {
   batchApproving: boolean;
   inboxFilter: "all" | "conflicts" | "safe";
   dashboardData: MultiProjectDashboardResponse | null;
-} = {
+}
+
+const COLLAPSED_STORAGE_KEY = "kodiak:ui_collapsed";
+
+interface CollapsedState {
+  sidebarCollapsed?: boolean;
+  sidebarProjectsCollapsed?: boolean;
+  sidebarMemoriesCollapsed?: boolean;
+  sidebarTasksCollapsed?: boolean;
+  settingsProjectsCollapsed?: boolean;
+  journalCollapsed?: boolean;
+}
+
+function loadCollapsedState(): CollapsedState {
+  try {
+    const raw = localStorage.getItem(COLLAPSED_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (err) {
+    console.debug("Failed to load collapsed state from localStorage:", err);
+  }
+  return {};
+}
+
+function saveCollapsedState(updates: Partial<CollapsedState>): void {
+  try {
+    const current = loadCollapsedState();
+    const next = { ...current, ...updates };
+    localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify(next));
+  } catch (err) {
+    console.debug("Failed to save collapsed state to localStorage:", err);
+  }
+
+  if (state?.config) {
+    if (!state.config.ui_collapsed) {
+      state.config.ui_collapsed = {};
+    }
+    Object.assign(state.config.ui_collapsed, updates);
+    invoke<AppConfig>("update_config", { newConfig: state.config }).catch(() => {});
+  }
+}
+
+const savedCollapsed = loadCollapsedState();
+
+const state: AppState = {
   tab: "workbench",
   config: null,
   hardwareProfile: null,
@@ -597,12 +650,14 @@ const state: {
   ticker: [],
   tickerLocked: false,
   liveDraft: null,
-  sidebarCollapsed: false,
-  sidebarProjectsCollapsed: false,
-  sidebarMemoriesCollapsed: false,
-  sidebarTasksCollapsed: false,
-  settingsProjectsCollapsed: true,
-  journalCollapsed: true,
+  sidebarCollapsed: savedCollapsed.sidebarCollapsed ?? false,
+  sidebarProjectsCollapsed: savedCollapsed.sidebarProjectsCollapsed ?? false,
+  sidebarMemoriesCollapsed: savedCollapsed.sidebarMemoriesCollapsed ?? false,
+  sidebarTasksCollapsed: savedCollapsed.sidebarTasksCollapsed ?? false,
+  settingsProjectsCollapsed: savedCollapsed.settingsProjectsCollapsed ?? true,
+  journalCollapsed: savedCollapsed.journalCollapsed ?? true,
+  projectSearchQuery: "",
+  rescanningProjects: false,
   editingAltProviderIdx: null,
   altProviderFormDraft: null,
   fetchingLiveModels: false,
@@ -969,6 +1024,34 @@ function showProjectContextMenu(x: number, y: number, projPath: string) {
   }, 10);
 }
 
+let initialAutoRescanDone = false;
+
+async function handleRescanProjects(isManual = false): Promise<void> {
+  if (state.rescanningProjects) return;
+  state.rescanningProjects = true;
+  if (isManual) renderApp();
+  try {
+    const res = await invoke<RescanResult>("rescan_projects_dir");
+    if (res.added_count > 0) {
+      state.uiBannerInfo = `Discovered and added ${res.added_count} new project(s) to whitelist: ${res.added_projects.join(", ")}`;
+      state.uiBannerError = null;
+      await refreshAllState();
+    } else if (isManual) {
+      state.uiBannerInfo = `Rescan complete: All ${res.total_projects} projects are up to date.`;
+      state.uiBannerError = null;
+      await refreshAllState();
+    }
+  } catch (err) {
+    if (isManual) {
+      state.uiBannerError = `Rescan error: ${String(err)}`;
+    }
+    console.debug("Rescan projects error:", err);
+  } finally {
+    state.rescanningProjects = false;
+    renderApp();
+  }
+}
+
 async function refreshAllState(): Promise<void> {
   try {
     const [cfg, cruise, health, hist, journal, mems, hwProfile, qItems, uInbox, pDash] = await Promise.all([
@@ -985,6 +1068,31 @@ async function refreshAllState(): Promise<void> {
     ]);
     state.config = cfg;
     applyCustomCss(cfg?.custom_css);
+
+    if (cfg?.ui_collapsed) {
+      const stored = loadCollapsedState();
+      let changed = false;
+      const keys: (keyof CollapsedState)[] = [
+        "sidebarCollapsed",
+        "sidebarProjectsCollapsed",
+        "sidebarMemoriesCollapsed",
+        "sidebarTasksCollapsed",
+        "settingsProjectsCollapsed",
+        "journalCollapsed",
+      ];
+      for (const k of keys) {
+        if (stored[k] === undefined && cfg.ui_collapsed[k] !== undefined) {
+          (state as any)[k] = cfg.ui_collapsed[k];
+          stored[k] = cfg.ui_collapsed[k];
+          changed = true;
+        }
+      }
+      if (changed) {
+        try {
+          localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify(stored));
+        } catch {}
+      }
+    }
     state.cruiseControl = cruise;
     state.health = health;
     state.history = hist;
@@ -1025,6 +1133,11 @@ async function refreshAllState(): Promise<void> {
   }
   renderApp();
   checkCloudStatusToast();
+
+  if (!initialAutoRescanDone) {
+    initialAutoRescanDone = true;
+    handleRescanProjects(false).catch(() => {});
+  }
 }
 
 function renderHeader(): string {
@@ -1706,12 +1819,27 @@ function renderSidebar(): string {
     </button>`;
   };
 
-  const visibleWhitelist = (cfg?.whitelist ?? []).filter((w) => {
+  const q = (state.projectSearchQuery || "").trim().toLowerCase();
+  const allNonExcluded = (cfg?.whitelist ?? []).filter((w) => {
     const name = w.path.split("/").filter(Boolean).pop() ?? w.path;
     return !exclusion.has(w.path) && !exclusion.has(name);
   });
+  const visibleWhitelist = allNonExcluded.filter((w) => {
+    if (!q) return true;
+    const name = w.path.split("/").filter(Boolean).pop() ?? w.path;
+    return name.toLowerCase().includes(q) || w.path.toLowerCase().includes(q);
+  });
+  const projectCountBadge = q
+    ? `${visibleWhitelist.length}/${allNonExcluded.length}`
+    : `${allNonExcluded.length}`;
+  const projectCountTooltip = q
+    ? `${visibleWhitelist.length} matching out of ${allNonExcluded.length} projects`
+    : `${allNonExcluded.length} whitelisted projects`;
+
   const allProjectsHtml = visibleWhitelist.length > 0
     ? visibleWhitelist.map(renderProjectButton).join("")
+    : q
+    ? `<p class="muted" style="font-size:0.75rem; padding-inline-start:0.35rem; margin:0.35rem 0;">No projects match "${escapeHtml(state.projectSearchQuery)}".</p>`
     : `<p class="muted" style="font-size:0.75rem; padding-inline-start:0.35rem; margin:0.2rem 0;">(No projects in view)</p>`;
   const activeEntry = (cfg?.whitelist ?? []).find((w) => w.path === cfg?.active_project);
   const collapsedProjectHtml = activeEntry
@@ -1793,9 +1921,36 @@ function renderSidebar(): string {
               <span class="mono muted" style="font-size:0.75rem; width:0.85rem; display:inline-block; text-align:center;">${state.sidebarProjectsCollapsed ? "▶" : "▼"}</span>
               <h3 class="sidebar__heading" style="margin:0;">Projects</h3>
             </div>
-            <span class="badge badge--neutral" style="font-size:0.65rem;">${(cfg?.whitelist ?? []).length}</span>
+            <div class="row-inline" style="align-items:center; gap:0.25rem;">
+              <span class="badge badge--neutral" style="font-size:0.65rem;" title="${escapeHtml(projectCountTooltip)}">${projectCountBadge}</span>
+              <button type="button" class="side-icon-btn ${state.rescanningProjects ? "is-spinning" : ""}" id="rescan-projects-btn" title="Rescan projects directory" ${state.rescanningProjects ? "disabled" : ""} onclick="event.stopPropagation();">↻</button>
+            </div>
           </div>
-          ${state.sidebarProjectsCollapsed ? collapsedProjectHtml : (allProjectsHtml || `<p class="muted" style="font-size:0.78rem;">None whitelisted.</p>`)}
+          ${
+            state.sidebarProjectsCollapsed
+              ? collapsedProjectHtml
+              : `
+                <div class="sidebar-search-box" style="margin: 0.15rem 0 0.45rem 0;">
+                  <span class="sidebar-search-icon">🔍</span>
+                  <input
+                    type="text"
+                    id="sidebar-project-search"
+                    class="sidebar-search-input"
+                    placeholder="Search projects..."
+                    value="${escapeHtml(state.projectSearchQuery || "")}"
+                    autocomplete="off"
+                    spellcheck="false"
+                    title="Filter projects by name or directory path"
+                  />
+                  ${
+                    state.projectSearchQuery
+                      ? `<button type="button" class="sidebar-search-clear" id="sidebar-project-search-clear" title="Clear search">✕</button>`
+                      : ""
+                  }
+                </div>
+                ${allProjectsHtml || `<p class="muted" style="font-size:0.78rem;">None whitelisted.</p>`}
+              `
+          }
         </div>
 
         <div>
@@ -3336,6 +3491,7 @@ function renderSettingsTab(): string {
           </select>
         </div>
         <button type="button" id="add-whitelist-btn" class="btn btn--primary">+ Add to Whitelist</button>
+        <button type="button" id="settings-rescan-projects-btn" class="btn btn--secondary ${state.rescanningProjects ? "is-spinning" : ""}" ${state.rescanningProjects ? "disabled" : ""}>↻ Rescan Directory</button>
       </div>
 
       ${
@@ -4852,18 +5008,71 @@ function bindEvents(): void {
   // Sidebar
   document.getElementById("sidebar-toggle-btn")?.addEventListener("click", () => {
     state.sidebarCollapsed = !state.sidebarCollapsed;
+    saveCollapsedState({ sidebarCollapsed: state.sidebarCollapsed });
     renderApp();
   });
   document.getElementById("sidebar-projects-toggle")?.addEventListener("click", () => {
     state.sidebarProjectsCollapsed = !state.sidebarProjectsCollapsed;
+    saveCollapsedState({ sidebarProjectsCollapsed: state.sidebarProjectsCollapsed });
     renderApp();
+  });
+  document.getElementById("rescan-projects-btn")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    handleRescanProjects(true);
+  });
+  const searchInput = document.getElementById("sidebar-project-search") as HTMLInputElement | null;
+  searchInput?.addEventListener("input", (e) => {
+    const target = e.target as HTMLInputElement;
+    const pos = target.selectionStart ?? 0;
+    state.projectSearchQuery = target.value;
+    renderApp();
+    const nextInput = document.getElementById("sidebar-project-search") as HTMLInputElement | null;
+    if (nextInput) {
+      nextInput.focus();
+      try {
+        nextInput.setSelectionRange(pos, pos);
+      } catch {}
+    }
+  });
+  searchInput?.addEventListener("keydown", async (e) => {
+    if (e.key === "Escape") {
+      state.projectSearchQuery = "";
+      renderApp();
+      const nextInput = document.getElementById("sidebar-project-search") as HTMLInputElement | null;
+      nextInput?.focus();
+    } else if (e.key === "Enter") {
+      const q = (state.projectSearchQuery || "").trim().toLowerCase();
+      const exclusion = new Set(state.config?.exclusion_list ?? []);
+      const matching = (state.config?.whitelist ?? []).filter((w) => {
+        const name = w.path.split("/").filter(Boolean).pop() ?? w.path;
+        if (exclusion.has(w.path) || exclusion.has(name)) return false;
+        return name.toLowerCase().includes(q) || w.path.toLowerCase().includes(q);
+      });
+      if (matching.length > 0) {
+        const first = matching[0];
+        if (state.config && state.config.active_project !== first.path) {
+          state.config.active_project = first.path;
+          state.tab = "workbench";
+          await invoke<AppConfig>("update_config", { newConfig: state.config });
+          await refreshAllState();
+        }
+      }
+    }
+  });
+  document.getElementById("sidebar-project-search-clear")?.addEventListener("click", () => {
+    state.projectSearchQuery = "";
+    renderApp();
+    const nextInput = document.getElementById("sidebar-project-search") as HTMLInputElement | null;
+    nextInput?.focus();
   });
   document.getElementById("sidebar-memories-toggle")?.addEventListener("click", () => {
     state.sidebarMemoriesCollapsed = !state.sidebarMemoriesCollapsed;
+    saveCollapsedState({ sidebarMemoriesCollapsed: state.sidebarMemoriesCollapsed });
     renderApp();
   });
   document.getElementById("sidebar-tasks-toggle")?.addEventListener("click", () => {
     state.sidebarTasksCollapsed = !state.sidebarTasksCollapsed;
+    saveCollapsedState({ sidebarTasksCollapsed: state.sidebarTasksCollapsed });
     renderApp();
   });
   document.querySelectorAll<HTMLElement>("[data-select-project]").forEach((el) => {
@@ -5597,13 +5806,20 @@ function bindEvents(): void {
   // Settings: Projects whitelist toggle collapse/expand
   document.getElementById("settings-projects-toggle")?.addEventListener("click", () => {
     state.settingsProjectsCollapsed = !state.settingsProjectsCollapsed;
+    saveCollapsedState({ settingsProjectsCollapsed: state.settingsProjectsCollapsed });
     renderApp();
   });
 
   // Settings: Local Decision Journal toggle collapse/expand
   document.getElementById("journal-toggle-btn")?.addEventListener("click", () => {
     state.journalCollapsed = !state.journalCollapsed;
+    saveCollapsedState({ journalCollapsed: state.journalCollapsed });
     renderApp();
+  });
+
+  // Settings: Rescan Directory
+  document.getElementById("settings-rescan-projects-btn")?.addEventListener("click", () => {
+    handleRescanProjects(true);
   });
 
   // Settings: Add whitelist entry

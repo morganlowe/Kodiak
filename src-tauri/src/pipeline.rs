@@ -492,6 +492,149 @@ pub async fn list_wiki_projects_service(cfg: &AppConfig) -> Result<Vec<Value>, S
     Ok(Vec::new())
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RescanResult {
+    pub projects_dir: String,
+    pub total_projects: usize,
+    pub added_count: usize,
+    pub added_projects: Vec<String>,
+}
+
+fn is_ignored_project_dir_name(name: &str) -> bool {
+    name.starts_with('.')
+        || matches!(
+            name,
+            "node_modules"
+                | "target"
+                | "venv"
+                | ".venv"
+                | "__pycache__"
+                | "dist"
+                | "build"
+                | "pkg"
+                | ".git"
+        )
+}
+
+fn dir_contains_project_markers(path: &Path) -> bool {
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            if file_name.ends_with(".ino")
+                || file_name == "Cargo.toml"
+                || file_name == "package.json"
+                || file_name == "Makefile"
+                || file_name == "CMakeLists.txt"
+                || file_name == "platformio.ini"
+                || file_name == "pyproject.toml"
+                || file_name == "requirements.txt"
+                || file_name == ".git"
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Automatically or manually rescans the configured projects directory, discovering
+/// new project folders (including Arduino .ino sketches, git repos, etc.) and synchronizing
+/// them into Kodiak's security whitelist with READ grant level.
+pub async fn rescan_projects_service(cfg: &mut AppConfig) -> Result<RescanResult, String> {
+    let p_dir = resolve_projects_dir(cfg);
+    if !p_dir.exists() || !p_dir.is_dir() {
+        return Err(format!(
+            "Projects directory '{}' does not exist or is not a directory.",
+            p_dir.display()
+        ));
+    }
+
+    let mut candidate_paths: Vec<PathBuf> = Vec::new();
+
+    if let Ok(entries) = std::fs::read_dir(&p_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if is_ignored_project_dir_name(&name) {
+                    continue;
+                }
+                candidate_paths.push(path.clone());
+
+                // Also check 1 level down if this directory contains sub-projects (e.g. Arduino sketches or categorized projects)
+                if !dir_contains_project_markers(&path) {
+                    if let Ok(sub_entries) = std::fs::read_dir(&path) {
+                        for sub_entry in sub_entries.flatten() {
+                            let sub_path = sub_entry.path();
+                            if sub_path.is_dir() {
+                                let sub_name = sub_entry.file_name().to_string_lossy().to_string();
+                                if !is_ignored_project_dir_name(&sub_name)
+                                    && dir_contains_project_markers(&sub_path)
+                                {
+                                    candidate_paths.push(sub_path);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut added_projects = Vec::new();
+    let exclusion_set: std::collections::HashSet<String> = cfg.exclusion_list.iter().cloned().collect();
+
+    for cand in candidate_paths {
+        let cand_str = cand.to_string_lossy().to_string();
+        let cand_name = cand
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| cand_str.clone());
+
+        // Skip if explicitly excluded
+        if exclusion_set.contains(&cand_str) || exclusion_set.contains(&cand_name) {
+            continue;
+        }
+
+        let norm_cand = cand_str.trim_end_matches('/');
+
+        // Check if already in whitelist
+        let already_present = cfg.whitelist.iter().any(|w| {
+            let norm_w = w.path.trim_end_matches('/');
+            norm_w == norm_cand
+        });
+
+        if !already_present {
+            cfg.whitelist.push(WhitelistEntry {
+                path: cand_str.clone(),
+                level: GrantLevel::Read,
+            });
+            added_projects.push(cand_name);
+        }
+    }
+
+    if cfg.active_project.is_none() && !cfg.whitelist.is_empty() {
+        cfg.active_project = Some(cfg.whitelist[0].path.clone());
+    }
+
+    let added_count = added_projects.len();
+
+    if added_count > 0 {
+        crate::config::save_config(cfg)?;
+    }
+
+    if cfg.wiki_enabled {
+        let _ = sync_wiki_catalog_service(cfg).await;
+    }
+
+    Ok(RescanResult {
+        projects_dir: p_dir.to_string_lossy().to_string(),
+        total_projects: cfg.whitelist.len(),
+        added_count,
+        added_projects,
+    })
+}
+
 /// Scans a directory and returns names of project folders contained within it.
 pub fn detect_projects_in_dir_service(dir_path: &str) -> Vec<String> {
     let path = expand_tilde(dir_path);
@@ -499,12 +642,11 @@ pub fn detect_projects_in_dir_service(dir_path: &str) -> Vec<String> {
     if path.is_dir() {
         if let Ok(entries) = std::fs::read_dir(&path) {
             for entry in entries.flatten() {
-                if let Ok(ft) = entry.file_type() {
-                    if ft.is_dir() {
-                        let name = entry.file_name().to_string_lossy().to_string();
-                        if !name.starts_with('.') && name != "node_modules" && name != "target" && name != "venv" && name != "__pycache__" && name != "dist" {
-                            detected.push(name);
-                        }
+                let p = entry.path();
+                if p.is_dir() {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if !is_ignored_project_dir_name(&name) {
+                        detected.push(name);
                     }
                 }
             }

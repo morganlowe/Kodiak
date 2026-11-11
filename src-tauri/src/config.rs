@@ -150,6 +150,8 @@ pub struct AppConfig {
     pub exclusion_list: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_css: Option<String>,
+    #[serde(default)]
+    pub ui_collapsed: std::collections::HashMap<String, bool>,
 }
 
 impl Default for AppConfig {
@@ -179,6 +181,7 @@ impl Default for AppConfig {
             whitelist: Vec::new(),
             exclusion_list: Vec::new(),
             custom_css: None,
+            ui_collapsed: std::collections::HashMap::new(),
 
             alt_provider: Vec::new(),
             cascade: CascadeConfig::default(),

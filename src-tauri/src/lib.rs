@@ -30,6 +30,7 @@ use pipeline::{
     classify_cloud_error_from_str, complete_wiki_setup_service, create_initial_task_record,
     detect_projects_in_dir_service, fetch_provider_models, get_detailed_wiki_status, get_wiki_setup_info_service,
     list_wiki_projects_service, ping_alt_provider, probe_cloud_health, rebuild_wiki_assets_service,
+    rescan_projects_service, RescanResult,
     resolve_active_project_root, restart_wiki_service, run_execute_stage_with_events,
     run_interpret_stage, run_interpret_stage_with_provider, run_shell_command_bounded,
     run_verify_stage, run_verify_stage_with_provider, save_and_return_record,
@@ -211,6 +212,14 @@ fn set_custom_css(state: State<'_, AppState>, css: Option<String>) -> Result<App
 #[tauri::command]
 fn detect_projects_in_dir(dir_path: String) -> Vec<String> {
     detect_projects_in_dir_service(&dir_path)
+}
+
+#[tauri::command]
+async fn rescan_projects_dir(state: State<'_, AppState>) -> Result<RescanResult, String> {
+    let mut cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
+    let res = rescan_projects_service(&mut cfg).await?;
+    *state.config.lock().map_err(|e| e.to_string())? = cfg;
+    Ok(res)
 }
 
 #[tauri::command]
@@ -2926,6 +2935,7 @@ pub fn run() {
             complete_wiki_setup,
             set_wiki_enabled,
             detect_projects_in_dir,
+            rescan_projects_dir,
             run_task_pipeline,
             retry_task_stage,
             approve_card,
@@ -5875,4 +5885,30 @@ tier = "low"
         assert!(VERIFY_SYSTEM_PROMPT.contains("unrequested features"));
         assert!(VERIFY_SYSTEM_PROMPT.contains("citing the unrelated element explicitly"));
         assert!(VERIFY_SYSTEM_PROMPT.contains("keyboard-backlight"));
+    }
+
+    #[tokio::test]
+    async fn test_rescan_projects_detects_new_folder_and_ino() {
+        let temp_dir = std::env::temp_dir().join(format!("kodiak-rescan-test-{}", uuid::Uuid::new_v4()));
+        let proj_folder = temp_dir.join("MyNewArduinoProject");
+        std::fs::create_dir_all(&proj_folder).unwrap();
+        std::fs::write(proj_folder.join("MyNewArduinoProject.ino"), b"void setup() {}\nvoid loop() {}\n").unwrap();
+
+        let mut cfg = AppConfig::default();
+        cfg.projects_dir = temp_dir.to_string_lossy().to_string();
+        cfg.wiki_enabled = false;
+
+        let res = rescan_projects_service(&mut cfg).await.unwrap();
+        assert_eq!(res.added_count, 1);
+        assert_eq!(res.added_projects, vec!["MyNewArduinoProject"]);
+        assert_eq!(cfg.whitelist.len(), 1);
+        assert_eq!(cfg.whitelist[0].path, proj_folder.to_string_lossy().to_string());
+        assert_eq!(cfg.whitelist[0].level, GrantLevel::Read);
+
+        // Rescanning again should detect 0 new projects and not create duplicates
+        let res2 = rescan_projects_service(&mut cfg).await.unwrap();
+        assert_eq!(res2.added_count, 0);
+        assert_eq!(cfg.whitelist.len(), 1);
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
