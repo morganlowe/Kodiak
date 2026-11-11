@@ -64,6 +64,7 @@ interface AltProviderConfig {
   model: string;
   max_context_chars?: number;
   tier?: string;
+  timeout_secs?: number;
 }
 
 interface ProviderPresetModel {
@@ -74,12 +75,13 @@ interface ProviderPresetModel {
 
 const PRESET_MODELS: Record<string, ProviderPresetModel[]> = {
   gemini: [
-    { id: "gemini-3.0-flash", label: "gemini-3.0-flash (Recommended Fast / 1M ctx)", tier: "low" },
+    { id: "gemini-flash-lite-latest", label: "gemini-flash-lite-latest (Ultra-Fast / Reliable)", tier: "low" },
+    { id: "gemini-flash-latest", label: "gemini-flash-latest (Latest Flash)", tier: "low" },
+    { id: "gemini-3.8-flash", label: "gemini-3.8-flash (Reasoning / Extended Thinking)", tier: "medium" },
     { id: "gemini-2.5-pro", label: "gemini-2.5-pro (Flagship Reasoning / 2M ctx)", tier: "high" },
     { id: "gemini-1.5-pro", label: "gemini-1.5-pro (Production Reasoning / 2M ctx)", tier: "high" },
     { id: "gemini-2.0-flash", label: "gemini-2.0-flash (Next-Gen Fast)", tier: "medium" },
     { id: "gemini-1.5-flash", label: "gemini-1.5-flash (Standard Fast)", tier: "low" },
-    { id: "gemini-2.0-flash-lite", label: "gemini-2.0-flash-lite (Cost-Efficient)", tier: "low" },
   ],
   lumo: [
     { id: "lumo", label: "lumo (Standard / Medium)", tier: "medium" },

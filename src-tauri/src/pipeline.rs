@@ -797,7 +797,8 @@ pub async fn call_alt_provider_chat(
     system_prompt: &str,
     user_prompt: &str,
 ) -> Result<String, String> {
-    let mut builder = Client::builder().timeout(Duration::from_secs(60));
+    let timeout_secs = provider.timeout_secs.unwrap_or(180).max(30);
+    let mut builder = Client::builder().timeout(Duration::from_secs(timeout_secs));
     if provider.base_url.contains("127.0.0.1") || provider.base_url.contains("localhost") {
         builder = builder.no_proxy();
     }
@@ -877,7 +878,8 @@ pub struct ProviderTestResult {
 }
 
 pub async fn ping_alt_provider(provider: &crate::config::AltProviderConfig) -> Result<ProviderTestResult, String> {
-    let mut builder = Client::builder().timeout(Duration::from_secs(10));
+    let timeout_secs = provider.timeout_secs.unwrap_or(30).min(45).max(10);
+    let mut builder = Client::builder().timeout(Duration::from_secs(timeout_secs));
     if provider.base_url.contains("127.0.0.1") || provider.base_url.contains("localhost") {
         builder = builder.no_proxy();
     }
@@ -1000,12 +1002,15 @@ pub async fn fetch_provider_models(
                         if !results.is_empty() {
                             results.sort_by(|a, b| {
                                 let score = |s: &str| -> i32 {
-                                    if s.contains("3.0") { 0 }
-                                    else if s.contains("2.5-pro") { 1 }
-                                    else if s.contains("1.5-pro") { 2 }
-                                    else if s.contains("2.0") { 3 }
-                                    else if s.contains("1.5-flash") { 4 }
-                                    else { 5 }
+                                    if s.contains("flash-lite") { 0 }
+                                    else if s.contains("flash-latest") { 1 }
+                                    else if s.contains("3.8") { 2 }
+                                    else if s.contains("3.0") { 3 }
+                                    else if s.contains("2.5-pro") { 4 }
+                                    else if s.contains("1.5-pro") { 5 }
+                                    else if s.contains("2.0") { 6 }
+                                    else if s.contains("1.5-flash") { 7 }
+                                    else { 8 }
                                 };
                                 score(a).cmp(&score(b)).then(a.cmp(b))
                             });

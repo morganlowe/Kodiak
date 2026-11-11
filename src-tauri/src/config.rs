@@ -44,6 +44,8 @@ pub struct AltProviderConfig {
     pub max_context_chars: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tier: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_secs: Option<u64>,
 }
 
 impl Default for AltProviderConfig {
@@ -55,6 +57,7 @@ impl Default for AltProviderConfig {
             model: String::new(),
             max_context_chars: None,
             tier: None,
+            timeout_secs: None,
         }
     }
 }
