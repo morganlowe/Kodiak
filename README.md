@@ -5,7 +5,7 @@
 
   **Autonomous Desktop Orchestrator & Local-First AI Development Partner for Linux & Windows**
 
-  [![Version: v1.1.2](https://img.shields.io/badge/Version-v1.1.2-success.svg)](#)
+  [![Version: v1.1.3](https://img.shields.io/badge/Version-v1.1.3-success.svg)](#)
   [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
   [![Platform: Linux | Windows | Arch | Debian](https://img.shields.io/badge/Platform-Linux_%7C_Windows_%7C_Arch_%7C_Debian-orange.svg)](#prebuilt-packages)
   [![Tech: Rust | Tauri v2 | TypeScript](https://img.shields.io/badge/Stack-Rust_%7C_Tauri_v2_%7C_TypeScript-red.svg)](#)
@@ -169,9 +169,9 @@ The compiled binary is produced at `src-tauri/target/release/kodiak`. A default 
 Single standalone binary with zero dependencies — works on all modern Linux distributions:
 
 ```bash
-# Download Kodiak_1.1.2_amd64.AppImage from GitHub Releases, make executable, and run:
-chmod +x Kodiak_1.1.2_amd64.AppImage
-./Kodiak_1.1.2_amd64.AppImage
+# Download Kodiak_1.1.3_amd64.AppImage from GitHub Releases, make executable, and run:
+chmod +x Kodiak_1.1.3_amd64.AppImage
+./Kodiak_1.1.3_amd64.AppImage
 ```
 
 ### Arch Linux & Derivatives (CachyOS, EndeavourOS, Manjaro)
@@ -179,10 +179,10 @@ chmod +x Kodiak_1.1.2_amd64.AppImage
 Kodiak provides a split `PKGBUILD` producing the desktop orchestrator (`/usr/bin/kodiak`) and the optional documentation hub (`kodiak-projectswiki`, installed to `/usr/share/kodiak/projectswiki/` with dependency hooks for `python-mkdocs-material`, `python-requests`, and `python-toml`).
 
 ```bash
-sudo pacman -U kodiak-1.1.2-1-x86_64.pkg.tar.zst kodiak-projectswiki-1.1.2-1-any.pkg.tar.zst
+sudo pacman -U kodiak-1.1.3-1-x86_64.pkg.tar.zst kodiak-projectswiki-1.1.3-1-any.pkg.tar.zst
 ```
 
-> **Core orchestrator only?** Omit `kodiak-projectswiki-1.1.2-1-any.pkg.tar.zst`.
+> **Core orchestrator only?** Omit `kodiak-projectswiki-1.1.3-1-any.pkg.tar.zst`.
 
 Or build and install directly from source via `makepkg` or `make`:
 
@@ -195,7 +195,7 @@ make install
 ### Debian / Ubuntu
 
 ```bash
-sudo dpkg -i dist/deb/kodiak_1.1.2-1_amd64.deb dist/deb/kodiak-projectswiki_1.1.2-1_all.deb
+sudo dpkg -i dist/deb/kodiak_1.1.3-1_amd64.deb dist/deb/kodiak-projectswiki_1.1.3-1_all.deb
 sudo apt-get install -f
 ```
 
@@ -203,8 +203,8 @@ sudo apt-get install -f
 
 Windows builds are generated automatically on release and available from the [GitHub Releases](https://github.com/morganlowe/Kodiak/releases) page:
 
-- **NSIS Setup Installer (`.exe`)**: `Kodiak_1.1.2_x64-setup.exe` (Recommended)
-- **WiX Installer (`.msi`)**: `Kodiak_1.1.2_x64_en-US.msi`
+- **NSIS Setup Installer (`.exe`)**: `Kodiak_1.1.3_x64-setup.exe` (Recommended)
+- **WiX Installer (`.msi`)**: `Kodiak_1.1.3_x64_en-US.msi`
 
 #### Windows Prerequisites
 - [Ollama for Windows](https://ollama.com/download/windows) running on `http://127.0.0.1:11434`
@@ -346,7 +346,7 @@ Kodiak generates a default configuration on first launch. The references below a
 <summary><strong>1. Core Orchestrator — <code>~/.config/kodiak/config.toml</code> (click to expand)</strong></summary>
 
 ```toml
-# Kodiak v1.1.2 Core Orchestrator Configuration
+# Kodiak v1.1.3 Core Orchestrator Configuration
 
 [general]
 theme = "kodiak-dark"

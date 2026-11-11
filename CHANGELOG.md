@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet — planned work will be listed here as it lands._
 
+## [1.1.3] — 2026-11-10
+
+### Added
+
+- **Workbench Active Context Card**:
+  - Prominent context header above the Posture bar displaying the active whitelisted project directory path, whitelist grant badges (`[READ]`, `[BUILD]`, etc.), and live job status.
+  - Interactive context badge clearly distinguishing `Live Workbench` from `Historical Job View`.
+  - Quick action buttons: **`+ New Task`** (clears lingering card diagnostics, resets pipeline stages to idle, and focuses the prompt), **`✕ Dismiss Error`** (clears failed/deferred error cards from workbench view without deleting records), and **`📖 Wiki`** (one-click jump to project documentation).
+  - Dynamic drafting indicator showing a live truncated prompt preview while entering instructions.
+- **Configurable Alternate Provider Timeout**:
+  - Added `timeout_secs` support to `AltProviderConfig` (persisted in `~/.config/kodiak/config.toml`).
+  - Increased default alternate provider timeout from 60 seconds to 180 seconds (3 minutes), providing ample headroom for deep reasoning and thinking models (such as Gemini with extended thinking) and preventing premature client timeouts during provider capacity spikes.
+  - Increased connection probe timeout from 10 seconds to 30 seconds.
+
+### Fixed
+
+- **Chained Read-Only Command Parsing**:
+  - Updated `is_readonly_command` in `src-tauri/src/enforcer.rs` to evaluate chained command segments (`&&` and `;`). If all segments are read-only (`git status`, `ls`, `cat`, `pwd`, `rg`) and contain no redirects (`>`) or subshells (`$()`), they now execute cleanly under `READ` grants without triggering false-positive action class mismatch denials.
+- **Action Class Alignment**:
+  - If a cloud model planner marks a shell command as `read` when it requires `execute`, the pipeline aligns it to `execute` so the enforcer evaluates it against the project's whitelist grant level (prompting for approval if needed) rather than failing with an unrecoverable action-class mismatch error.
+- **Project Switch State Isolation**:
+  - Switching projects via the sidebar or dropdown now cleanly resets the live workbench (`state.currentTask = null`, stage indicators idle, draft cleared) so stale diagnostic cards from another project or past runs never linger or bleed over.
+- **Gemini Model Optimization**:
+  - Prioritized `gemini-flash-lite-latest` and `gemini-flash-latest` in the preset selector and model fetcher, ensuring sub-2-second response times and avoiding temporary Google 503 high-demand spikes on `gemini-3.8-flash`.
+
 ## [1.1.2] — 2026-11-10
 
 ### Added
@@ -135,7 +160,8 @@ _Nothing yet — planned work will be listed here as it lands._
 - Split Arch `PKGBUILD` producing `kodiak` and `kodiak-projectswiki` packages with dependency hooks (`python-mkdocs-material`, `python-requests`, `python-toml`).
 - Debian/Ubuntu `.deb` binary packages with `apt` dependency resolution.
 
-[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.3...HEAD
+[1.1.3]: https://github.com/morganlowe/Kodiak/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/morganlowe/Kodiak/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/morganlowe/Kodiak/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/morganlowe/Kodiak/compare/v1.0.0...v1.1.0
