@@ -4781,6 +4781,7 @@ mod acceptance_tests {
             model: "gemini-2.0-flash".to_string(),
             max_context_chars: None,
             tier: None,
+            timeout_secs: None,
         };
 
         let task_id = format!("task-test-alt-{}", Uuid::new_v4());
@@ -5332,6 +5333,7 @@ mod acceptance_tests {
             model: "test-model".to_string(),
             max_context_chars: None,
             tier: None,
+            timeout_secs: None,
         };
         let res_ok = ping_alt_provider(&valid_provider).await.unwrap();
         assert!(res_ok.success);
@@ -5345,6 +5347,7 @@ mod acceptance_tests {
             model: "test-model".to_string(),
             max_context_chars: None,
             tier: None,
+            timeout_secs: None,
         };
         let res_bad = ping_alt_provider(&invalid_provider).await.unwrap();
         assert!(!res_bad.success);
@@ -5365,6 +5368,7 @@ mod acceptance_tests {
             model: "gemini-1.5-pro".to_string(),
             max_context_chars: Some(32000),
             tier: Some("high".to_string()),
+            timeout_secs: None,
         });
         cfg.alt_provider.push(AltProviderConfig {
             name: "Lumo-Lite".to_string(),
@@ -5373,6 +5377,7 @@ mod acceptance_tests {
             model: "lumo-lite".to_string(),
             max_context_chars: None,
             tier: Some("low".to_string()),
+            timeout_secs: None,
         });
 
         let toml_str = toml::to_string_pretty(&cfg).expect("serialize config to TOML");
@@ -5454,6 +5459,7 @@ tier = "low"
             model: "gemini-3.0-flash".to_string(),
             max_context_chars: None,
             tier: Some("low".to_string()),
+            timeout_secs: None,
         });
 
         let temp_dir = std::env::temp_dir().join(format!("test-proj-{}", uuid::Uuid::new_v4()));
@@ -5521,6 +5527,7 @@ tier = "low"
             model: "gemini-3.0-flash".to_string(),
             max_context_chars: None,
             tier: Some("low".to_string()),
+            timeout_secs: None,
         });
 
         // Even though enabled=true, consent=false means cascade is inactive
@@ -5592,6 +5599,7 @@ tier = "low"
             model: "model1".to_string(),
             max_context_chars: None,
             tier: Some("low".to_string()),
+            timeout_secs: None,
         });
 
         cfg.alt_provider.push(AltProviderConfig {
@@ -5601,6 +5609,7 @@ tier = "low"
             model: "model2".to_string(),
             max_context_chars: None,
             tier: Some("high".to_string()),
+            timeout_secs: None,
         });
 
         let task_id = format!("task-cascade-{}", uuid::Uuid::new_v4());
@@ -5689,6 +5698,7 @@ tier = "low"
             model: "m1".to_string(),
             max_context_chars: None,
             tier: Some("low".to_string()),
+            timeout_secs: None,
         });
         cfg.alt_provider.push(AltProviderConfig {
             name: "fail2".to_string(),
@@ -5697,6 +5707,7 @@ tier = "low"
             model: "m2".to_string(),
             max_context_chars: None,
             tier: Some("low".to_string()),
+            timeout_secs: None,
         });
 
         let _task_id = format!("task-exhaust-{}", uuid::Uuid::new_v4());

@@ -2400,6 +2400,11 @@ pub async fn run_execute_stage_with_events(
             "summarize_file" | "search_and_summarize" | "digest_log_or_errors" | "review_git_diff"
         ) {
             ActionClass::Read
+        } else if step.route_tool == "shell"
+            && step.action_class == ActionClass::Read
+            && actual_class == ActionClass::Execute
+        {
+            ActionClass::Execute
         } else {
             step.action_class
         };

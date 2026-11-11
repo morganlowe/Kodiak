@@ -413,21 +413,8 @@ pub fn find_governing_whitelist(
     })
 }
 
-/// Checks if a shell command is strictly read-only per §4.2 READ level (`rg`, `cat`, `find`, `git status/log/diff`, `ls`).
-pub fn is_readonly_command(cmd: &str) -> bool {
-    let trimmed = cmd.trim();
-    // Disallow shell chaining/redirection in read-only auto-approval
-    if trimmed.contains("&&")
-        || trimmed.contains("||")
-        || trimmed.contains(';')
-        || trimmed.contains('>')
-        || trimmed.contains('<')
-        || trimmed.contains('`')
-        || trimmed.contains("$(")
-    {
-        return false;
-    }
-    let tokens: Vec<&str> = trimmed.split_whitespace().collect();
+fn is_single_readonly_command(cmd: &str) -> bool {
+    let tokens: Vec<&str> = cmd.split_whitespace().collect();
     let Some(first) = tokens.first() else {
         return false;
     };
@@ -438,6 +425,34 @@ pub fn is_readonly_command(cmd: &str) -> bool {
         "git" => matches!(tokens.get(1).copied(), Some("status" | "log" | "diff" | "show" | "branch")),
         _ => false,
     }
+}
+
+/// Checks if a shell command is strictly read-only per §4.2 READ level (`rg`, `cat`, `find`, `git status/log/diff`, `ls`).
+pub fn is_readonly_command(cmd: &str) -> bool {
+    let trimmed = cmd.trim();
+    // Disallow dangerous shell constructs: redirection, backgrounding, subshells, pipes
+    if trimmed.contains("||")
+        || trimmed.contains('>')
+        || trimmed.contains('<')
+        || trimmed.contains('`')
+        || trimmed.contains("$(")
+        || trimmed.contains('|')
+    {
+        return false;
+    }
+    if trimmed.contains("&&") || trimmed.contains(';') {
+        let parts: Vec<&str> = trimmed
+            .split("&&")
+            .flat_map(|s| s.split(';'))
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if parts.is_empty() {
+            return false;
+        }
+        return parts.iter().all(|part| is_single_readonly_command(part));
+    }
+    is_single_readonly_command(trimmed)
 }
 
 /// Checks if a shell command is a standard project build/test command per §4.2 BUILD level.
@@ -859,5 +874,18 @@ mod tests {
             dec_cruise_off,
             EnforcementDecision::NeedsApproval { .. }
         ));
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_is_readonly_command() {
+        assert!(is_readonly_command("git status"));
+        assert!(is_readonly_command("ls -la build/"));
+        assert!(is_readonly_command("git status && ls -la build/"));
+        assert!(is_readonly_command("pwd ; ls"));
+        assert!(!is_readonly_command("git status && rm -rf foo"));
+        assert!(!is_readonly_command("cat file > output.txt"));
+        assert!(!is_readonly_command("cat file | grep secret"));
     }
 }
