@@ -3183,6 +3183,17 @@ function renderWikiTab(): string {
   `;
 }
 
+function getCanonicalCascadeOrder(cfg: AppConfig): string[] {
+  const allIds = ["primary", ...(cfg.alt_provider?.map((p) => p.name) ?? [])];
+  const existing = (cfg.cascade?.order ?? []).filter((id) => allIds.includes(id));
+  for (const id of allIds) {
+    if (!existing.includes(id)) {
+      existing.push(id);
+    }
+  }
+  return existing;
+}
+
 function renderCascadeOrderList(cfg: AppConfig): string {
   const allProviders = [
     { id: "primary", name: "Lumo (Primary Cloud)", tier: cfg.tier || "medium" },
@@ -3193,21 +3204,12 @@ function renderCascadeOrderList(cfg: AppConfig): string {
     })),
   ];
 
-  const orderIds =
-    cfg.cascade?.order && cfg.cascade.order.length > 0
-      ? cfg.cascade.order
-      : allProviders.map((p) => p.id);
-
+  const canonicalOrder = getCanonicalCascadeOrder(cfg);
   const orderedList: Array<{ id: string; name: string; tier: string }> = [];
-  for (const id of orderIds) {
+  for (const id of canonicalOrder) {
     const found = allProviders.find((p) => p.id === id);
-    if (found && !orderedList.some((x) => x.id === found.id)) {
+    if (found) {
       orderedList.push(found);
-    }
-  }
-  for (const p of allProviders) {
-    if (!orderedList.some((x) => x.id === p.id)) {
-      orderedList.push(p);
     }
   }
 
@@ -4781,6 +4783,78 @@ async function toggleWikiFeature(): Promise<void> {
   }
 }
 
+function bindCascadeButtons(): void {
+  document.querySelectorAll<HTMLButtonElement>(".btn-cascade-up").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!state.config) return;
+      const idx = Number(btn.getAttribute("data-idx"));
+      if (Number.isNaN(idx) || idx <= 0) return;
+
+      const order = getCanonicalCascadeOrder(state.config);
+      if (idx >= order.length) return;
+
+      const tmp = order[idx - 1];
+      order[idx - 1] = order[idx];
+      order[idx] = tmp;
+
+      if (!state.config.cascade) {
+        state.config.cascade = { enabled: false, consent: false, order: [] };
+      }
+      state.config.cascade.order = order;
+
+      const listEl = document.getElementById("cascade-order-list");
+      if (listEl) {
+        listEl.innerHTML = renderCascadeOrderList(state.config);
+        bindCascadeButtons();
+      } else {
+        renderApp();
+      }
+
+      try {
+        state.config = await invoke<AppConfig>("update_config", { newConfig: state.config });
+      } catch (err) {
+        console.error("Failed to persist cascade order:", err);
+      }
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>(".btn-cascade-down").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!state.config) return;
+      const idx = Number(btn.getAttribute("data-idx"));
+      const order = getCanonicalCascadeOrder(state.config);
+      if (Number.isNaN(idx) || idx < 0 || idx >= order.length - 1) return;
+
+      const tmp = order[idx + 1];
+      order[idx + 1] = order[idx];
+      order[idx] = tmp;
+
+      if (!state.config.cascade) {
+        state.config.cascade = { enabled: false, consent: false, order: [] };
+      }
+      state.config.cascade.order = order;
+
+      const listEl = document.getElementById("cascade-order-list");
+      if (listEl) {
+        listEl.innerHTML = renderCascadeOrderList(state.config);
+        bindCascadeButtons();
+      } else {
+        renderApp();
+      }
+
+      try {
+        state.config = await invoke<AppConfig>("update_config", { newConfig: state.config });
+      } catch (err) {
+        console.error("Failed to persist cascade order:", err);
+      }
+    });
+  });
+}
+
 function bindEvents(): void {
   // Global Clipboard copy click handler
   document.querySelectorAll<HTMLElement>("[data-copy-text]").forEach((btn) => {
@@ -5958,51 +6032,7 @@ function bindEvents(): void {
   });
 
   // Cascade Move Up / Move Down
-  document.querySelectorAll<HTMLButtonElement>(".btn-cascade-up").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (!state.config) return;
-      const idx = Number(btn.getAttribute("data-idx"));
-      if (Number.isNaN(idx) || idx <= 0) return;
-      if (!state.config.cascade) {
-        state.config.cascade = {
-          enabled: false,
-          consent: false,
-          order: ["primary", ...(state.config.alt_provider?.map((p) => p.name) ?? [])],
-        };
-      }
-      if (!state.config.cascade.order || state.config.cascade.order.length === 0) {
-        state.config.cascade.order = ["primary", ...(state.config.alt_provider?.map((p) => p.name) ?? [])];
-      }
-      const order = state.config.cascade.order;
-      const tmp = order[idx - 1];
-      order[idx - 1] = order[idx];
-      order[idx] = tmp;
-      renderApp();
-    });
-  });
-
-  document.querySelectorAll<HTMLButtonElement>(".btn-cascade-down").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (!state.config) return;
-      const idx = Number(btn.getAttribute("data-idx"));
-      if (!state.config.cascade) {
-        state.config.cascade = {
-          enabled: false,
-          consent: false,
-          order: ["primary", ...(state.config.alt_provider?.map((p) => p.name) ?? [])],
-        };
-      }
-      if (!state.config.cascade.order || state.config.cascade.order.length === 0) {
-        state.config.cascade.order = ["primary", ...(state.config.alt_provider?.map((p) => p.name) ?? [])];
-      }
-      const order = state.config.cascade.order;
-      if (Number.isNaN(idx) || idx >= order.length - 1) return;
-      const tmp = order[idx + 1];
-      order[idx + 1] = order[idx];
-      order[idx] = tmp;
-      renderApp();
-    });
-  });
+  bindCascadeButtons();
 
   // Settings: Save general settings
   document.getElementById("save-settings-btn")?.addEventListener("click", async () => {
@@ -6048,9 +6078,10 @@ function bindEvents(): void {
       state.config.cascade = {
         enabled: false,
         consent: false,
-        order: ["primary", ...(state.config.alt_provider?.map((p) => p.name) ?? [])],
+        order: [],
       };
     }
+    state.config.cascade.order = getCanonicalCascadeOrder(state.config);
     state.config.cascade.enabled = cascadeEnabled && cascadeConsent;
     state.config.cascade.consent = cascadeConsent;
 
