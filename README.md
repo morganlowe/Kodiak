@@ -524,21 +524,35 @@ Found a vulnerability — especially anything touching the grant matrix, deny-li
 
 ## License
 
-Copyright © 2026 Bear Built.
+Copyright © 2026 Morgan Lowe.
 
 Licensed under the **Apache License, Version 2.0** (the "License"); you may not use this software except in compliance with the License. You may obtain a copy of the License at: [http://www.apache.org/licenses/LICENSE-2.0](http://www.apache.org/licenses/LICENSE-2.0)
 
 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-## Acknowledgements
+## Acknowledgements & Shout-Outs
 
-- **Bear Built** — Systems architecture, security model design, and Linux packaging.
-- **DeepMind Antigravity** — Agentic orchestration research, multi-tier delegation design patterns, and verification workflows.
-- **MkDocs Material** — Powering the local `kodiak-projectswiki` engineering documentation portal.
-- **Tauri, Ollama & Proton Lumo Communities** — Foundational local-first runtime and privacy-preserving inference bridges.
+### Primary Author & Systems Architecture
+- **Morgan Lowe** — Creator, systems architecture, security model design, multi-platform packaging, and engineering direction.
+
+### AI Model Collaborators
+This codebase was co-developed, refined, and verified in close collaboration with:
+- **Proton Lumo** — Privacy-first collaborative peer and debugging partner via the local `lumo-tamer` bridge.
+- **Google Gemini Models** — DeepMind Antigravity agentic orchestration, Gemini 2.5 Pro and Gemini 2.5 Flash for architectural reasoning, multi-tier delegation design patterns, and autonomous verification workflows.
+- **OpenAI ChatGPT & o-Series Models** — Architectural planning, systems engineering, reasoning, and core implementation.
+- **Anthropic Claude Models** — Claude 3.7 Sonnet and Claude 3.5 Sonnet for deep analytical reasoning, architectural synthesis, and test scaffolding.
+- **Local Ollama Models** — `llama3.2:3b`, `qwen2.5-coder:7b`, and `qwen2.5-coder:14b` running offline on local hardware for zero-cloud-token code drafting, diff inspection, compiler log digestion, register map extraction, and syntax verification.
+
+### Core Technologies, Languages & Runtimes
+Special thanks and shout-outs to the open-source communities and projects that power Kodiak:
+- **Python Ecosystem** — **Python 3**, **MkDocs** & **MkDocs Material** (powering the ProjectsWiki engineering documentation portal), **PyInstaller** (freezing zero-dependency standalone Windows executables), **PyYAML**, and **Jinja2**.
+- **Rust Ecosystem** — **Rust**, **Tauri v2** (desktop application framework for Linux and Windows), **Tokio** (async runtime), **Reqwest** (streaming HTTP client), **Serde** & **serde_json** (serialization and IPC contracts), **Sysinfo** (hardware telemetry and CPU/RAM evaluation), **Notify** (cross-platform filesystem watcher), **Chrono** (audit timestamps and log rotation), and **Parking_lot** (VRAM mutex and synchronization).
+- **Web & Interface** — **TypeScript**, **Vite** (frontend build tool), **HTML5**, and modern **CSS3 custom properties** for an efficient, dependency-light native user experience.
+- **Platform Packaging & Tooling** — **Arch Linux / CachyOS** (`pacman`, `makepkg`), **Debian / Ubuntu** (`dpkg-deb`), **AppImageKit** (universal Linux portable binaries), and **NSIS** (Nullsoft Scriptable Install System for Windows setup installers).
+- **Hardware & Inference** — **NVIDIA CUDA** & `nvidia-smi` GPU telemetry, and the **Ollama** local model inference runtime.
 
 <div align="center">
   <br />
   <img src="src/assets/bear-built-logo.png" alt="Bear Built Logo" width="140" />
-  <p><strong>Engineered by Bear Built</strong></p>
+  <p><strong>Created and Engineered by Morgan Lowe</strong></p>
 </div>

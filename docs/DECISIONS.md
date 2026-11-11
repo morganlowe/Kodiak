@@ -924,6 +924,30 @@ With multi-task queuing and unified diff reviews operational across repositories
   - Displays project name, full path, governing grant badge, active project indicator, git branch, and clean vs dirty status ('[Git Clean]' vs '[N uncommitted]').
   - Includes quick action buttons: `Set Active`, `Open Workbench →`, `Wiki`, and `Review Pending Cards`.
 
+---
+
+## 26. Author Copyright & Multi-Model / Ecosystem Attribution Updates
+
+### 26.1 Author Copyright & Systems Architecture Ownership
+- **Decision**: Update all copyright, systems design, and primary package maintainer attributions to **Morgan Lowe** (`Copyright © 2026 Morgan Lowe`, `authors = ["Morgan Lowe"]`, `Maintainer: Morgan Lowe`).
+- **Scope**: `README.md`, `LICENSE`, `package.json`, `src-tauri/Cargo.toml`, `PKGBUILD`, `scripts/build_deb.sh`, and `src/main.ts` About view.
+
+### 26.2 AI Model Collaborator Acknowledgements
+- **Decision**: Provide comprehensive recognition for all AI models and systems that co-developed, refined, and verified the Kodiak codebase:
+  - **Proton Lumo**: Privacy-first collaborative peer and debugging partner via the local `lumo-tamer` bridge.
+  - **Google Gemini Models**: DeepMind Antigravity agentic orchestration, Gemini 2.5 Pro / Flash reasoning, multi-tier delegation design patterns, and autonomous verification workflows.
+  - **OpenAI ChatGPT & o-Series Models**: Systems architecture, planning, reasoning, and core implementation.
+  - **Anthropic Claude Models**: Claude 3.7 Sonnet & 3.5 Sonnet for deep analytical reasoning, architectural synthesis, and test scaffolding.
+  - **Local Ollama Models**: `llama3.2:3b`, `qwen2.5-coder:7b`, and `qwen2.5-coder:14b` running on local hardware for zero-cloud-token code drafting, diff inspection, compiler log digestion, register map extraction, and offline verification.
+
+### 26.3 Core Technologies & Ecosystem Shout-Outs
+- **Decision**: Formally acknowledge all languages, libraries, runtimes, and packaging tools utilized across Kodiak:
+  - **Python Ecosystem**: Python 3, MkDocs Material, PyInstaller, PyYAML, Jinja2.
+  - **Rust Ecosystem**: Rust, Tauri v2, Tokio, Reqwest, Serde, Sysinfo, Notify, Chrono, Parking_lot.
+  - **Web / Frontend**: TypeScript, Vite, HTML5, modern CSS3 custom properties.
+  - **Packaging & Tooling**: Arch Linux / CachyOS (makepkg, pacman), Debian / Ubuntu (dpkg-deb), AppImageKit, NSIS.
+  - **Inference & Hardware**: NVIDIA CUDA / nvidia-smi, Ollama.
+
 
 
 

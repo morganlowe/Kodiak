@@ -4128,7 +4128,7 @@ function renderAboutTab(): string {
         <div style="flex:1; min-width:240px;">
           <div class="row-inline" style="gap:0.75rem; align-items:baseline;">
             <h1 style="margin:0; font-size:1.8rem; font-weight:700; color:var(--md-default-fg-color);">Kodiak</h1>
-            <span class="badge badge--ok" style="font-size:0.85rem;">v1.1.1</span>
+            <span class="badge badge--ok" style="font-size:0.85rem;">v1.1.5</span>
           </div>
           <p style="margin:0.35rem 0 0.5rem 0; font-size:1.05rem; font-weight:500; color:var(--md-default-fg-color);">
             The bear who runs the job site — local-first AI task delegation
@@ -4214,6 +4214,25 @@ function renderAboutTab(): string {
         </div>
       </section>
 
+      <!-- Acknowledgements & Shout-Outs -->
+      <section class="panel-card">
+        <div class="panel-header">
+          <h2 class="panel-title">Acknowledgements & Shout-Outs</h2>
+          <span class="muted">Primary author, AI collaborators, and foundational technologies</span>
+        </div>
+        <div style="font-size:0.85rem; line-height:1.6; color:var(--md-default-fg-color);">
+          <div style="margin-bottom:0.75rem;">
+            <strong>Creator & Systems Architecture:</strong> Morgan Lowe — creator, systems architecture, security model design, multi-platform packaging, and engineering direction.
+          </div>
+          <div style="margin-bottom:0.75rem;">
+            <strong>AI Model Collaborators:</strong> Codebase co-developed, refined, and verified in close collaboration with Proton Lumo, Google Gemini Models (Gemini 2.5 Pro / Flash & DeepMind Antigravity orchestration), OpenAI ChatGPT & o-series models, Anthropic Claude Models (Claude 3.7 / 3.5 Sonnet), and Local Ollama Models (llama3.2:3b, qwen2.5-coder:7b/14b).
+          </div>
+          <div>
+            <strong>Core Technologies & Ecosystem:</strong> Python 3, MkDocs Material, PyInstaller, PyYAML, Jinja2, Rust, Tauri v2, Tokio, Reqwest, Serde, Sysinfo, Notify, Chrono, Parking_lot, TypeScript, Vite, NVIDIA CUDA, and Ollama.
+          </div>
+        </div>
+      </section>
+
       <!-- Links & Licenses -->
       <section class="panel-card">
         <div class="panel-header">
@@ -4223,10 +4242,12 @@ function renderAboutTab(): string {
           <div class="row-inline">
             <span><strong>App License:</strong> Apache-2.0</span>
             <span>•</span>
+            <span><strong>Copyright:</strong> &copy; 2026 Morgan Lowe</span>
+            <span>•</span>
             <span><strong>Brand Asset:</strong> Bear Built mark — Aureus</span>
           </div>
           <div class="row-inline muted">
-            <span>Kodiak Task Delegation System (v1.0.0)</span>
+            <span>Kodiak Task Delegation System (v1.1.5)</span>
           </div>
         </div>
       </section>

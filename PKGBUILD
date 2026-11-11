@@ -1,4 +1,4 @@
-# Maintainer: Frank <frank@local>
+# Maintainer: Morgan Lowe
 # Version is read dynamically from src-tauri/tauri.conf.json so PKGBUILD never drifts from the app version.
 
 pkgname=('kodiak' 'kodiak-projectswiki')

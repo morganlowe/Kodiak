@@ -66,7 +66,7 @@ Version: ${VERSION}-${RELEASE}
 Section: devel
 Priority: optional
 Architecture: amd64
-Maintainer: Frank <frank@local>
+Maintainer: Morgan Lowe <morgan@local>
 Depends: libwebkit2gtk-4.1-0, libgtk-3-0, libayatana-appindicator3-1, librsvg2-common, openssl
 Recommends: kodiak-projectswiki, python3
 Conflicts: foreman
@@ -136,7 +136,7 @@ Version: ${VERSION}-${RELEASE}
 Section: doc
 Priority: optional
 Architecture: all
-Maintainer: Frank <frank@local>
+Maintainer: Morgan Lowe <morgan@local>
 Depends: python3
 Recommends: python3-yaml
 Suggests: kodiak

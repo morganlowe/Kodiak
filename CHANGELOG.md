@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet — planned work will be listed here as it lands._
+### Changed
+
+- **Author Copyright & Systems Ownership**:
+  - Updated copyright and systems architecture attribution to **Morgan Lowe** across `README.md`, `package.json`, `src-tauri/Cargo.toml`, `PKGBUILD`, `scripts/build_deb.sh`, and the desktop application's About panel (`src/main.ts`).
+  - Added formal **Acknowledgements & Shout-Outs** section recognizing:
+    - Primary author: **Morgan Lowe** (systems architecture, security model design, multi-platform packaging, engineering direction).
+    - AI Model Collaborators: **Proton Lumo**, **Google Gemini Models** (Gemini 2.5 Pro / Flash & DeepMind Antigravity orchestration), **OpenAI ChatGPT & o-series models**, **Anthropic Claude Models** (Claude 3.7 / 3.5 Sonnet), and **Local Ollama Models** (`llama3.2:3b`, `qwen2.5-coder:7b`/`14b`).
+    - Core Technologies & Ecosystem: Python 3, MkDocs Material, PyInstaller, PyYAML, Jinja2, Rust, Tauri v2, Tokio, Reqwest, Serde, Sysinfo, Notify, Chrono, Parking_lot, TypeScript, Vite, Arch Linux (`makepkg`/`pacman`), Debian/Ubuntu (`dpkg-deb`), AppImageKit, NSIS, and NVIDIA CUDA.
 
 ## [1.1.5] — 2026-11-10
 
