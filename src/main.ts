@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import iconUrl from "./assets/kodiak-icon.svg";
 import bearBuiltLogoUrl from "./assets/bear-built-logo.png";
+import morninglionLogoUrl from "./assets/morninglion-industries-logo.png";
 import { CHARTER_TENETS, renderCharterChip } from "./charter";
 
 type GrantLevel = "READ" | "CREATE" | "BUILD" | "AUTONOMOUS";
@@ -4244,11 +4245,15 @@ function renderAboutTab(): string {
             <span>•</span>
             <span><strong>Copyright:</strong> &copy; 2026 Morgan Lowe</span>
             <span>•</span>
-            <span><strong>Brand Asset:</strong> Bear Built mark — Aureus</span>
+            <span><strong>Brand Asset:</strong> Morninglion Industries</span>
           </div>
           <div class="row-inline muted">
             <span>Kodiak Task Delegation System (v1.1.5)</span>
           </div>
+        </div>
+        <div style="text-align:center; padding-top:1.5rem; border-top:1px solid var(--wiki-border); margin-top:1.25rem;">
+          <img src="${morninglionLogoUrl}" alt="Morninglion Industries Logo" style="width:140px; height:auto;" />
+          <p style="margin:0.5rem 0 0; font-size:0.85rem; font-weight:600; color:var(--md-default-fg-color);">Created and Engineered by Morgan Lowe</p>
         </div>
       </section>
     </div>

@@ -553,6 +553,6 @@ Special thanks and shout-outs to the open-source communities and projects that p
 
 <div align="center">
   <br />
-  <img src="src/assets/bear-built-logo.png" alt="Bear Built Logo" width="140" />
+  <img src="src/assets/morninglion-industries-logo.png" alt="Morninglion Industries Logo" width="160" />
   <p><strong>Created and Engineered by Morgan Lowe</strong></p>
 </div>
