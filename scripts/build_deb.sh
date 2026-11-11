@@ -102,6 +102,7 @@ rm -rf "$WIKI_STAGE/usr/share/kodiak/projectswiki/venv" \
        "$WIKI_STAGE/usr/share/kodiak/projectswiki/projects_inventory.json" \
        "$WIKI_STAGE/usr/share/kodiak/projectswiki/docs/projects.json" \
        "$WIKI_STAGE/usr/share/kodiak/projectswiki/project_overrides.json"
+find "$WIKI_STAGE/usr/share/kodiak/projectswiki/docs" -type f -name "*.md" ! -name "index.md" ! -name "demo-project.md" -delete
 
 chmod +x "$WIKI_STAGE/usr/share/kodiak/projectswiki/wiki.sh"
 chmod +x "$WIKI_STAGE/usr/share/kodiak/projectswiki"/*.py 2>/dev/null || true

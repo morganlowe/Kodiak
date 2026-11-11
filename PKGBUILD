@@ -102,6 +102,7 @@ package_kodiak-projectswiki() {
          "${dest}/projects_inventory.json" \
          "${dest}/docs/projects.json" \
          "${dest}/project_overrides.json"
+  find "${dest}/docs" -type f -name "*.md" ! -name "index.md" ! -name "demo-project.md" -delete
 
   chmod +x "${dest}/wiki.sh"
   chmod +x "${dest}"/*.py 2>/dev/null || true
