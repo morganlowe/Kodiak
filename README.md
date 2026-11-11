@@ -1,17 +1,22 @@
 <div align="center">
+  <a id="readme-top"></a>
   <img src="src/assets/kodiak-icon.svg" alt="Kodiak Logo" width="96" height="96" />
 
   # Kodiak
 
   **Autonomous Desktop Orchestrator & Local-First AI Development Partner for Linux & Windows**
 
-  [![Version: v1.1.5](https://img.shields.io/badge/Version-v1.1.5-success.svg)](#)
+  [![Version: v1.1.5](https://img.shields.io/badge/Version-v1.1.5-success.svg)](https://github.com/morganlowe/Kodiak/releases)
   [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
   [![Platform: Linux | Windows | Arch | Debian](https://img.shields.io/badge/Platform-Linux_%7C_Windows_%7C_Arch_%7C_Debian-orange.svg)](#prebuilt-packages)
-  [![Tech: Rust | Tauri v2 | TypeScript](https://img.shields.io/badge/Stack-Rust_%7C_Tauri_v2_%7C_TypeScript-red.svg)](#)
-  [![AI: Ollama | Proton Lumo](https://img.shields.io/badge/AI-Ollama_%7C_Proton_Lumo-purple.svg)](#)
+  [![Tech: Rust | Tauri v2 | TypeScript](https://img.shields.io/badge/Stack-Rust_%7C_Tauri_v2_%7C_TypeScript-red.svg)](#system-architecture)
+  [![AI: Ollama | Proton Lumo](https://img.shields.io/badge/AI-Ollama_%7C_Proton_Lumo-purple.svg)](#the-four-charter-security-model)
 
-  [Why Kodiak](#why-kodiak) · [Security Model](#the-four-charter-security-model) · [Quick Start](#quick-start) · [Configuration](#configuration-reference) · [FAQ](#faq)
+  [**Releases**](https://github.com/morganlowe/Kodiak/releases) · [**Report Bug**](https://github.com/morganlowe/Kodiak/issues) · [**Request Feature**](https://github.com/morganlowe/Kodiak/issues) · [**Security Advisories**](https://github.com/morganlowe/Kodiak/security/advisories)
+
+  ---
+
+  [Why Kodiak](#why-kodiak) · [Security Model](#the-four-charter-security-model) · [Architecture](#system-architecture) · [Features](#feature-highlights) · [Packages](#prebuilt-packages) · [Quick Start](#quick-start-from-source) · [Projects Wiki](#projects-wiki-companion-kodiak-projectswiki) · [Config](#configuration-reference) · [FAQ](#faq)
 </div>
 
 ---
@@ -24,9 +29,9 @@
 
 Conventional cloud coding agents require blanket filesystem access, execute unverified shell pipelines, and silently stream proprietary source code across third-party APIs. Fragile CLI wrappers add latency and brittleness on top.
 
-**Kodiak** takes a different path: it is a native cross-platform desktop orchestrator for Linux and Windows built with **Rust (Tauri v2)**, the **Tokio** async runtime, and modern **TypeScript**. Cloud models plan and verify using *sanitized metadata only*, while local models execute every raw file read, code generation step, and diff draft directly on your hardware. Every action is governed by an explicit permission matrix and recorded to an immutable local audit trail.
+**Kodiak** takes a different path: it is a native cross-platform desktop orchestrator for Linux and Windows built with **[Rust](https://www.rust-lang.org/) ([Tauri v2](https://v2.tauri.app/))**, the **[Tokio](https://tokio.rs/)** async runtime, and modern **[TypeScript](https://www.typescriptlang.org/)**. Cloud models plan and verify using *sanitized metadata only*, while local **[Ollama](https://ollama.com/)** models execute every raw file read, code generation step, and diff draft directly on your hardware. Every action is governed by an explicit permission matrix and recorded to an immutable local audit trail.
 
-In short: **high-reasoning cloud synthesis + zero-cost local GPU execution + cryptographically verifiable filesystem boundaries.**
+> **Core Philosophy:** High-reasoning cloud synthesis + zero-cost local GPU execution + cryptographically verifiable filesystem boundaries.
 
 ---
 
@@ -34,17 +39,10 @@ In short: **high-reasoning cloud synthesis + zero-cost local GPU execution + cry
 
 Kodiak enforces four strict, non-negotiable principles:
 
-### § 1. Your Files Stay Home (Local-First Isolation)
-Kodiak touches nothing outside explicitly whitelisted project directories. Cloud synthesis is strictly isolated to sanitized architectural plans and metadata. Local models (the `local-delegation_local-ollama` pipeline running `llama3.2:3b` and `qwen2.5-coder:7b`/`14b`) handle raw file inspection, register maps, compiler output parsing, and unified diff reviews — at zero cloud token cost.
-
-### § 2. Nothing Happens Without You (Human Authority)
-File writes, command executions, and deletions require explicit human consent or must match strict, downward-only grant levels (`READ`, `CREATE`, `BUILD`, `AUTONOMOUS`). An unbypassable hard deny-list protects root system directories, SSH keys, cloud credentials, `.env` secrets, shell profiles, and `.git/` history — even in `AUTONOMOUS` mode.
-
-### § 3. Standby Failover & Automated Cascade
-Kodiak uses **Proton Lumo** (via the local `lumo-tamer` bridge) as its primary zero-access cloud reasoning engine. When cloud quotas are exhausted or rate limits (`429`/`503`) hit, Kodiak never crashes or loses state. It either executes an opt-in **Automated Failover Cascade** across configured standby OpenAI-compatible endpoints (Google Gemini, Groq, OpenRouter) or presents interactive **Choice Cards**, letting you pivot to local Ollama execution or defer the task.
-
-### § 4. Projects Wiki & AI Knowledge Hub (`kodiak-projectswiki`)
-An optional, loosely coupled companion subsystem that transforms scattered hardware, firmware, software, and 3D printing projects into a unified, searchable local knowledge portal. It indexes PDFs, schematics, and manuals; synthesizes standardized documentation via local Ollama models at zero cloud cost; and serves an interactive **MkDocs Material** portal at `http://wiki.local:8000` (zero-sudo fallback: `http://127.0.0.1:8000`).
+* **§ 1. Your Files Stay Home (Local-First Isolation):** Kodiak touches nothing outside explicitly whitelisted project directories. Cloud synthesis is strictly isolated to sanitized architectural plans and metadata. Local models (`local-delegation_local-ollama` running `llama3.2:3b` and `qwen2.5-coder:7b`/`14b`) handle raw file inspection, register maps, compiler output parsing, and unified diff reviews at zero cloud token cost.
+* **§ 2. Nothing Happens Without You (Human Authority):** File writes, command executions, and deletions require explicit human consent or must match strict, downward-only grant levels (`READ`, `CREATE`, `BUILD`, `AUTONOMOUS`). An unbypassable hard deny-list protects root system directories, SSH keys, cloud credentials, `.env` secrets, shell profiles, and `.git/` history — even in `AUTONOMOUS` mode.
+* **§ 3. Standby Failover & Automated Cascade:** Kodiak uses **Proton Lumo** (via the local `lumo-tamer` bridge) as its primary zero-access cloud reasoning engine. When cloud quotas are exhausted or rate limits (`429`/`503`) hit, Kodiak never crashes or loses state. It either executes an opt-in **Automated Failover Cascade** across configured standby OpenAI-compatible endpoints ([Google Gemini](https://aistudio.google.com/), [Groq](https://groq.com/), [OpenRouter](https://openrouter.ai/)) or presents interactive **Choice Cards** to pivot to local Ollama execution.
+* **§ 4. Projects Wiki & AI Knowledge Hub (`kodiak-projectswiki`):** An optional, loosely coupled companion subsystem that transforms scattered hardware, firmware, software, and 3D printing projects into a unified, searchable local knowledge portal served via **[MkDocs Material](https://squidfunk.github.io/mkdocs-material/)** at `http://wiki.local:8000` (fallback: `http://127.0.0.1:8000`).
 
 ---
 
@@ -88,138 +86,108 @@ Permissions are configured per whitelisted directory and never escalate without 
 | **`BUILD`** | Everything in `CREATE`, plus directory creation (`mkdir`) and sandboxed build/test toolchain execution. |
 | **`AUTONOMOUS`** | Full read/write/execute within the target project tree, strictly bounded by the global hard deny-list. |
 
-At any grant level, the **Destructive Diff Interceptor** flags any patch that modifies or deletes ≥ 40% of an existing file for mandatory review.
+> **Safety Gate:** At any grant level, the **Destructive Diff Interceptor** flags any patch that modifies or deletes **≥ 40%** of an existing file for mandatory manual review.
 
-### Standby Failover Cascade & Interactive Choice Cards
+<details>
+<summary><strong>Standby Failover, Live Model Discovery & Memory Bank (Click to expand)</strong></summary>
+<br />
 
-- **Automated Cascade**: Configure an ordered list of standby providers. With explicit privacy consent (`cascade.consent = true`), Kodiak automatically routes planning metadata to secondary endpoints upon primary failure.
-- **Interactive Choice Cards**: When cascade is disabled or exhausted, Kodiak pauses the pipeline and surfaces an in-app Choice Card — switch to local Ollama inference (`qwen2.5-coder:7b` or `14b`), retry an alternate provider, or defer the run.
+* **Automated Failover Cascade:** Configure an ordered list of standby providers. With explicit privacy consent (`cascade.consent = true`), Kodiak automatically routes planning metadata to secondary endpoints upon primary failure.
+* **Interactive Choice Cards:** When cascade is disabled or exhausted, Kodiak pauses the pipeline and surfaces an in-app Choice Card — switch to local Ollama inference (`qwen2.5-coder:7b` or `14b`), retry an alternate provider, or defer the run.
+* **Live Model Discovery & Auto-Tiering:** Uses `ModelService.ListModels` for Google AI Studio (Gemini) and standard `/models` endpoints for OpenAI-compatible providers (Groq, OpenRouter, Lumo, Ollama). Discovered models are mapped into `Low`, `Medium`, and `High` execution tiers.
+* **Scoped Memory Bank (`@memory-tag`):** Persist architectural decisions, hardware pinouts, and coding conventions per project. Delivery receipts (**Memory Chips**) verify injected context nodes, backed by an append-only decision journal (`~/.local/share/kodiak/journal.jsonl`) and per-run logs (`~/.local/share/kodiak/runs/<task-id>/run.log`).
 
-### Live Model Discovery & Automatic Tier Resolution
+</details>
 
-Kodiak dynamically queries provider capabilities without hardcoded model lists:
+<details>
+<summary><strong>Ergonomic Desktop UI Features (Click to expand)</strong></summary>
+<br />
 
-- **Native Discovery**: Uses `ModelService.ListModels` for Google AI Studio (Gemini) and standard `/models` endpoints for OpenAI-compatible providers (Groq, OpenRouter, Lumo, Ollama).
-- **Automatic Tiering**: Discovered models are live-filtered and mapped into `Low` (fast/economical), `Medium` (balanced), and `High` (deep architectural synthesis) execution tiers.
+* **Zero-Jump Scroll Persistence:** Dual-`requestAnimationFrame` (dual-RAF) viewport locking prevents scroll resets during live streaming and background runs.
+* **Custom Slim Scrollbars:** Clean dark theme (`docs/THEME.md`) with custom WebKit scrollbars that eliminate bulky GTK stepper collisions.
+* **Collapsible Workspace Panels:** Toggle Project Whitelists, Alternate Providers, Memory Bank, and the Local Decision Journal in one keystroke.
+* **Right-Click Project Exclusions:** Right-click any project in the left sidebar to exclude it from the active workspace listing (`exclusion_list` in **Settings → Excluded Projects**).
+* **Live Custom CSS Styling:** Inject custom styles into the main interface in real-time from **Settings → Custom CSS (Main Window)**, persisted in `config.toml`.
 
-### Memory Bank & Context Scoping
+</details>
 
-Persist architectural decisions, hardware pinouts, and coding conventions inside a project-scoped **Memory Bank**, referenced directly in prompts via `@memory-tag`. Delivery receipts (**Memory Chips**) verify exactly which context nodes were injected into a run, while the append-only decision journal and per-run logs guarantee complete observability:
-
-- Journal: `~/.local/share/kodiak/journal.jsonl`
-- Per-run logs: `~/.local/share/kodiak/runs/<task-id>/run.log`
-
-### Ergonomic WebKitGTK Desktop UI
-
-Engineered specifically for Linux desktop environments:
-
-- **Zero-Jump Scroll Persistence**: Dual-`requestAnimationFrame` (dual-RAF) viewport locking prevents scroll resets during live streaming and background runs.
-- **Custom Slim Scrollbars**: Clean dark theme (`docs/THEME.md`) with custom WebKit scrollbars that eliminate bulky GTK stepper collisions.
-- **Collapsible Workspace Panels**: Toggle Project Whitelists, Alternate Providers, Memory Bank, and the Local Decision Journal in one keystroke.
-- **Right-Click Project Exclusions**: Right-click any project in the left sidebar to exclude it from the active workspace listing. Excluded directories are safely stored in `exclusion_list` and can be restored or managed in **Settings → Excluded Projects**.
-- **Live Custom CSS Styling**: Inject custom styles into the main interface in real-time from **Settings → Custom CSS (Main Window)**, persisting across restarts in `config.toml`.
-
----
-
-## Quick Start
-
-### 1. Install Prerequisites
-
-- **Rust** 1.78+
-- **Node.js** v20+
-- **Ollama**
-- Tauri v2 WebKitGTK headers (`webkit2gtk-4.1`)
-
-### 2. Pull Local Models
-
-```bash
-ollama pull llama3.2:3b
-ollama pull qwen2.5-coder:7b
-ollama pull qwen2.5-coder:14b
-```
-
-### 3. Build & Run
-
-```bash
-git clone https://github.com/morganlowe/Kodiak.git
-cd kodiak
-npm install
-
-# Development mode (hot-reload)
-npm run tsc && cargo tauri dev
-
-# Optimized production binaries
-npm run build && cargo tauri build
-```
-
-The compiled binary is produced at `src-tauri/target/release/kodiak`. A default configuration is generated at `~/.config/kodiak/config.toml` on first launch.
-
-### 4. Run Your First Pipeline
-
-1. **Scope your workspace** — open the Projects sidebar (`Ctrl + 1`), pick a whitelisted directory, and verify its grant posture.
-2. **Submit a task** — write a plain-language prompt (optionally referencing `@memory-tags`) and hit `Ctrl + Enter`.
-3. **Review & approve** — inspect the proposed diff in the Action Audit Queue and press `Ctrl + Shift + A` to apply atomically.
+<div align="right"><a href="#readme-top">↑ Back to top</a></div>
 
 ---
 
 ## Prebuilt Packages
 
-### Linux (Universal AppImage)
+Download ready-to-run binaries from the [**GitHub Releases**](https://github.com/morganlowe/Kodiak/releases) page. Select your operating system below for installation commands:
+
+<details open>
+<summary><strong>Arch Linux & Derivatives (CachyOS, EndeavourOS, Manjaro)</strong></summary>
+<br />
+
+Kodiak provides a split `PKGBUILD` producing the desktop orchestrator (`/usr/bin/kodiak`) and the optional documentation hub (`kodiak-projectswiki`, installed to `/usr/share/kodiak/projectswiki/`).
+
+```bash
+# Install both Core Orchestrator and Projects Wiki
+sudo pacman -U kodiak-1.1.5-1-x86_64.pkg.tar.zst kodiak-projectswiki-1.1.5-1-any.pkg.tar.zst
+
+# Or install Core Orchestrator only
+sudo pacman -U kodiak-1.1.5-1-x86_64.pkg.tar.zst
+```
+
+To build and install directly from source via `makepkg` / `make`:
+
+```bash
+git clone [https://github.com/morganlowe/Kodiak.git](https://github.com/morganlowe/Kodiak.git)
+cd Kodiak
+make install
+```
+
+</details>
+
+<details>
+<summary><strong>Linux Universal AppImage</strong></summary>
+<br />
 
 Single standalone binary with zero dependencies — works on all modern Linux distributions:
 
 ```bash
-# Download Kodiak_1.1.5_amd64.AppImage from GitHub Releases, make executable, and run:
 chmod +x Kodiak_1.1.5_amd64.AppImage
 ./Kodiak_1.1.5_amd64.AppImage
 ```
 
-### Arch Linux & Derivatives (CachyOS, EndeavourOS, Manjaro)
+</details>
 
-Kodiak provides a split `PKGBUILD` producing the desktop orchestrator (`/usr/bin/kodiak`) and the optional documentation hub (`kodiak-projectswiki`, installed to `/usr/share/kodiak/projectswiki/` with dependency hooks for `python-mkdocs-material`, `python-requests`, and `python-toml`).
-
-```bash
-sudo pacman -U kodiak-1.1.5-1-x86_64.pkg.tar.zst kodiak-projectswiki-1.1.5-1-any.pkg.tar.zst
-```
-
-> **Core orchestrator only?** Omit `kodiak-projectswiki-1.1.5-1-any.pkg.tar.zst`.
-
-Or build and install directly from source via `makepkg` or `make`:
-
-```bash
-git clone https://github.com/morganlowe/Kodiak.git
-cd kodiak
-make install
-```
-
-### Debian / Ubuntu
+<details>
+<summary><strong>Debian / Ubuntu (.deb)</strong></summary>
+<br />
 
 ```bash
 sudo dpkg -i dist/deb/kodiak_1.1.5-1_amd64.deb dist/deb/kodiak-projectswiki_1.1.5-1_all.deb
 sudo apt-get install -f
 ```
 
-### Windows (10 & 11)
+</details>
 
-Windows builds are generated automatically on release and available from the [GitHub Releases](https://github.com/morganlowe/Kodiak/releases) page:
+<details>
+<summary><strong>Windows 10 & 11 (NSIS Setup Installer)</strong></summary>
+<br />
 
-- **NSIS Setup Installer (`.exe`)**: `Kodiak_1.1.5_x64-setup.exe` (Recommended)
-  - Packages both the Kodiak desktop orchestrator and the standalone **ProjectsWiki companion engine** (`kodiak-projectswiki.exe`).
-  - Zero Python or pip setup required: includes embedded MkDocs Material runtime, Sync API, and automated catalog generator.
-  - MSI format has been retired in favor of the single fast, self-contained `.exe` installer.
+Download **`Kodiak_1.1.5_x64-setup.exe`** from [GitHub Releases](https://github.com/morganlowe/Kodiak/releases).
 
-#### Windows Prerequisites
-- [Ollama for Windows](https://ollama.com/download/windows) running on `http://127.0.0.1:11434`
-- Pull required models in PowerShell:
-  ```powershell
-  ollama pull llama3.2:3b
-  ollama pull qwen2.5-coder:7b
-  ```
-- Microsoft Edge WebView2 runtime (standard on Windows 10/11)
+* Packages both the **Kodiak** desktop orchestrator and the standalone **ProjectsWiki** engine (`kodiak-projectswiki.exe`).
+* Zero Python or pip setup required: includes an embedded MkDocs Material runtime, Sync API, and automated catalog generator.
 
-#### Building from Source on Windows
+**Windows Prerequisites:**
+1. Install [Ollama for Windows](https://ollama.com/download/windows) (running on `http://127.0.0.1:11434`).
+2. Pull the required local models in PowerShell:
+   ```powershell
+   ollama pull llama3.2:3b
+   ollama pull qwen2.5-coder:7b
+   ```
+3. Microsoft Edge WebView2 runtime (pre-installed on Windows 10/11).
+
+**Building from Source on Windows:**
 ```powershell
-git clone https://github.com/morganlowe/Kodiak.git
+git clone [https://github.com/morganlowe/Kodiak.git](https://github.com/morganlowe/Kodiak.git)
 cd Kodiak
 npm install
 npm run build
@@ -227,17 +195,56 @@ python scripts/build_windows_wiki.py
 cargo tauri build --bundles nsis
 ```
 
-### Systemd User Integration
+</details>
 
-`kodiak-projectswiki` ships an opt-in systemd user unit at `/usr/lib/systemd/user/kodiak-projectswiki.service`. Packaging scripts never enable it behind your back — start it on demand via the Kodiak UI, or manually:
+<details>
+<summary><strong>Systemd User Service Integration (Linux Wiki Daemon)</strong></summary>
+<br />
+
+`kodiak-projectswiki` ships an opt-in systemd user unit at `/usr/lib/systemd/user/kodiak-projectswiki.service`. Start it via the Kodiak UI or manually from your terminal:
 
 ```bash
 systemctl --user daemon-reload
 systemctl --user start kodiak-projectswiki.service
 
-# Enable at login (optional):
+# Optional: Enable automatically at login
 systemctl --user enable --now kodiak-projectswiki.service
 ```
+
+</details>
+
+---
+
+## Quick Start (From Source)
+
+### 1. Prerequisites
+* **[Rust](https://rustup.rs/)** `1.78+` & **[Node.js](https://nodejs.org/)** `v20+`
+* **[Ollama](https://ollama.com/)** running locally
+* **Linux:** Tauri v2 WebKitGTK headers (`webkit2gtk-4.1`)
+
+### 2. Pull Local Models & Build
+
+```bash
+# 1. Pull required Ollama models
+ollama pull llama3.2:3b
+ollama pull qwen2.5-coder:7b
+ollama pull qwen2.5-coder:14b
+
+# 2. Clone and install frontend dependencies
+git clone [https://github.com/morganlowe/Kodiak.git](https://github.com/morganlowe/Kodiak.git)
+cd Kodiak
+npm install
+
+# 3a. Run in development mode (with hot-reload)
+npm run tsc && cargo tauri dev
+
+# 3b. Or build optimized production binaries
+npm run build && cargo tauri build
+```
+
+The compiled binary is output to `src-tauri/target/release/kodiak`. A default configuration is created at `~/.config/kodiak/config.toml` on first launch.
+
+<div align="right"><a href="#readme-top">↑ Back to top</a></div>
 
 ---
 
@@ -245,13 +252,24 @@ systemctl --user enable --now kodiak-projectswiki.service
 
 ![Kodiak Projects Wiki Interface](docs/screenshots/wiki.png)
 
-For makers, embedded engineers, and polyglot developers, project catalogs fragment quickly across disconnected Git repositories, datasheets, CAD files, and loose BOM spreadsheets — especially when projects span physical hardware (PCBs, soldering), embedded firmware (ESP32, RP2040, Arduino), 3D printing/CAD, and host software (Rust, Python, C++).
+For makers, embedded engineers, and polyglot developers, project catalogs fragment quickly across Git repositories, datasheets, CAD files, and BOM spreadsheets. **`kodiak-projectswiki`** is an optional, 100% local companion subsystem that monitors your project directories, indexes schematics/manuals, and uses local Ollama models to generate standardized documentation at zero cloud cost.
 
-**`kodiak-projectswiki`** solves this as an optional, 100% local companion subsystem. It monitors your project directories, indexes manuals and schematics, and leverages local Ollama models to author and maintain standardized documentation — zero cloud tokens, zero data exfiltration.
+### Wiki Operations
 
-### Architecture at a Glance
+| Operation | Kodiak Wiki Tab Button | CLI Command |
+| :--- | :--- | :--- |
+| Start wiki services | `Start Projects Wiki Server` | `wiki.sh start` |
+| Rescan & update navigation | `Sync Catalog` | `wiki.sh sync` |
+| Index PDFs & schematics | `Rebuild Assets` | `wiki.sh assets` |
+| Generate docs via AI | `AI Build Doc` | `python build_wiki.py --project <name>` |
+| Stop wiki services | `Stop` | `wiki.sh stop` |
+| Open in system browser | `External` | `xdg-open http://wiki.local:8000` |
 
-```
+<details>
+<summary><strong>View Wiki Architecture Diagram & Four-Layer Pipeline (Click to expand)</strong></summary>
+<br />
+
+```text
 ┌────────────────────────────────────────────────────────────────────────┐
 │                           KODIAK DESKTOP APP                           │
 │  [Workbench]   [Projects Wiki Tab]   [Settings]                        │
@@ -261,7 +279,7 @@ For makers, embedded engineers, and polyglot developers, project catalogs fragme
 ┌────────────────────────────────────────────────────────────────────────┐
 │                   WIKI WEB SERVER (Port 8000)                          │
 │  MkDocs Material • Instant Search Index • High-Density Theme           │
-│  http://wiki.local:8000   (fallback: http://127.0.0.1:8000)            │
+│  [http://wiki.local:8000](http://wiki.local:8000)   (fallback: [http://127.0.0.1:8000](http://127.0.0.1:8000))            │
 └───────────────────────▲────────────────────────────────────────────────┘
                         │ Serves compiled static HTML & indexed assets
 ┌───────────────────────┴────────────────────────────────────────────────┐
@@ -282,39 +300,32 @@ For makers, embedded engineers, and polyglot developers, project catalogs fragme
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Four-Layer Pipeline
+#### Four-Layer Pipeline
+1. **MkDocs Material Documentation Engine (Port 8000):** Compiles structured Markdown into a fast static web app with instant search, category filtering, dark slate & burnt orange theme, and high-density typography (`html { font-size: 80%; }`).
+2. **Sync & Asset Daemon (Port 8765):** Local Python REST service (`sync_api.py`) that discovers directories, parses Git remotes, calculates language/file stats, tracks hardware assets, and preserves manual overrides in `~/.config/kodiak/project_overrides.json`.
+3. **Automated Directory Scanner (`wiki.sh sync` / `make_wiki.py`):** Recursively traverses your projects root, auto-categorizes repositories (*Hardware & Electronics*, *Embedded & Firmware*, *Software & Utilities*, *Audio & Synthesizers*, *3D Printing & CAD*), and builds `mkdocs.yml`.
+4. **Local AI Documentation Generator (`build_wiki.py` / `wiki-ai`):** Feeds directory structures, code comments, and README excerpts to local Ollama (`qwen2.5-coder:7b`) to generate standardized engineering docs (Purpose, BOM, Pinouts, Build/Flash steps, Architectural notes).
 
-1. **MkDocs Material Documentation Engine (port 8000)** — compiles structured Markdown into a fast static web app with instant client-side search, category filtering, a dark slate & burnt orange palette, and high-density typography (`html { font-size: 80%; }`).
-2. **Sync & Asset Daemon (port 8765)** — a local Python REST service (`sync_api.py`) that discovers new directories, parses Git remotes, calculates language/file statistics, tracks hardware assets, and preserves manual edits and custom tags in `~/.config/kodiak/project_overrides.json`.
-3. **Automated Directory Scanner (`wiki.sh sync` / `make_wiki.py`)** — recursively traverses your projects root, auto-categorizes repositories (*Hardware & Electronics*, *Embedded & Firmware*, *Software & Utilities*, *Audio & Synthesizers*, *3D Printing & CAD*), and builds the dynamic `mkdocs.yml` navigation tree.
-4. **Local AI Documentation Generator (`build_wiki.py` / `wiki-ai`)** — triggered from the Kodiak UI (**AI Build Doc**) or CLI, it feeds directory structures, code comments, and README excerpts to local Ollama (`qwen2.5-coder:7b`) to generate standardized engineering documentation covering:
-   - Project purpose & problem statement
-   - Bill of Materials (BOM) & hardware specifications
-   - Pinout tables & wiring diagrams
-   - Build, flashing, and execution instructions
-   - Known issues & architectural notes
+#### Integration & Security Boundaries
+* **Strictly Optional:** Install `kodiak` standalone without `kodiak-projectswiki`; the Wiki tab hides cleanly when absent.
+* **Zero-Sudo Hostname (`wiki.local`):** Mapping `127.0.0.1 wiki.local` in `/etc/hosts` happens only with explicit consent; otherwise falls back to `http://127.0.0.1:8000`.
+* **Read-Only Source Boundary:** Generated wiki output lives in `~/.local/share/kodiak/wiki/`, completely decoupled from your project repositories.
 
-### Integration & Security Boundaries
-
-- **Strictly optional** — install `kodiak` standalone without `kodiak-projectswiki`; the Projects Wiki tab and status indicators hide cleanly when absent.
-- **Onboarding (Wizard Step 3)** — Kodiak detects the wiki package, prompts for your projects root, verifies ports `8000` and `8765`, and optionally adds discovered repositories to the security whitelist under `READ` posture.
-- **Zero-sudo hostname (`wiki.local`)** — mapping `127.0.0.1 wiki.local` in `/etc/hosts` happens only with explicit consent; otherwise Kodiak falls back seamlessly to `http://127.0.0.1:8000`.
-- **Read-only source boundary** — the wiki subsystem is strictly read-only with respect to your repositories. Generated output lives in `~/.local/share/kodiak/wiki/`, fully decoupled from your source trees.
-
-### Wiki Operations
-
-| Operation | Kodiak Wiki Tab Button | CLI Command |
-| :--- | :--- | :--- |
-| Start wiki services | `Start Projects Wiki Server` | `wiki.sh start` |
-| Rescan & update navigation | `Sync Catalog` | `wiki.sh sync` |
-| Index PDFs & schematics | `Rebuild Assets` | `wiki.sh assets` |
-| Generate docs via AI | `AI Build Doc` | `python build_wiki.py --project <name>` |
-| Stop wiki services | `Stop` | `wiki.sh stop` |
-| Open in system browser | `External` | `xdg-open http://wiki.local:8000` |
+</details>
 
 ---
 
-## Keyboard Shortcuts & Daily Workflow
+## Workflow & Keyboard Shortcuts
+
+1. **Scope Workspace (`Ctrl + 1`):** Select a whitelisted project directory and verify its grant level (`READ`, `CREATE`, `BUILD`, `AUTONOMOUS`).
+2. **Submit Task (`Ctrl + Enter`):** Enter a plain-language prompt (use `@memory-tag` to inject pinouts or specs).
+3. **Local Inspection & Cloud Plan:** `llama3.2:3b` summarizes local files at zero token cost; sanitized metadata goes to Proton Lumo (or standby cascade) for planning.
+4. **Local Code Drafting:** Local `qwen2.5-coder:7b` / `14b` workers inspect source trees and draft unified diffs.
+5. **Audit & Apply (`Ctrl + Shift + A`):** Review diffs and any Destructive Diff warnings in the Action Audit Queue, then apply atomically.
+
+<details>
+<summary><strong>Full Keyboard Shortcut Reference (Click to expand)</strong></summary>
+<br />
 
 | Shortcut | Action |
 | :--- | :--- |
@@ -330,26 +341,20 @@ For makers, embedded engineers, and polyglot developers, project catalogs fragme
 | `Ctrl + W` | Switch to **Projects Wiki** tab / launch `http://wiki.local:8000` |
 | `Esc` | Dismiss active modal or abort an unapproved in-flight prompt |
 
-### Standard Daily Workflow
-
-1. **Scope your workspace** — open the Projects sidebar (`Ctrl + 1`), select a whitelisted directory, and verify its grant posture.
-2. **Submit a task** — enter your plain-language task in the Task Delegation Prompt (reference pinouts or specs via `@memory-tag`) and hit **Run Pipeline** (`Ctrl + Enter`).
-3. **Zero-token local inspection** — Kodiak dispatches `local-delegation_local-ollama` (`llama3.2:3b`) to summarize relevant local files, sending only sanitized structural metadata to Proton Lumo (or the active cascade tier) for step-by-step planning.
-4. **Local code drafting** — local `qwen2.5-coder:7b` / `14b` workers execute plan steps, inspect register maps or source trees, and generate unified diffs.
-5. **Human-in-the-loop review** — inspect proposed changes in the Action Audit Queue, review any Destructive Diff warnings, and press `Ctrl + Shift + A` to apply atomically. Every grant, rejection, and failover event is permanently journaled.
-6. **Keep docs current** — switch to the Projects Wiki tab (`Ctrl + W`), run **Sync Catalog**, and trigger **AI Build Doc** to refresh your local knowledge base.
+</details>
 
 ---
 
 ## Configuration Reference
 
-Kodiak generates a default configuration on first launch. The references below are complete, annotated production examples.
+Kodiak generates default configuration files on first launch. Expand the sections below for complete, annotated production examples:
 
 <details>
-<summary><strong>1. Core Orchestrator — <code>~/.config/kodiak/config.toml</code> (click to expand)</strong></summary>
+<summary><strong>1. Core Orchestrator — <code>~/.config/kodiak/config.toml</code> (Click to expand)</strong></summary>
+<br />
 
 ```toml
-# Kodiak v1.1.4 Core Orchestrator Configuration
+# Kodiak v1.1.5 Core Orchestrator Configuration
 
 [general]
 theme = "kodiak-dark"
@@ -373,7 +378,7 @@ custom_css = """
 [primary_provider]
 name = "lumo"
 protocol = "openai-compat"
-base_url = "http://127.0.0.1:3003/v1"
+base_url = "[http://127.0.0.1:3003/v1](http://127.0.0.1:3003/v1)"
 tier_low = "lumo-lite"
 tier_medium = "lumo"
 tier_high = "lumo-max"
@@ -381,7 +386,7 @@ timeout_secs = 120
 
 [local_delegation]
 pipeline_id = "local-delegation_local-ollama"
-ollama_base_url = "http://127.0.0.1:11434"
+ollama_base_url = "[http://127.0.0.1:11434](http://127.0.0.1:11434)"
 summary_model = "llama3.2:3b"            # Zero-cloud-token file & log summarizer
 worker_model_fast = "qwen2.5-coder:7b"   # Standard local diff & code generation
 worker_model_deep = "qwen2.5-coder:14b"  # Heavy refactoring & Choice Card fallback
@@ -397,7 +402,7 @@ allow_choice_card_on_exhaustion = true
 id = "gemini"
 label = "Google AI Studio (Gemini)"
 discovery_mode = "google-native"         # Uses native ModelService.ListModels
-base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
+base_url = "[https://generativelanguage.googleapis.com/v1beta/openai/](https://generativelanguage.googleapis.com/v1beta/openai/)"
 api_key_env = "GEMINI_API_KEY"
 tier_low = "gemini-3.0-flash"
 tier_medium = "gemini-3.0-flash"
@@ -407,7 +412,7 @@ tier_high = "gemini-2.5-pro"
 id = "groq"
 label = "Groq Cloud"
 discovery_mode = "openai-models"         # Queries the standard /v1/models endpoint
-base_url = "https://api.groq.com/openai/v1"
+base_url = "[https://api.groq.com/openai/v1](https://api.groq.com/openai/v1)"
 api_key_env = "GROQ_API_KEY"
 tier_low = "llama-3.1-8b-instant"
 tier_medium = "llama-3.3-70b-versatile"
@@ -417,7 +422,7 @@ tier_high = "qwen-2.5-coder-32b"
 id = "openrouter"
 label = "OpenRouter"
 discovery_mode = "openai-models"
-base_url = "https://openrouter.ai/api/v1"
+base_url = "[https://openrouter.ai/api/v1](https://openrouter.ai/api/v1)"
 api_key_env = "OPENROUTER_API_KEY"
 tier_low = "google/gemini-3.0-flash"
 tier_medium = "anthropic/claude-3.5-sonnet"
@@ -462,9 +467,10 @@ hard_deny_patterns = [
 </details>
 
 <details>
-<summary><strong>2. Projects Wiki — <code>~/.config/kodiak/wiki.toml</code> (click to expand)</strong></summary>
+<summary><strong>2. Projects Wiki — <code>~/.config/kodiak/wiki.toml</code> (Click to expand)</strong></summary>
+<br />
 
-The wiki subsystem also reads custom project metadata from `~/.config/kodiak/project_overrides.json` and writes compiled output to `~/.local/share/kodiak/wiki/`.
+The wiki subsystem reads custom metadata from `~/.config/kodiak/project_overrides.json` and writes compiled static output to `~/.local/share/kodiak/wiki/`.
 
 ```toml
 # Kodiak Projects Wiki & AI Knowledge Hub Configuration
@@ -480,7 +486,7 @@ overrides_file = "~/.config/kodiak/project_overrides.json"
 output_dir = "~/.local/share/kodiak/wiki"
 
 [scanner]
-ollama_base_url = "http://127.0.0.1:11434"
+ollama_base_url = "[http://127.0.0.1:11434](http://127.0.0.1:11434)"
 summary_model = "llama3.2:3b"
 include_extensions = ["md", "rs", "ts", "py", "c", "cpp", "h", "ino", "toml", "pdf", "svd", "scad", "gbr"]
 exclude_dirs = ["target", "node_modules", ".git", "dist", "build", "__pycache__"]
@@ -492,67 +498,81 @@ exclude_dirs = ["target", "node_modules", ".git", "dist", "build", "__pycache__"
 
 ## FAQ
 
-**Does my code ever leave my machine?**
-No. Cloud models only ever receive sanitized structural metadata and architectural summaries — never raw file contents. All raw reads, code generation, and diff drafting happen locally via Ollama.
+<details>
+<summary><strong>Does my source code ever leave my machine?</strong></summary>
+<br />
+No. Cloud models only ever receive sanitized structural metadata and architectural summaries — never raw file contents. All raw file reads, code generation, and diff drafting happen locally via Ollama.
+</details>
 
-**What happens when my cloud quota runs out mid-task?**
-Nothing is lost. Kodiak either fails over automatically to your configured cascade providers (with prior consent) or pauses and shows a Choice Card so you can switch to local execution or defer the run.
+<details>
+<summary><strong>What happens when my cloud quota runs out mid-task?</strong></summary>
+<br />
+Nothing is lost. Kodiak either fails over automatically to your configured cascade providers (with prior consent) or pauses and displays an interactive Choice Card so you can switch to local Ollama execution or defer the run.
+</details>
 
-**Can Kodiak modify my dotfiles or SSH keys?**
-No. The hard deny-list is globally enforced — even in `AUTONOMOUS` mode — and cannot be bypassed from the UI.
+<details>
+<summary><strong>Can Kodiak modify my dotfiles or SSH keys?</strong></summary>
+<br />
+No. The hard deny-list is globally enforced — even in <code>AUTONOMOUS</code> mode — and cannot be bypassed from the UI.
+</details>
 
-**Do I have to install the Projects Wiki?**
-No. It's fully optional. Without it, Kodiak runs perfectly as a standalone coding orchestrator and simply hides the wiki tab.
+<details>
+<summary><strong>Do I have to install the Projects Wiki?</strong></summary>
+<br />
+No. It is completely optional. Without it, Kodiak runs as a standalone coding orchestrator and automatically hides the Wiki tab.
+</details>
 
-**Which desktop environments are supported?**
-Kodiak targets native Linux desktops via WebKitGTK (`webkit2gtk-4.1`), with packaged support for Arch-based and Debian-based distributions.
+<details>
+<summary><strong>Which operating systems and desktop environments are supported?</strong></summary>
+<br />
+Kodiak supports native Linux desktops via WebKitGTK (<code>webkit2gtk-4.1</code>) with packaged builds for Arch/CachyOS, Debian/Ubuntu, and universal AppImage, as well as Windows 10 & 11 via Microsoft Edge WebView2.
+</details>
 
 ---
 
-## Contributing
+## Contributing & Security
 
-Bug reports, security reviews, and pull requests are welcome at [github.com/morganlowe/Kodiak](https://github.com/morganlowe/Kodiak). Before opening a PR:
+Bug reports, security reviews, and pull requests are welcome at [github.com/morganlowe/Kodiak](https://github.com/morganlowe/Kodiak).
 
 1. Fork the repository and create a feature branch.
-2. Run `npm run tsc && cargo tauri dev` to verify your changes compile and behave.
-3. For behavior changes, update `DECISIONS.md` and any affected documentation.
-4. Submit your PR against the main branch with a clear description of what changed and why.
+2. Run `npm run tsc && cargo tauri dev` to verify your changes compile and pass checks.
+3. For behavioral changes, update `DECISIONS.md` and relevant documentation.
+4. Submit a Pull Request against `main` with a clear summary of changes.
 
-## Security
+> **Security Vulnerability Reporting:** Found a vulnerability touching the grant matrix, deny-list, or filesystem boundaries? **Do not open a public issue.** Please report it privately via [GitHub Security Advisories](https://github.com/morganlowe/Kodiak/security/advisories).
 
-Found a vulnerability — especially anything touching the grant matrix, deny-list, or filesystem boundaries? Please **do not open a public issue**. Report it privately via the project's GitHub Security Advisories, and it will be triaged promptly.
+---
 
-## License
+## License & Acknowledgements
 
-Copyright © 2026 Morgan Lowe.
+Copyright © 2026 **Morgan Lowe**. Licensed under the **[Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)**.
 
-Licensed under the **Apache License, Version 2.0** (the "License"); you may not use this software except in compliance with the License. You may obtain a copy of the License at: [http://www.apache.org/licenses/LICENSE-2.0](http://www.apache.org/licenses/LICENSE-2.0)
-
-Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-
-## Acknowledgements & Shout-Outs
+<details>
+<summary><strong>View Full Acknowledgements, AI Collaborators & Open-Source Stack (Click to expand)</strong></summary>
+<br />
 
 ### Primary Author & Systems Architecture
-- **Morgan Lowe** — Creator, systems architecture, security model design, multi-platform packaging, and engineering direction.
+* **Morgan Lowe** — Creator, systems architecture, security model design, multi-platform packaging, and engineering direction.
 
 ### AI Model Collaborators
-This codebase was co-developed, refined, and verified in close collaboration with:
-- **Proton Lumo** — Privacy-first collaborative peer and debugging partner via the local `lumo-tamer` bridge.
-- **Google Gemini Models** — DeepMind Antigravity agentic orchestration, Gemini 2.5 Pro and Gemini 2.5 Flash for architectural reasoning, multi-tier delegation design patterns, and autonomous verification workflows.
-- **OpenAI ChatGPT & o-Series Models** — Architectural planning, systems engineering, reasoning, and core implementation.
-- **Anthropic Claude Models** — Claude 3.7 Sonnet and Claude 3.5 Sonnet for deep analytical reasoning, architectural synthesis, and test scaffolding.
-- **Local Ollama Models** — `llama3.2:3b`, `qwen2.5-coder:7b`, and `qwen2.5-coder:14b` running offline on local hardware for zero-cloud-token code drafting, diff inspection, compiler log digestion, register map extraction, and syntax verification.
+* **Proton Lumo** — Privacy-first collaborative peer and debugging partner via the local `lumo-tamer` bridge.
+* **Google Gemini Models** — DeepMind Antigravity agentic orchestration, Gemini 2.5 Pro and Gemini 2.5 Flash for architectural reasoning, multi-tier delegation design patterns, and autonomous verification workflows.
+* **OpenAI ChatGPT & o-Series Models** — Architectural planning, systems engineering, reasoning, and core implementation.
+* **Anthropic Claude Models** — Claude 3.7 Sonnet and Claude 3.5 Sonnet for deep analytical reasoning, architectural synthesis, and test scaffolding.
+* **Local Ollama Models** — `llama3.2:3b`, `qwen2.5-coder:7b`, and `qwen2.5-coder:14b` running offline on local hardware for zero-cloud-token code drafting, diff inspection, compiler log digestion, register map extraction, and syntax verification.
 
 ### Core Technologies, Languages & Runtimes
-Special thanks and shout-outs to the open-source communities and projects that power Kodiak:
-- **Python Ecosystem** — **Python 3**, **MkDocs** & **MkDocs Material** (powering the ProjectsWiki engineering documentation portal), **PyInstaller** (freezing zero-dependency standalone Windows executables), **PyYAML**, and **Jinja2**.
-- **Rust Ecosystem** — **Rust**, **Tauri v2** (desktop application framework for Linux and Windows), **Tokio** (async runtime), **Reqwest** (streaming HTTP client), **Serde** & **serde_json** (serialization and IPC contracts), **Sysinfo** (hardware telemetry and CPU/RAM evaluation), **Notify** (cross-platform filesystem watcher), **Chrono** (audit timestamps and log rotation), and **Parking_lot** (VRAM mutex and synchronization).
-- **Web & Interface** — **TypeScript**, **Vite** (frontend build tool), **HTML5**, and modern **CSS3 custom properties** for an efficient, dependency-light native user experience.
-- **Platform Packaging & Tooling** — **Arch Linux / CachyOS** (`pacman`, `makepkg`), **Debian / Ubuntu** (`dpkg-deb`), **AppImageKit** (universal Linux portable binaries), and **NSIS** (Nullsoft Scriptable Install System for Windows setup installers).
-- **Hardware & Inference** — **NVIDIA CUDA** & `nvidia-smi` GPU telemetry, and the **Ollama** local model inference runtime.
+* **Python Ecosystem:** [Python 3](https://www.python.org/), [MkDocs](https://www.mkdocs.org/) & [MkDocs Material](https://squidfunk.github.io/mkdocs-material/), [PyInstaller](https://pyinstaller.org/), PyYAML, and Jinja2.
+* **Rust Ecosystem:** [Rust](https://www.rust-lang.org/), [Tauri v2](https://v2.tauri.app/), [Tokio](https://tokio.rs/), Reqwest, Serde & `serde_json`, Sysinfo, Notify, Chrono, and `parking_lot`.
+* **Web & Interface:** [TypeScript](https://www.typescriptlang.org/), [Vite](https://vitejs.dev/), HTML5, and modern CSS3 custom properties.
+* **Platform Packaging & Tooling:** Arch Linux / CachyOS (`pacman`, `makepkg`), Debian / Ubuntu (`dpkg-deb`), [AppImageKit](https://github.com/AppImage/AppImageKit), and [NSIS](https://nsis.sourceforge.io/).
+* **Hardware & Inference:** NVIDIA CUDA & `nvidia-smi` GPU telemetry, and the [Ollama](https://ollama.com/) local inference runtime.
+
+</details>
 
 <div align="center">
   <br />
   <img src="src/assets/morninglion-industries-logo.png" alt="Morninglion Industries Logo" width="160" />
   <p><strong>Created and Engineered by Morgan Lowe</strong></p>
+  <p><a href="#readme-top">↑ Back to top</a></p>
 </div>
