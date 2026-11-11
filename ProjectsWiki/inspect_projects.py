@@ -6,12 +6,25 @@ Writes output to projects_inventory.json (local/untracked).
 """
 import json
 import os
+import re
 import sys
 
 from wiki_config import load_wiki_config
 
 WIKI_DIR = os.path.dirname(os.path.abspath(__file__))
 OUT_PATH = os.path.join(WIKI_DIR, "projects_inventory.json")
+
+EMOJI_PATTERN = re.compile(
+    r'[\U0001F000-\U0001FAFF'
+    r'\U00002700-\U000027BF'
+    r'\U00002600-\U000026FF'
+    r'\U00002B50-\U00002B55'
+    r'\U0000231A-\U000023FA]'
+)
+
+
+def strip_emojis(text: str) -> str:
+    return EMOJI_PATTERN.sub('', text)
 
 TEXT_EXTS = {
     ".md", ".txt", ".py", ".rs", ".c", ".cpp", ".h", ".hpp", ".ino",
@@ -78,7 +91,7 @@ def scan_projects():
                             with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
                                 content = f.read(1500).strip()
                             if content:
-                                snippets.append({"file": rel_path, "excerpt": content})
+                                snippets.append({"file": rel_path, "excerpt": strip_emojis(content)})
                         except Exception:
                             pass
 

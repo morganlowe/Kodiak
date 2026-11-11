@@ -264,7 +264,7 @@ def main():
                     f"# {project_name}\n\n"
                     f"## Overview\n\n"
                     f"Reference documents, manuals, media, and project files stored in `{project_path}`.\n\n"
-                    f"## 📁 Project Files ({len(all_files)})\n\n"
+                    f"## Project Files ({len(all_files)})\n\n"
                     f"{file_bullets}\n"
                 )
             else:

@@ -187,9 +187,9 @@ start_background() {
         echo ":: ProjectsWiki is already running as a systemd service (projects-wiki.service)."
         resolve_runtime_urls
         echo "============================================================"
-        echo "  ✅ ProjectsWiki is LIVE via systemd service!"
-        echo "  🔗 Link:      ${URL}"
-        echo "  ⚙️  Stop:      wiki stop   |   Logs: wiki logs"
+        echo "  [OK] ProjectsWiki is LIVE via systemd service!"
+        echo "  Link:      ${URL}"
+        echo "  Stop:      wiki stop   |   Logs: wiki logs"
         echo "============================================================"
         return 0
     fi
@@ -227,12 +227,12 @@ start_background() {
 
     if kill -0 "$mk_pid" 2>/dev/null; then
         echo "============================================================"
-        echo "  ✅ ProjectsWiki is LIVE in the background!"
-        echo "  🔗 Link:      ${URL}"
-        echo "  ⚙️  Stop:      wiki stop   |   Logs: wiki logs"
+        echo "  [OK] ProjectsWiki is LIVE in the background!"
+        echo "  Link:      ${URL}"
+        echo "  Stop:      wiki stop   |   Logs: wiki logs"
         echo "============================================================"
     else
-        echo "❌ Wiki failed to start. Recent log output ($LOG_FILE):"
+        echo "[ERROR] Wiki failed to start. Recent log output ($LOG_FILE):"
         tail -n 20 "$LOG_FILE"
         exit 1
     fi

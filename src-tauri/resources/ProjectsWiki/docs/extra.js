@@ -297,7 +297,7 @@
                       data-name="${escapeHtml(item.name)}"
                       data-category="${escapeHtml(item.category)}"
                     >
-                      ⚡ Quick Peek
+                      Quick Peek
                     </button>
                     <a href="${escapeHtml(item.url)}" class="card-action-link">
                       Open Page →
@@ -332,7 +332,7 @@
       modalTitle.textContent = item.name;
       modalCategory.textContent = item.category || "Project";
       modalFullLink.href = item.url;
-      modalBody.innerHTML = `<div class="modal-loading">⚡ Loading <strong>${escapeHtml(item.name)}</strong> via AJAX...</div>`;
+      modalBody.innerHTML = `<div class="modal-loading">Loading <strong>${escapeHtml(item.name)}</strong> via AJAX...</div>`;
 
       if (!dialog.open) {
         dialog.showModal();
@@ -485,8 +485,8 @@
         renderGrid(true);
         resultsMetaEl.textContent =
           addedCount > 0
-            ? `✓ Synced ${catalog.length} projects (+${addedCount} new)`
-            : `✓ Synced — all ${catalog.length} projects up to date`;
+            ? `Synced ${catalog.length} projects (+${addedCount} new)`
+            : `Synced — all ${catalog.length} projects up to date`;
       } finally {
         syncBtn.disabled = false;
         syncBtn.classList.remove("is-syncing");
@@ -525,10 +525,10 @@
         const lbl = bootBtn.querySelector(".boot-label");
         if (lbl) lbl.textContent = enabled ? "Boot: ON" : "Boot: OFF";
         resultsMetaEl.textContent = enabled
-          ? "✓ Enabled automatic Start at Boot (systemd user service)"
-          : "✓ Disabled automatic Start at Boot";
+          ? "Enabled automatic Start at Boot (systemd user service)"
+          : "Disabled automatic Start at Boot";
       } catch (_err) {
-        resultsMetaEl.textContent = "⚠ Run 'wiki' in terminal to start the local control API first.";
+        resultsMetaEl.textContent = "Note: Run 'wiki' in terminal to start the local control API first.";
       }
     });
 
@@ -582,7 +582,7 @@
       if (tuneSaveBtn) tuneSaveBtn.disabled = true;
       if (tuneStatusMsg) {
         tuneStatusMsg.textContent =
-          mode === "ai" ? "✨ Tuning description with AI..." : "💾 Saving changes...";
+          mode === "ai" ? "Tuning description with AI..." : "Saving changes...";
       }
 
       try {
@@ -635,13 +635,13 @@
         renderCategoryPills();
         renderGrid(true);
 
-        if (tuneStatusMsg) tuneStatusMsg.textContent = "✓ Saved & updated!";
+        if (tuneStatusMsg) tuneStatusMsg.textContent = "Saved & updated!";
         setTimeout(() => {
           if (tuneDrawer) tuneDrawer.hidden = true;
           modalTuneBtn?.setAttribute("aria-expanded", "false");
         }, 700);
       } catch (_err) {
-        if (tuneStatusMsg) tuneStatusMsg.textContent = "⚠ Could not reach local API on port 8765.";
+        if (tuneStatusMsg) tuneStatusMsg.textContent = "Could not reach local API on port 8765.";
       } finally {
         if (tuneAiBtn) tuneAiBtn.disabled = false;
         if (tuneSaveBtn) tuneSaveBtn.disabled = false;

@@ -41,7 +41,7 @@ _Nothing yet — planned work will be listed here as it lands._
   - Embedded real-time search input inside the sidebar's Projects section.
   - Instant case-insensitive filtering matching both project directory names and full paths.
   - Dynamic match counter badge (`matched / total`) displaying live results.
-  - Keyboard navigation: press `Enter` to activate the first filtered project; press `Escape` or click `✕` to clear the filter.
+  - Keyboard navigation: press `Enter` to activate the first filtered project; press `Escape` or click 'Clear' to clear the filter.
   - Input focus and selection ranges are preserved during background UI re-renders.
 - **Persistent UI Collapsed States**:
   - Persists all collapsible UI sections across application restarts and closes:
@@ -60,7 +60,7 @@ _Nothing yet — planned work will be listed here as it lands._
 - **Workbench Active Context Card**:
   - Prominent context header above the Posture bar displaying the active whitelisted project directory path, whitelist grant badges (`[READ]`, `[BUILD]`, etc.), and live job status.
   - Interactive context badge clearly distinguishing `Live Workbench` from `Historical Job View`.
-  - Quick action buttons: **`+ New Task`** (clears lingering card diagnostics, resets pipeline stages to idle, and focuses the prompt), **`✕ Dismiss Error`** (clears failed/deferred error cards from workbench view without deleting records), and **`📖 Wiki`** (one-click jump to project documentation).
+  - Quick action buttons: **`+ New Task`** (clears lingering card diagnostics, resets pipeline stages to idle, and focuses the prompt), **`[Dismiss Error]`** (clears failed/deferred error cards from workbench view without deleting records), and **`[Wiki]`** (one-click jump to project documentation).
   - Dynamic drafting indicator showing a live truncated prompt preview while entering instructions.
 - **Configurable Alternate Provider Timeout**:
   - Added `timeout_secs` support to `AltProviderConfig` (persisted in `~/.config/kodiak/config.toml`).
@@ -85,11 +85,11 @@ _Nothing yet — planned work will be listed here as it lands._
 - **Right-Click Project Exclusions**:
   - Custom right-click context menu on sidebar project items to easily exclude directories from view without deleting whitelist configuration.
   - Excluded directories persist across restarts in `~/.config/kodiak/config.toml` (`exclusion_list`).
-  - Dedicated **Settings → 🚫 Excluded Projects** panel to inspect and restore excluded directories with 1 click.
+  - Dedicated **Settings → Excluded Projects** panel to inspect and restore excluded directories with 1 click.
   - Suppressed default browser navigation context menu (Back/Forward/Reload) across the desktop app.
 - **Runtime Custom CSS Engine**:
   - Live CSS style injection engine with dynamic `<style id="kodiak-custom-css">` mounting.
-  - **Settings → 🎨 Custom CSS (Main Window)** editor to write, test, and save custom styles directly in `config.toml`.
+  - **Settings → Custom CSS (Main Window)** editor to write, test, and save custom styles directly in `config.toml`.
   - Instant live preview on saving settings without requiring app restarts.
 - **Windows Packaging & Release Workflow**:
   - Windows platform support: generated multi-resolution icon bundle (`icon.ico`, `icon.icns`, and full PNG mipmaps) matching Linux desktop icons.
@@ -115,7 +115,7 @@ _Nothing yet — planned work will be listed here as it lands._
 ### Added
 
 - **Task Stop / Cancel Control**:
-  - Interactive **⏹ Stop Task** button in the Workbench action bar and Live Event Ticker header.
+  - Interactive **Stop Task** button in the Workbench action bar and Live Event Ticker header.
   - Runtime cancellation checks in `run_execute_stage_with_events` and `execute_queued_pipeline`, allowing immediate abort of active pipelines and background tasks.
   - Cancellation capability across active and waiting queue tasks in the Task Queue drawer.
 
@@ -159,9 +159,9 @@ _Nothing yet — planned work will be listed here as it lands._
 **Multi-Project Health & Activity Dashboard (§2.3 Slice 2 Phase C)**
 
 - **Multi-Project Aggregation View (`src-tauri/src/dashboard.rs`, `src/main.ts`)**: dedicated Dashboard view presenting all whitelisted repositories in a clean grid.
-- **Git Working Tree Telemetry**: checks `.git` worktrees, displays active branches (`🌿 main`), and flags uncommitted files with real-time dirty status badges.
+- **Git Working Tree Telemetry**: checks `.git` worktrees, displays active branches ('main'), and flags uncommitted files with real-time dirty status badges.
 - **Granular Project Posture & Task History**: displays governing grant levels, total task executions, pending review cards, and most recent task verdicts (`PASS` / `FAIL`).
-- **One-Click Workspace Actions**: instant switching of the workbench active project (`⚡ Set Active`), direct jump to Workbench (`Open Workbench →`), ProjectsWiki documentation access (`📖 Wiki`), and pending card review.
+- **One-Click Workspace Actions**: instant switching of the workbench active project ('Set Active'), direct jump to Workbench (`Open Workbench →`), ProjectsWiki documentation access (`Wiki`), and pending card review.
 - **Local-First Telemetry & Savings Calculator**: tracks local autonomy ratio (percentage of actions executed under Grant Matrix without cloud tokens), cloud tokens saved via zero-cost local Ollama delegation, and verified task pass rates.
 
 **Projects Wiki Companion Refinements**

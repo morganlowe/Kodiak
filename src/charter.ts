@@ -112,6 +112,6 @@ export function renderCharterChip(
   if (!tenet) return "";
   const prefix = labelPrefix ? `${labelPrefix} — ` : "";
   return `<button type="button" class="charter-link-chip ${extraClass}" data-tenet-target="${tenet.id}" title="${tenet.statement} (Click to view Charter in About)">
-    ${prefix}<strong>${tenet.shortName}</strong> <span class="charter-chip-icon">📖</span>
+    ${prefix}<strong>${tenet.shortName}</strong>
   </button>`;
 }

@@ -146,7 +146,7 @@ Both stages invoke `call_lumo_chat` (`POST http://127.0.0.1:3003/v1/chat/complet
 
 ### 11.4 Unified Clipboard Export
 - **One-Click Markdown Copy**:
-  - Header **📋 Copy Task**: Generates a complete, structured Markdown transcript (Goal, Risk, Target, Plan Steps with Status, Diff Cards, Execution Logs, Cloud Verdict with Rationale, and Journal references).
+  - Header **[Copy Task]**: Generates a complete, structured Markdown transcript (Goal, Risk, Target, Plan Steps with Status, Diff Cards, Execution Logs, Cloud Verdict with Rationale, and Journal references).
   - Hover Corner Copy Buttons: On Cloud Plan, Steps, Execution Logs, Action/Diff Cards (preserving exact unified diff formatting `--- a/... +++ b/...`), and Cloud Verdict.
   - Ticker: Dedicated "Copy all lines" button.
 - **Styling**: Strictly themed via existing `src/theme.css` tokens (zero new hardcoded hex).
@@ -819,7 +819,7 @@ All 8 named regression tests pass with zero regressions:
 - **Auto-Seeding & User Authority**:
   - `load_or_seed_config()` in `config.rs` automatically seeds newly created configurations with the detected optimal models.
   - Exposes `get_hardware_profile` and `apply_hardware_recommended_models` Tauri commands.
-  - Settings UI features a dedicated Hardware Profile card showing detected GPU, VRAM, System RAM, assigned Tier, and a 1-click `[⚡ Adopt Recommended Models]` action button.
+  - Settings UI features a dedicated Hardware Profile card showing detected GPU, VRAM, System RAM, assigned Tier, and a 1-click `[Adopt Recommended Models]` action button.
 
 ## 23. Sequential Multi-Task Queue & VRAM-Aware Scheduling (Slice 2 Milestone 2)
 
@@ -848,7 +848,7 @@ All 8 named regression tests pass with zero regressions:
 - **Non-blocking UI Interaction**:
   - Submitting prompts via Enter or `run-pipeline-btn` invokes `enqueue_task`, immediately clears the input textarea, and provides toast confirmation, allowing seamless sequential prompt entry without waiting for pipeline stages.
   - The slide-over Queue Drawer panel provides granular control over queued jobs: cancellation, removal of resolved tasks, manual reordering (`▲` / `▼`), and one-click jump to pending review cards (`Waiting Approval`).
-  - Top header `[📋 Queue]` badge dynamically highlights when tasks are active or awaiting approval.
+  - Top header `[Queue]` badge dynamically highlights when tasks are active or awaiting approval.
 - **Projects Wiki Typography & Scale**:
   - Updated `ProjectsWiki/docs/extra.css` header height to `3.5rem` and `.md-header__topic` font size to `2.4rem` to match the visual height of the bear logo.
   - Increased root document scale from 94% to 100% (102%–104% on ultrawide/high-DPI) for enhanced readability.
@@ -885,8 +885,8 @@ With asynchronous multi-task queuing established, multiple tasks targeting the s
 
 ### 24.2 Unified Inbox UI & Filter Stack (`src/main.ts`, `src/theme.css`)
 - **Queue Drawer Sub-Navigation Tabs**:
-  - Drawer header features sub-navigation tabs `[📋 Tasks (N)]` and `[📥 Approval Inbox (N)]`.
-  - The top-bar Queue button and inbox tab display live badges and amber/red conflict indicators (`⚠️ N conflict(s)`) when diff collisions are detected.
+  - Drawer header features sub-navigation tabs `[Tasks (N)]` and `[Approval Inbox (N)]`.
+  - The top-bar Queue button and inbox tab display live badges and amber/red conflict indicators ('[N conflict(s)]') when diff collisions are detected.
 - **Filter & Selection Toolbar**:
   - Filter pills for `All`, `Safe Only` (zero diff conflicts), and `Conflicts Only`.
   - One-click bulk selection buttons: `Select Safe`, `All`, and `Clear`.
@@ -921,8 +921,8 @@ With multi-task queuing and unified diff reviews operational across repositories
 - **Telemetry Metric Cards**:
   - 4 high-level stat tiles: *Managed Projects*, *Local Autonomy Ratio*, *Estimated Cloud Tokens Saved*, and *Verified Pass Rate*.
 - **Whitelisted Project Cards**:
-  - Displays project name, full path, governing grant badge, active project indicator, git branch, and clean vs dirty status (`✓ Git Clean` vs `⚠️ N uncommitted`).
-  - Includes quick action buttons: `⚡ Set Active`, `Open Workbench →`, `📖 Wiki`, and `Review Pending Cards`.
+  - Displays project name, full path, governing grant badge, active project indicator, git branch, and clean vs dirty status ('[Git Clean]' vs '[N uncommitted]').
+  - Includes quick action buttons: `Set Active`, `Open Workbench →`, `Wiki`, and `Review Pending Cards`.
 
 
 

@@ -53,7 +53,7 @@ def extract_doc_parts(doc_path: str, proj_name: str):
 
     assets_tail = ""
     main_part = text
-    for marker in ("\n---\n\n## 📁 Directory Summary", "\n## 📁 Directory Summary", "\n## 📁 Directory Status"):
+    for marker in ("\n---\n\n## Directory Summary", "\n## Directory Summary", "\n## Directory Status"):
         if marker in text:
             idx = text.index(marker)
             main_part = text[:idx].rstrip()

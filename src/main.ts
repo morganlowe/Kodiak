@@ -981,7 +981,7 @@ function showProjectContextMenu(x: number, y: number, projPath: string) {
 
   menu.innerHTML = `
     <button type="button" id="ctx-exclude-btn" style="width:100%; text-align:left; background:transparent; border:none; color:#f3f4f6; padding:7px 10px; border-radius:4px; font-size:0.8rem; cursor:pointer; display:flex; align-items:center; gap:8px; font-weight:500;">
-      <span style="color:#ef4444; font-size:0.9rem;">🚫</span> Exclude from Listing
+      Exclude from Listing
     </button>
   `;
 
@@ -1192,7 +1192,7 @@ function renderHeader(): string {
           }"
           title="Toggle Multi-Task Queue & Unified Approval Inbox"
         >
-          <span>📋 Queue</span>
+          <span>Queue</span>
           ${
             state.queueItems.length > 0
               ? `<span class="nav-tab__badge" style="background:${
@@ -1208,7 +1208,7 @@ function renderHeader(): string {
             state.unifiedInbox && state.unifiedInbox.total_pending > 0
               ? `<span class="nav-tab__badge" style="background:${
                   state.unifiedInbox.conflict_count > 0 ? '#ef4444' : '#a855f7'
-                }; color:#fff; font-size:0.7rem; margin-inline-start:0.3rem;" title="${state.unifiedInbox.total_pending} card(s) pending approval across all tasks${state.unifiedInbox.conflict_count > 0 ? ' (' + state.unifiedInbox.conflict_count + ' diff conflict!)' : ''}">📥 ${state.unifiedInbox.total_pending}${state.unifiedInbox.conflict_count > 0 ? ' ⚠️' : ''}</span>`
+                }; color:#fff; font-size:0.7rem; margin-inline-start:0.3rem;" title="${state.unifiedInbox.total_pending} card(s) pending approval across all tasks${state.unifiedInbox.conflict_count > 0 ? ' (' + state.unifiedInbox.conflict_count + ' diff conflict!)' : ''}">Inbox: ${state.unifiedInbox.total_pending}${state.unifiedInbox.conflict_count > 0 ? ' [CONFLICT]' : ''}</span>`
               : ""
           }
         </button>
@@ -1219,8 +1219,8 @@ function renderHeader(): string {
         }
         ${
           state.currentTask
-            ? `<button type="button" id="copy-task-transcript-btn" class="btn btn--sm" title="Copy full task transcript as Markdown">📋 Copy Task</button>
-               <button type="button" id="view-current-run-log-btn" class="btn btn--sm" data-task-id="${escapeHtml(state.currentTask.task_id)}" title="View diagnostic run log">📜 Run Log</button>`
+            ? `<button type="button" id="copy-task-transcript-btn" class="btn btn--sm" title="Copy full task transcript as Markdown"> Copy Task</button>
+               <button type="button" id="view-current-run-log-btn" class="btn btn--sm" data-task-id="${escapeHtml(state.currentTask.task_id)}" title="View diagnostic run log"> Run Log</button>`
             : ""
         }
         ${
@@ -1292,7 +1292,7 @@ function renderHealthStrip(): string {
         }
         ${
           h.active_project && cfg.wiki_enabled !== false
-            ? `<button type="button" class="btn btn--sm quick-wiki-btn" title="View or document active project in Projects Wiki" style="padding:0.15rem 0.5rem; font-size:0.75rem; margin-inline-start:0.35rem;">📖 Wiki</button>`
+            ? `<button type="button" class="btn btn--sm quick-wiki-btn" title="View or document active project in Projects Wiki" style="padding:0.15rem 0.5rem; font-size:0.75rem; margin-inline-start:0.35rem;">Wiki</button>`
             : ""
         }
       </span>
@@ -1358,7 +1358,7 @@ function renderWorkbenchTab(): string {
           }
         </div>
         <div class="row-inline" style="gap:0.4rem; align-items:center;">
-          <span style="font-size:1.15rem;">📁</span>
+          
           <span class="mono" style="font-size:0.95rem; font-weight:600; color:#f8fafc; word-break:break-all;">
             ${escapeHtml(cfg.active_project || "(No project selected — pick one from sidebar or dropdown below)")}
           </span>
@@ -1370,7 +1370,7 @@ function renderWorkbenchTab(): string {
               ? `<span style="font-size:0.88rem; font-weight:600; color:#38bdf8; max-width:620px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
                   "${escapeHtml(truncate(state.promptText.trim() || task?.prompt || "Executing...", 80))}"
                 </span>
-                <span class="badge badge--accent" style="font-size:0.7rem;">⚡ Running</span>`
+                <span class="badge badge--accent" style="font-size:0.7rem;">Running</span>`
               : task
               ? `<span style="font-size:0.88rem; font-weight:500; color:#e2e8f0; max-width:620px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(task.prompt)}">
                   "${escapeHtml(truncate(task.prompt, 80))}"
@@ -1400,14 +1400,14 @@ function renderWorkbenchTab(): string {
         ${
           task && (task.failed_stage || task.deferred)
             ? `<button type="button" id="wb-dismiss-error-btn" class="btn btn--sm" title="Dismiss error card and clear diagnostics from workbench view">
-                ✕ Dismiss Error
+                Dismiss Error
               </button>`
             : ""
         }
         ${
           cfg.active_project && cfg.wiki_enabled !== false
             ? `<button type="button" class="btn btn--sm quick-wiki-btn" title="View or document this project in Projects Wiki">
-                📖 Wiki
+                Wiki
               </button>`
             : ""
         }
@@ -1458,11 +1458,11 @@ function renderWorkbenchTab(): string {
       !cfg.wiki_configured
         ? `<div class="stage-alert" style="background:var(--wiki-surface); border:1px solid var(--wiki-accent); border-radius:var(--wiki-radius-sm); padding:0.75rem 1rem; margin-block-end:1rem; display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
             <div style="display:flex; flex-direction:column; gap:0.25rem;">
-              <strong style="color:var(--wiki-accent); font-size:0.95rem;">📖 Projects Wiki & AI Documentation Hub Available</strong>
+              <strong style="color:var(--wiki-accent); font-size:0.95rem;">Projects Wiki & AI Documentation Hub Available</strong>
               <span class="muted" style="font-size:0.82rem;">Would you like to set up the Projects Wiki for your repositories or skip it? You can always change this in Settings.</span>
             </div>
             <div class="row-inline" style="gap:0.5rem;">
-              <button type="button" id="banner-open-wizard-btn" class="btn btn--sm btn--primary">🛠 Set Up Wiki</button>
+              <button type="button" id="banner-open-wizard-btn" class="btn btn--sm btn--primary">Set Up Wiki</button>
               <button type="button" id="banner-skip-wizard-btn" class="btn btn--sm">Skip for Now</button>
             </div>
           </div>`
@@ -1563,14 +1563,14 @@ function renderWorkbenchTab(): string {
               state.runningPipeline
                 ? "Running Tiered Pipeline..."
                 : cfg.dry_run
-                ? "▶ Run Pipeline (Dry-Run)"
-                : "▶ Run Pipeline"
+                ? "Run Pipeline (Dry-Run)"
+                : "Run Pipeline"
             }
           </button>
           ${
             state.runningPipeline || state.queueItems.some((i) => i.status === "interpreting" || i.status === "local_working" || i.status === "verifying")
               ? `<button type="button" id="stop-active-task-btn" class="btn btn--bad" title="Stop and abort the active task">
-                   ⏹ Stop Task
+                   Stop Task
                  </button>`
               : ""
           }
@@ -1589,7 +1589,7 @@ function renderWorkbenchTab(): string {
               <div class="row-inline">
                 ${
                   state.runningPipeline || state.queueItems.some((i) => i.status === "interpreting" || i.status === "local_working" || i.status === "verifying")
-                    ? `<button type="button" id="ticker-stop-btn" class="btn btn--bad btn--sm" title="Stop the active task">⏹ Stop Task</button>`
+                    ? `<button type="button" id="ticker-stop-btn" class="btn btn--bad btn--sm" title="Stop the active task">Stop Task</button>`
                     : ""
                 }
                 <button type="button" id="ticker-copy-all-btn" class="btn btn--sm" title="Copy all ticker log lines as text">Copy All Lines</button>
@@ -1751,7 +1751,7 @@ function renderMentionPicker(): string {
           (m) => `
         <button type="button" class="mention-item" data-pick-mention="${escapeHtml(m.id)}">
           <span class="mention-item__title">@${escapeHtml(m.id)} (${escapeHtml(m.title)})</span>
-          <span class="mention-item__tags">${m.cloud_share ? "☁ cloud" : "🔒 local"} ${escapeHtml(m.tags.join(","))}</span>
+          <span class="mention-item__tags">${m.cloud_share ? "cloud" : "local"} ${escapeHtml(m.tags.join(","))}</span>
         </button>`
         )
         .join("")}
@@ -1759,8 +1759,8 @@ function renderMentionPicker(): string {
 }
 
 function sideMemoryItem(m: MemoryEntry): string {
-  const cloudIcon = m.cloud_share ? `<span title="cloud_share: yes (available in cloud prompts)">☁</span>` : `<span title="cloud_share: no (local-only knowledge)">🔒</span>`;
-  const warnIcon = m.warning ? `<span title="${escapeHtml(m.warning)}" style="color:var(--status-warn);">⚠️</span>` : "";
+  const cloudIcon = m.cloud_share ? `<span class="badge badge--neutral" style="font-size:0.65rem;">cloud</span>` : `<span class="badge badge--neutral" style="font-size:0.65rem;">local</span>`;
+  const warnIcon = m.warning ? `<span title="${escapeHtml(m.warning)}" class="badge badge--warn" style="font-size:0.65rem;">WARN</span>` : "";
   const tagChips = m.tags.slice(0, 2).map((t) => `<span class="badge badge--neutral" style="font-size:0.65rem; padding:0 0.25rem;">${escapeHtml(t)}</span>`).join("");
   return `
     <div class="side-item" data-view-memory="${escapeHtml(m.id)}" title="${escapeHtml(m.title)} (@${escapeHtml(m.id)})" role="button" tabindex="0">
@@ -1768,8 +1768,8 @@ function sideMemoryItem(m: MemoryEntry): string {
       ${tagChips}
       ${warnIcon}
       ${cloudIcon}
-      <button type="button" class="side-icon-btn" data-edit-memory="${escapeHtml(m.id)}" title="Edit memory">✎</button>
-      <button type="button" class="side-icon-btn" data-delete-memory="${escapeHtml(m.id)}" title="Delete memory">🗑</button>
+      <button type="button" class="side-icon-btn" data-edit-memory="${escapeHtml(m.id)}" title="Edit memory">Edit</button>
+      <button type="button" class="side-icon-btn" data-delete-memory="${escapeHtml(m.id)}" title="Delete memory">Del</button>
     </div>`;
 }
 
@@ -1798,9 +1798,9 @@ function sideTaskItem(rec: TaskRecord): string {
   return `
     <div class="side-item ${active ? "is-active" : ""}" data-open-task="${escapeHtml(rec.task_id)}" title="${escapeHtml(title)}" role="button" tabindex="0">
       <span class="side-item__label">${escapeHtml(truncate(title, 55))}</span>
-      <button type="button" class="side-icon-btn btn-view-run-log" data-task-id="${escapeHtml(rec.task_id)}" title="View diagnostic run log">📜</button>
-      <button type="button" class="side-icon-btn ${rec.starred ? "is-on" : ""}" data-star-task="${escapeHtml(rec.task_id)}" title="${rec.starred ? "Unstar" : "Star"}">${rec.starred ? "★" : "☆"}</button>
-      <button type="button" class="side-icon-btn" data-delete-task="${escapeHtml(rec.task_id)}" title="Delete history record">🗑</button>
+      <button type="button" class="side-icon-btn btn-view-run-log" data-task-id="${escapeHtml(rec.task_id)}" title="View diagnostic run log"></button>
+      <button type="button" class="side-icon-btn ${rec.starred ? "is-on" : ""}" data-star-task="${escapeHtml(rec.task_id)}" title="${rec.starred ? "Unstar" : "Star"}">${rec.starred ? "Starred" : "Star"}</button>
+      <button type="button" class="side-icon-btn" data-delete-task="${escapeHtml(rec.task_id)}" title="Delete history record">Del</button>
     </div>`;
 }
 
@@ -1931,7 +1931,7 @@ function renderSidebar(): string {
               ? collapsedProjectHtml
               : `
                 <div class="sidebar-search-box" style="margin: 0.15rem 0 0.45rem 0;">
-                  <span class="sidebar-search-icon">🔍</span>
+                  <span class="sidebar-search-icon">Search:</span>
                   <input
                     type="text"
                     id="sidebar-project-search"
@@ -1944,7 +1944,7 @@ function renderSidebar(): string {
                   />
                   ${
                     state.projectSearchQuery
-                      ? `<button type="button" class="sidebar-search-clear" id="sidebar-project-search-clear" title="Clear search">✕</button>`
+                      ? `<button type="button" class="sidebar-search-clear" id="sidebar-project-search-clear" title="Clear search">Clear</button>`
                       : ""
                   }
                 </div>
@@ -2028,11 +2028,11 @@ function renderMemoryViewModal(): string {
           <span class="mono muted">@${escapeHtml(m.id)}</span>
         </div>
         <div class="row-inline">
-          <span class="badge ${m.cloud_share ? "badge--ok" : "badge--neutral"}">${m.cloud_share ? "☁ cloud_share: yes" : "🔒 local-only"}</span>
+          <span class="badge ${m.cloud_share ? "badge--ok" : "badge--neutral"}">${m.cloud_share ? "cloud_share: yes" : "local-only"}</span>
           <span class="badge badge--neutral">${escapeHtml(m.scope)}</span>
           <button type="button" class="copy-btn-inline" data-copy-text="${escapeHtml(m.body)}" data-copy-label="Memory body">Copy</button>
-          <button type="button" class="side-icon-btn" id="view-mem-edit-btn" title="Edit">✎</button>
-          <button type="button" class="side-icon-btn" id="view-mem-close-btn" title="Close">✕</button>
+          <button type="button" class="side-icon-btn" id="view-mem-edit-btn" title="Edit">Edit</button>
+          <button type="button" class="side-icon-btn" id="view-mem-close-btn" title="Close">Close</button>
         </div>
       </div>
       ${m.warning ? `<div class="badge badge--warn" style="display:block;">${escapeHtml(m.warning)}</div>` : ""}
@@ -2054,7 +2054,7 @@ function renderMemoryEditModal(): string {
     <div class="modal-backdrop"><div class="modal-box" style="max-inline-size:42rem; inline-size:90%;" role="dialog" aria-modal="true">
       <div class="row-between">
         <strong>${isNew ? "New Memory" : `Edit Memory (@${escapeHtml(m.id)})`}</strong>
-        <button type="button" class="side-icon-btn" id="edit-mem-close-btn" title="Cancel">✕</button>
+        <button type="button" class="side-icon-btn" id="edit-mem-close-btn" title="Cancel">Cancel</button>
       </div>
 
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.6rem;">
@@ -2240,7 +2240,7 @@ function renderTaskResults(task: TaskRecord): string {
         <span class="mono muted" style="font-size:0.8rem;">ID: ${escapeHtml(task.task_id)}</span>
       </div>
       <button type="button" class="btn btn--sm btn-view-run-log" data-task-id="${escapeHtml(task.task_id)}" title="View diagnostic run log">
-        📜 View Run Log
+        View Run Log
       </button>
     </div>
 
@@ -2458,7 +2458,7 @@ function renderTaskResults(task: TaskRecord): string {
                     ${
                       card.inconsistency_note
                         ? `<div class="inconsistency-box">
-                            <strong>⚠️ Safety Warning:</strong> ${escapeHtml(card.inconsistency_note)}
+                            <strong>Safety Warning:</strong> ${escapeHtml(card.inconsistency_note)}
                           </div>`
                         : ""
                     }
@@ -2537,7 +2537,7 @@ function renderTaskResults(task: TaskRecord): string {
                                     data-task-id="${escapeHtml(task.task_id)}"
                                     data-card-id="${escapeHtml(card.card_id)}"
                                   >
-                                    ✓ Provide Information
+                                    Provide Information
                                   </button>
                                   <button
                                     type="button"
@@ -2560,7 +2560,7 @@ function renderTaskResults(task: TaskRecord): string {
                                   data-task-id="${escapeHtml(task.task_id)}"
                                   data-card-id="${escapeHtml(card.card_id)}"
                                 >
-                                  ✓ Grant (Task-Scoped)
+                                  Grant (Task-Scoped)
                                 </button>
                                 <button
                                   type="button"
@@ -2568,7 +2568,7 @@ function renderTaskResults(task: TaskRecord): string {
                                   data-task-id="${escapeHtml(task.task_id)}"
                                   data-card-id="${escapeHtml(card.card_id)}"
                                 >
-                                  ✕ Decline
+                                  Decline
                                 </button>
                               </div>
                             </div>`
@@ -2589,7 +2589,7 @@ function renderTaskResults(task: TaskRecord): string {
                                   data-task-id="${escapeHtml(task.task_id)}"
                                   data-card-id="${escapeHtml(card.card_id)}"
                                 >
-                                  ✓ Approve & Execute
+                                  Approve & Execute
                                 </button>
                                 <button
                                   type="button"
@@ -2597,7 +2597,7 @@ function renderTaskResults(task: TaskRecord): string {
                                   data-task-id="${escapeHtml(task.task_id)}"
                                   data-card-id="${escapeHtml(card.card_id)}"
                                 >
-                                  ✕ Reject
+                                  Reject
                                 </button>
                               </div>
                             </div>`
@@ -2728,7 +2728,7 @@ function renderWikiSetupWizard(): string {
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.85rem; margin-top:0.25rem;">
             <div style="background:var(--wiki-surface); border:2px solid var(--wiki-accent); border-radius:var(--wiki-radius); padding:1rem; display:flex; flex-direction:column; gap:0.5rem;">
               <div class="row-inline" style="gap:0.4rem; align-items:center;">
-                <span style="font-size:1.15rem;">🚀</span>
+                
                 <strong style="color:var(--wiki-accent);">Set Up Projects Wiki</strong>
               </div>
               <p class="muted" style="font-size:0.8rem; margin:0; flex:1;">
@@ -2741,7 +2741,7 @@ function renderWikiSetupWizard(): string {
 
             <div style="background:var(--wiki-surface); border:1px solid var(--wiki-border); border-radius:var(--wiki-radius); padding:1rem; display:flex; flex-direction:column; gap:0.5rem;">
               <div class="row-inline" style="gap:0.4rem; align-items:center;">
-                <span style="font-size:1.15rem;">⏭</span>
+                
                 <strong>Skip for Now</strong>
               </div>
               <p class="muted" style="font-size:0.8rem; margin:0; flex:1;">
@@ -2764,7 +2764,7 @@ function renderWikiSetupWizard(): string {
               .slice(0, 16)
               .map(
                 (p) =>
-                  `<span class="badge badge--neutral" style="font-size:0.75rem;">📁 ${escapeHtml(p)}</span>`
+                  `<span class="badge badge--neutral" style="font-size:0.75rem;">${escapeHtml(p)}</span>`
               )
               .join(" ") +
             (detectedCount > 16
@@ -2798,7 +2798,7 @@ function renderWikiSetupWizard(): string {
                 class="btn btn--accent"
                 ${state.wikiWizardScanning ? "disabled" : ""}
               >
-                ${state.wikiWizardScanning ? "Scanning..." : "🔍 Scan Directory"}
+                ${state.wikiWizardScanning ? "Scanning..." : "Scan Directory"}
               </button>
             </div>
           </div>
@@ -2857,7 +2857,7 @@ function renderWikiSetupWizard(): string {
               <strong style="font-size:0.9rem;">Local Domain Resolution (<code>wiki.local</code>)</strong>
               ${
                 isHostsConfigured
-                  ? `<span class="badge badge--good">✔ Configured</span>`
+                  ? `<span class="badge badge--good">Configured</span>`
                   : `<span class="badge badge--neutral">Fallback: http://127.0.0.1:8000</span>`
               }
             </div>
@@ -2939,7 +2939,7 @@ function renderWikiSetupWizard(): string {
             </div>
             <div class="row-between">
               <span class="muted">Kodiak Whitelist Sync:</span>
-              <span>${state.wikiWizardAddToWhitelist ? "✔ Add all detected projects (READ)" : "✕ Do not modify whitelist"}</span>
+              <span>${state.wikiWizardAddToWhitelist ? "Add all detected projects (READ)" : "Do not modify whitelist"}</span>
             </div>
             <div class="row-between">
               <span class="muted">Access URL:</span>
@@ -2947,11 +2947,11 @@ function renderWikiSetupWizard(): string {
             </div>
             <div class="row-between">
               <span class="muted">systemd Service Autostart:</span>
-              <span>${state.wikiWizardEnableService ? "✔ Enabled" : "✕ Disabled"}</span>
+              <span>${state.wikiWizardEnableService ? "Enabled" : "Disabled"}</span>
             </div>
             <div class="row-between">
               <span class="muted">Start Server Now:</span>
-              <span>${state.wikiWizardStartNow ? "✔ Yes" : "✕ No"}</span>
+              <span>${state.wikiWizardStartNow ? "Yes" : "No"}</span>
             </div>
           </div>
 
@@ -2963,7 +2963,7 @@ function renderWikiSetupWizard(): string {
               class="btn btn--primary"
               ${state.wikiWizardSaving ? "disabled" : ""}
             >
-              ${state.wikiWizardSaving ? "Saving & Cataloging..." : "🚀 Complete Setup & Open Wiki"}
+              ${state.wikiWizardSaving ? "Saving & Cataloging..." : "Complete Setup & Open Wiki"}
             </button>
           </div>
         </div>
@@ -2977,13 +2977,13 @@ function renderWikiSetupWizard(): string {
       <div class="modal-box" role="dialog" aria-modal="true" style="max-inline-size: 640px; width: 100%;">
         <div class="row-between" style="border-block-end: 1px solid var(--wiki-border); padding-block-end: 0.6rem; margin-block-end: 0.75rem;">
           <div style="display:flex; align-items:center; gap:0.5rem;">
-            <span style="font-size:1.3rem;">📖</span>
+            
             <div>
               <strong style="font-size:1.05rem;">Projects Wiki Setup Wizard</strong>
               <div class="muted" style="font-size:0.75rem;">Step ${currentStep} of 4</div>
             </div>
           </div>
-          <button type="button" class="btn btn--sm" id="wizard-close-x-btn" title="Close Wizard">✕</button>
+          <button type="button" class="btn btn--sm" id="wizard-close-x-btn" title="Close Wizard">Close</button>
         </div>
 
         <!-- Step Indicator -->
@@ -3033,8 +3033,8 @@ function renderWikiAiModal(): string {
     <div class="modal-backdrop" id="wiki-ai-modal-backdrop">
       <div class="modal-box" role="dialog" aria-modal="true" style="max-inline-size: 640px; width: 100%;">
         <div class="row-between" style="border-block-end: 1px solid var(--wiki-border); padding-block-end: 0.5rem; margin-block-end: 0.75rem;">
-          <strong style="font-size: 1.05rem;">🤖 Build Project Documentation with Local AI</strong>
-          <button type="button" class="btn btn--sm" id="close-wiki-ai-modal-btn">✕</button>
+          <strong style="font-size: 1.05rem;">Build Project Documentation with Local AI</strong>
+          <button type="button" class="btn btn--sm" id="close-wiki-ai-modal-btn">Close</button>
         </div>
 
         <p class="muted" style="font-size: 0.85rem; margin-block-end: 1rem;">
@@ -3089,7 +3089,7 @@ function renderWikiAiModal(): string {
               id="run-wiki-ai-build-btn"
               ${state.buildingWikiAi ? "disabled" : ""}
             >
-              ${state.buildingWikiAi ? "Generating Documentation with AI..." : "🚀 Run AI Documentation Builder"}
+              ${state.buildingWikiAi ? "Generating Documentation with AI..." : "Run AI Documentation Builder"}
             </button>
           </div>
         </div>
@@ -3111,7 +3111,7 @@ function renderWikiTab(): string {
     return `
       <section class="panel-card" style="margin:1.25rem;">
         <div class="panel-header">
-          <h2 class="panel-title">📖 Projects Wiki & AI Documentation Hub</h2>
+          <h2 class="panel-title">Projects Wiki & AI Documentation Hub</h2>
           <span class="badge badge--bad">MkDocs & Sync API Offline</span>
         </div>
         <p class="muted">
@@ -3125,7 +3125,7 @@ function renderWikiTab(): string {
             class="btn btn--primary"
             ${state.startingWiki ? "disabled" : ""}
           >
-            ${state.startingWiki ? "Starting Projects Wiki..." : "▶ Start Projects Wiki Server"}
+            ${state.startingWiki ? "Starting Projects Wiki..." : "Start Projects Wiki Server"}
           </button>
           <button
             type="button"
@@ -3133,14 +3133,14 @@ function renderWikiTab(): string {
             class="btn"
             ${state.syncingWiki ? "disabled" : ""}
           >
-            ${state.syncingWiki ? "Syncing..." : "🔄 Sync Catalog Now"}
+            ${state.syncingWiki ? "Syncing..." : "Sync Catalog Now"}
           </button>
           <button
             type="button"
             id="open-wiki-ai-modal-btn"
             class="btn btn--accent"
           >
-            🤖 Build Wiki with AI
+            Build Wiki with AI
           </button>
           <button type="button" id="recheck-wiki-btn" class="btn">Re-check Connection</button>
         </div>
@@ -3153,24 +3153,24 @@ function renderWikiTab(): string {
     <div style="display:flex; flex-direction:column; block-size:100%; inline-size:100%;">
       <div class="row-between" style="padding:0.45rem 1.25rem; background:var(--wiki-surface); border-block-end:1px solid var(--wiki-border); font-size:0.82rem; gap:0.5rem; flex-wrap:wrap;">
         <div class="row-inline" style="gap:0.6rem; align-items:center;">
-          <span class="badge badge--good" title="MkDocs HTTP Live">🟢 Wiki Live</span>
+          <span class="badge badge--good" title="MkDocs HTTP Live">Wiki Live</span>
           <code class="mono" style="font-size:0.8rem;">${escapeHtml(h.wiki_url)}</code>
-          ${wd?.api_reachable ? `<span class="badge badge--neutral" title="Sync & Asset API on port 8765">⚡ API :8765</span>` : ""}
+          ${wd?.api_reachable ? `<span class="badge badge--neutral" title="Sync & Asset API on port 8765">API :8765</span>` : ""}
           <span class="badge badge--neutral" title="Cataloged Project Docs">${escapeHtml(docCountStr)} • ${escapeHtml(catalogCountStr)}</span>
         </div>
         <div class="row-inline" style="gap:0.4rem; align-items:center;">
           <button type="button" id="open-wiki-ai-modal-btn" class="btn btn--sm btn--primary" title="Generate or refresh project docs with Ollama">
-            🤖 AI Build Doc
+            AI Build Doc
           </button>
           <button type="button" id="sync-wiki-btn" class="btn btn--sm" ${state.syncingWiki ? "disabled" : ""} title="Refresh catalog and mkdocs navigation">
-            ${state.syncingWiki ? "Syncing..." : "🔄 Sync Catalog"}
+            ${state.syncingWiki ? "Syncing..." : "Sync Catalog"}
           </button>
           <button type="button" id="rebuild-wiki-assets-btn" class="btn btn--sm" ${state.rebuildingWikiAssets ? "disabled" : ""} title="Index PDFs, manuals, schematics">
-            ${state.rebuildingWikiAssets ? "Indexing..." : "📦 Rebuild Assets"}
+            ${state.rebuildingWikiAssets ? "Indexing..." : "Rebuild Assets"}
           </button>
-          <button type="button" id="reload-wiki-iframe-btn" class="btn btn--sm" title="Reload embedded iframe">↻ Reload</button>
-          <button type="button" id="stop-wiki-btn" class="btn btn--sm btn--danger" ${state.stoppingWiki ? "disabled" : ""} title="Stop background server">⏹ Stop</button>
-          <a href="${escapeHtml(h.wiki_url)}" target="_blank" rel="noopener noreferrer" class="btn btn--sm" title="Open in system browser" style="text-decoration:none;">↗ External</a>
+          <button type="button" id="reload-wiki-iframe-btn" class="btn btn--sm" title="Reload embedded iframe">Reload</button>
+          <button type="button" id="stop-wiki-btn" class="btn btn--sm btn--danger" ${state.stoppingWiki ? "disabled" : ""} title="Stop background server">Stop</button>
+          <a href="${escapeHtml(h.wiki_url)}" target="_blank" rel="noopener noreferrer" class="btn btn--sm" title="Open in system browser" style="text-decoration:none;">External</a>
         </div>
       </div>
       <iframe
@@ -3277,7 +3277,7 @@ function renderHardwareCard(hw: HardwareProfile | null): string {
       <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-block-end: 0.6rem;">
         <div>
           <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-            <strong style="font-size: 0.95rem;">🖥️ Host Hardware Profile & Recommendations</strong>
+            <strong style="font-size: 0.95rem;">Host Hardware Profile & Recommendations</strong>
             <span class="badge ${tierBadgeClass}">${escapeHtml(hw.tier_label)}</span>
           </div>
           <p class="muted" style="font-size: 0.82rem; margin: 0.2rem 0 0 0;">
@@ -3285,7 +3285,7 @@ function renderHardwareCard(hw: HardwareProfile | null): string {
           </p>
         </div>
         <button type="button" id="btn-apply-hardware-models" class="btn btn--sm btn--primary" style="display: inline-flex; align-items: center; gap: 0.35rem;">
-          <span>⚡ Adopt Recommended Models</span>
+          <span>Adopt Recommended Models</span>
         </button>
       </div>
 
@@ -3360,11 +3360,11 @@ function renderSettingsTab(): string {
       !cfg.wiki_configured
         ? `<div class="stage-alert" style="background:var(--wiki-surface); border:1px solid var(--wiki-accent); border-radius:var(--wiki-radius-sm); padding:0.75rem 1rem; margin-block-end:1rem; display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
             <div style="display:flex; flex-direction:column; gap:0.25rem;">
-              <strong style="color:var(--wiki-accent); font-size:0.95rem;">📖 Projects Wiki & AI Documentation Hub Available</strong>
+              <strong style="color:var(--wiki-accent); font-size:0.95rem;">Projects Wiki & AI Documentation Hub Available</strong>
               <span class="muted" style="font-size:0.82rem;">Would you like to set up the Projects Wiki for your repositories or skip it? You can always change this in Settings.</span>
             </div>
             <div class="row-inline" style="gap:0.5rem;">
-              <button type="button" id="banner-open-wizard-btn" class="btn btn--sm btn--primary">🛠 Set Up Wiki</button>
+              <button type="button" id="banner-open-wizard-btn" class="btn btn--sm btn--primary">Set Up Wiki</button>
               <button type="button" id="banner-skip-wizard-btn" class="btn btn--sm">Skip for Now</button>
             </div>
           </div>`
@@ -3375,7 +3375,7 @@ function renderSettingsTab(): string {
     <section class="panel-card">
       <div class="panel-header">
         <div class="row-inline">
-          <h2 class="panel-title">📖 Projects Wiki & AI Documentation Hub</h2>
+          <h2 class="panel-title">Projects Wiki & AI Documentation Hub</h2>
           ${
             cfg.wiki_enabled !== false
               ? `<span class="badge badge--good">Enabled</span>`
@@ -3411,7 +3411,7 @@ function renderSettingsTab(): string {
               ${cfg.wiki_enabled !== false ? "Hide Wiki Tab (Disable Feature)" : "Show Wiki Tab (Enable Feature)"}
             </button>
             <button type="button" id="settings-open-wizard-btn" class="btn btn--accent">
-              🛠 Run Setup Wizard
+              Run Setup Wizard
             </button>
           </div>
         </div>
@@ -3431,17 +3431,17 @@ function renderSettingsTab(): string {
           cfg.wiki_enabled !== false
             ? `<div class="row-inline" style="gap:0.5rem; flex-wrap:wrap; align-items:center;">
                 <button type="button" id="settings-sync-wiki-btn" class="btn btn--sm" ${state.syncingWiki ? "disabled" : ""}>
-                  ${state.syncingWiki ? "Syncing Catalog..." : "🔄 Sync Projects Catalog"}
+                  ${state.syncingWiki ? "Syncing Catalog..." : "Sync Projects Catalog"}
                 </button>
                 <button type="button" id="settings-rebuild-assets-btn" class="btn btn--sm" ${state.rebuildingWikiAssets ? "disabled" : ""}>
-                  ${state.rebuildingWikiAssets ? "Rebuilding Assets..." : "📦 Rebuild Assets & PDFs"}
+                  ${state.rebuildingWikiAssets ? "Rebuilding Assets..." : "Rebuild Assets & PDFs"}
                 </button>
                 ${
                   state.health?.wiki_reachable
-                    ? `<button type="button" id="settings-stop-wiki-btn" class="btn btn--sm btn--danger" ${state.stoppingWiki ? "disabled" : ""}>⏹ Stop Server</button>`
-                    : `<button type="button" id="settings-start-wiki-btn" class="btn btn--sm btn--primary" ${state.startingWiki ? "disabled" : ""}>▶ Start Server</button>`
+                    ? `<button type="button" id="settings-stop-wiki-btn" class="btn btn--sm btn--danger" ${state.stoppingWiki ? "disabled" : ""}>Stop Server</button>`
+                    : `<button type="button" id="settings-start-wiki-btn" class="btn btn--sm btn--primary" ${state.startingWiki ? "disabled" : ""}>Start Server</button>`
                 }
-                <button type="button" id="settings-open-ai-modal-btn" class="btn btn--sm btn--accent">🤖 AI Doc Builder</button>
+                <button type="button" id="settings-open-ai-modal-btn" class="btn btn--sm btn--accent">AI Doc Builder</button>
               </div>`
             : ""
         }
@@ -3539,7 +3539,7 @@ function renderSettingsTab(): string {
     <section class="panel-card">
       <div class="panel-header">
         <div class="row-inline">
-          <h2 class="panel-title">🚫 Excluded Projects</h2>
+          <h2 class="panel-title">Excluded Projects</h2>
           <span class="badge badge--neutral">${(cfg.exclusion_list ?? []).length}</span>
         </div>
         <span class="muted">Projects excluded from the sidebar listing. Right-click any project in the sidebar to exclude it, or restore it here.</span>
@@ -3762,7 +3762,7 @@ function renderSettingsTab(): string {
 
       <!-- Setup guides collapsible -->
       <details style="margin-top:1rem; border:1px solid var(--wiki-border); border-radius:var(--wiki-radius-sm); background:var(--wiki-surface); padding:0.5rem 0.75rem;">
-        <summary style="cursor:pointer; font-weight:600; padding:0.25rem 0;">📖 Setup Guides (Lumo, Gemini, Alternate Providers & Privacy)</summary>
+        <summary style="cursor:pointer; font-weight:600; padding:0.25rem 0;">Setup Guides (Lumo, Gemini, Alternate Providers & Privacy)</summary>
         <div style="display:flex; flex-direction:column; gap:0.75rem; margin-top:0.5rem; font-size:0.85rem; line-height:1.45;">
           <div>
             <strong>1. Lumo via lumo-tamer (Primary Cloud)</strong>
@@ -3941,7 +3941,7 @@ function renderSettingsTab(): string {
       <div class="panel-card" style="margin-block-start:1rem; border:1px solid var(--wiki-border); border-radius:var(--wiki-radius-sm); padding:1rem;">
         <div class="panel-header" style="margin-block-end:0.5rem;">
           <div class="row-inline">
-            <h3 class="panel-title" style="font-size:1rem;">🎨 Custom CSS (Main Window)</h3>
+            <h3 class="panel-title" style="font-size:1rem;">Custom CSS (Main Window)</h3>
             <span class="badge badge--neutral">Live Inject</span>
           </div>
           <span class="muted" style="font-size:0.8rem;">Inject custom CSS overrides into the Kodiak desktop interface at runtime. Persists across restarts in config.toml.</span>
@@ -4020,7 +4020,7 @@ function renderDashboardTab(): string {
   // Projects Grid
   const projectCardsHtml = projects.length === 0
     ? `<div style="text-align:center; padding:3rem; background:var(--wiki-surface); border:1px solid var(--wiki-border); border-radius:var(--wiki-radius);">
-         <span style="font-size:2.5rem; display:block; margin-bottom:0.75rem;">📁</span>
+         
          <strong>No Whitelisted Projects Configured</strong>
          <p style="font-size:0.85rem; color:var(--md-default-fg-color--light); margin-top:0.35rem;">Add your project folders in Settings to start delegating tasks and reviewing diffs.</p>
          <button type="button" class="btn btn--primary" id="dash-go-settings-btn" style="margin-top:0.75rem;">Configure Projects in Settings →</button>
@@ -4038,7 +4038,7 @@ function renderDashboardTab(): string {
               <div class="row-between" style="align-items:flex-start;">
                 <div>
                   <div class="row-inline" style="gap:0.4rem; align-items:center;">
-                    <h3 style="margin:0; font-size:1.15rem; font-weight:600;">📁 ${escapeHtml(p.name)}</h3>
+                    <h3 style="margin:0; font-size:1.15rem; font-weight:600;">${escapeHtml(p.name)}</h3>
                     ${p.is_active ? `<span class="badge badge--ok" style="font-size:0.68rem;">Active</span>` : ""}
                   </div>
                   <div class="mono" style="font-size:0.72rem; color:var(--md-default-fg-color--light); margin-top:0.2rem; word-break:break-all;">${escapeHtml(p.path)}</div>
@@ -4049,13 +4049,13 @@ function renderDashboardTab(): string {
               <div class="dashboard-project-card__status-row">
                 <div class="row-inline" style="gap:0.4rem; align-items:center;">
                   ${p.is_git_repo ? `
-                    <span class="badge badge--neutral">🌿 ${escapeHtml(p.git_branch || "main")}</span>
-                    ${p.git_dirty_count === 0 ? `<span class="badge badge--ok">✓ Git Clean</span>` : `<span class="badge badge--warn">⚠️ ${p.git_dirty_count} uncommitted</span>`}
+                    <span class="badge badge--neutral">branch: ${escapeHtml(p.git_branch || "main")}</span>
+                    ${p.git_dirty_count === 0 ? `<span class="badge badge--ok">Git Clean</span>` : `<span class="badge badge--warn">${p.git_dirty_count} uncommitted</span>`}
                   ` : `<span class="badge badge--neutral">Non-Git</span>`}
                 </div>
                 <div class="row-inline" style="gap:0.4rem; align-items:center;">
-                  <span class="badge badge--neutral">📋 ${p.total_tasks_count} tasks</span>
-                  ${p.pending_approval_count > 0 ? `<span class="badge badge--warn">✋ ${p.pending_approval_count} pending</span>` : `<span class="badge badge--ok">0 pending</span>`}
+                  <span class="badge badge--neutral">${p.total_tasks_count} tasks</span>
+                  ${p.pending_approval_count > 0 ? `<span class="badge badge--warn">${p.pending_approval_count} pending</span>` : `<span class="badge badge--ok">0 pending</span>`}
                 </div>
               </div>
 
@@ -4075,11 +4075,11 @@ function renderDashboardTab(): string {
 
               <div class="dashboard-project-card__actions">
                 ${!p.is_active ? `
-                  <button type="button" class="btn btn--sm set-active-project-btn" data-project-path="${escapeHtml(p.path)}" title="Make this the active project for workbench prompts">⚡ Set Active</button>
+                  <button type="button" class="btn btn--sm set-active-project-btn" data-project-path="${escapeHtml(p.path)}" title="Make this the active project for workbench prompts">Set Active</button>
                 ` : ""}
                 <button type="button" class="btn btn--sm open-workbench-project-btn" data-project-path="${escapeHtml(p.path)}" title="Open this project in the Workbench">Open Workbench →</button>
                 ${p.wiki_doc_exists ? `
-                  <button type="button" class="btn btn--sm open-wiki-project-btn" data-project-name="${escapeHtml(p.name)}" title="View this project in ProjectsWiki">📖 Wiki</button>
+                  <button type="button" class="btn btn--sm open-wiki-project-btn" data-project-name="${escapeHtml(p.name)}" title="View this project in ProjectsWiki">Wiki</button>
                 ` : ""}
                 ${p.pending_approval_count > 0 ? `
                   <button type="button" class="btn btn--sm btn--primary open-inbox-project-btn" title="Review pending cards in the Unified Inbox">Review (${p.pending_approval_count})</button>
@@ -4096,7 +4096,7 @@ function renderDashboardTab(): string {
       <div class="row-between" style="align-items:flex-end;">
         <div>
           <h2 style="font-size:1.45rem; font-weight:700; margin:0; display:flex; align-items:center; gap:0.5rem;">
-            <span>📊 Multi-Project Aggregation & Health Dashboard</span>
+            <span>Multi-Project Aggregation & Health Dashboard</span>
           </h2>
           <p style="margin:0.25rem 0 0; font-size:0.85rem; color:var(--md-default-fg-color--light);">
             Unified repository health, dirty Git changes, approval loads, and local-first telemetry.
@@ -4250,10 +4250,10 @@ function renderRunLogModal(): string {
           <div class="row-inline">
             ${
               log.content
-                ? `<button type="button" class="btn btn--sm" id="copy-run-log-btn" title="Copy full log to clipboard">📋 Copy All</button>`
+                ? `<button type="button" class="btn btn--sm" id="copy-run-log-btn" title="Copy full log to clipboard"> Copy All</button>`
                 : ""
             }
-            <button type="button" class="side-icon-btn" id="close-run-log-modal-btn" title="Close run log">✕</button>
+            <button type="button" class="side-icon-btn" id="close-run-log-modal-btn" title="Close run log">Close</button>
           </div>
         </div>
         <div class="run-log-modal__body">
@@ -4302,12 +4302,12 @@ function renderQueueDrawer(): string {
   const tabNavHtml = `
     <div class="queue-drawer__tabs">
       <button type="button" class="queue-tab-btn ${state.queueDrawerTab === "queue" ? "is-active" : ""}" id="queue-tab-btn-tasks">
-        <span>📋 Tasks (${items.length})</span>
+        <span>Tasks (${items.length})</span>
         ${runningItem ? `<span class="badge badge--ok pulse" style="font-size:0.65rem; padding:0.1rem 0.35rem;">Active</span>` : ""}
       </button>
       <button type="button" class="queue-tab-btn ${state.queueDrawerTab === "inbox" ? "is-active" : ""}" id="queue-tab-btn-inbox">
-        <span>📥 Approval Inbox (${inboxTotal})</span>
-        ${inboxConflicts > 0 ? `<span class="badge badge--bad" style="font-size:0.65rem; padding:0.1rem 0.35rem;">⚠️ ${inboxConflicts} conflict${inboxConflicts > 1 ? "s" : ""}</span>` : ""}
+        <span>Approval Inbox (${inboxTotal})</span>
+        ${inboxConflicts > 0 ? `<span class="badge badge--bad" style="font-size:0.65rem; padding:0.1rem 0.35rem;">${inboxConflicts} conflict${inboxConflicts > 1 ? "s" : ""}</span>` : ""}
       </button>
     </div>
   `;
@@ -4317,7 +4317,7 @@ function renderQueueDrawer(): string {
   if (state.queueDrawerTab === "queue") {
     const itemsHtml = items.length === 0
       ? `<div style="text-align:center; padding:3rem 1rem; color:var(--md-default-fg-color--light);">
-           <span style="font-size:2rem; display:block; margin-bottom:0.75rem;">📋</span>
+           
            <strong>No tasks currently queued</strong>
            <p style="font-size:0.85rem; margin-top:0.35rem;">Enter a prompt in the workbench bar and hit Enter to queue tasks asynchronously without blocking!</p>
          </div>`
@@ -4333,10 +4333,10 @@ function renderQueueDrawer(): string {
               pulseClass = "is-active";
               break;
             case "waiting_for_dependency":
-              badgeHtml = `<span class="badge badge--warn" title="Paused until earlier tasks in this repository are reviewed">⏳ Waiting for Dependency</span>`;
+              badgeHtml = `<span class="badge badge--warn" title="Paused until earlier tasks in this repository are reviewed">Waiting for Dependency</span>`;
               break;
             case "local_working":
-              badgeHtml = `<span class="badge badge--ok" style="background:#16a34a; color:#fff;" title="Active local model inference under VRAM lock">⚡ Local Working (VRAM)</span>`;
+              badgeHtml = `<span class="badge badge--ok" style="background:#16a34a; color:#fff;" title="Active local model inference under VRAM lock">Local Working (VRAM)</span>`;
               pulseClass = "is-active";
               break;
             case "verifying":
@@ -4344,13 +4344,13 @@ function renderQueueDrawer(): string {
               pulseClass = "is-active";
               break;
             case "waiting_approval":
-              badgeHtml = `<span class="badge" style="background:#a855f7; color:#fff;">✋ Waiting Approval (${item.pending_cards_count})</span>`;
+              badgeHtml = `<span class="badge" style="background:#a855f7; color:#fff;">Waiting Approval (${item.pending_cards_count})</span>`;
               break;
             case "completed":
-              badgeHtml = `<span class="badge badge--ok">✓ Completed</span>`;
+              badgeHtml = `<span class="badge badge--ok">Completed</span>`;
               break;
             case "failed":
-              badgeHtml = `<span class="badge badge--bad">✕ Failed</span>`;
+              badgeHtml = `<span class="badge badge--bad">Failed</span>`;
               break;
             case "cancelled":
               badgeHtml = `<span class="badge badge--neutral">Cancelled</span>`;
@@ -4370,12 +4370,12 @@ function renderQueueDrawer(): string {
                   ${canReorder && idx > 0 ? `<button type="button" class="btn btn--sm queue-move-up-btn" data-queue-id="${escapeHtml(item.queue_id)}" data-new-idx="${idx - 1}" title="Move up">▲</button>` : ""}
                   ${canReorder && idx < items.length - 1 ? `<button type="button" class="btn btn--sm queue-move-down-btn" data-queue-id="${escapeHtml(item.queue_id)}" data-new-idx="${idx + 1}" title="Move down">▼</button>` : ""}
                   ${canCancel ? `<button type="button" class="btn btn--sm queue-cancel-btn" data-queue-id="${escapeHtml(item.queue_id)}" title="Cancel this queued task">Cancel</button>` : ""}
-                  ${canRemove ? `<button type="button" class="btn btn--sm queue-remove-btn" data-queue-id="${escapeHtml(item.queue_id)}" title="Remove from queue list">✕</button>` : ""}
+                  ${canRemove ? `<button type="button" class="btn btn--sm queue-remove-btn" data-queue-id="${escapeHtml(item.queue_id)}" title="Remove from queue list">Remove</button>` : ""}
                 </div>
               </div>
               <div class="queue-item-card__prompt">${escapeHtml(item.prompt)}</div>
               <div class="queue-item-card__meta">
-                <span>📁 <strong>${escapeHtml(projName)}</strong></span>
+                <span><strong>${escapeHtml(projName)}</strong></span>
                 ${item.task_id ? `<span class="mono" style="font-size:0.72rem;">${escapeHtml(item.task_id)}</span>` : ""}
               </div>
               ${item.error ? `<div class="banner banner--error" style="padding:0.4rem 0.6rem; font-size:0.75rem; margin-top:0.25rem;">${escapeHtml(item.error)}</div>` : ""}
@@ -4435,14 +4435,14 @@ function renderQueueDrawer(): string {
         <div class="inbox-test-hook-panel">
           <div class="row-between" style="align-items:center;">
             <div class="row-inline" style="gap:0.4rem; align-items:center;">
-              <span class="badge ${hook.success ? 'badge--ok' : 'badge--bad'}">${hook.success ? '✓ Tests Passed' : '✕ Tests Failed'}</span>
+              <span class="badge ${hook.success ? 'badge--ok' : 'badge--bad'}">${hook.success ? 'Tests Passed' : 'Tests Failed'}</span>
               <strong style="font-size:0.8rem;">${escapeHtml(hook.command)}</strong>
             </div>
             <span class="mono" style="font-size:0.72rem; color:var(--md-default-fg-color--light);">${escapeHtml(hook.project_dir.split('/').pop() || hook.project_dir)}</span>
           </div>
           ${hook.digested_summary ? `
             <div class="inbox-digest-box">
-              <div style="font-weight:600; font-size:0.72rem; margin-bottom:0.25rem; text-transform:uppercase; letter-spacing:0.04em;">⚡ Local llama3.2:3b Compiler Digest:</div>
+              <div style="font-weight:600; font-size:0.72rem; margin-bottom:0.25rem; text-transform:uppercase; letter-spacing:0.04em;">Local llama3.2:3b Compiler Digest:</div>
               <div style="white-space:pre-wrap; font-size:0.75rem; line-height:1.4;">${escapeHtml(hook.digested_summary)}</div>
             </div>
           ` : ""}
@@ -4475,9 +4475,9 @@ function renderQueueDrawer(): string {
             <span>Run local test hook (e.g. <code>cargo check</code>) after apply</span>
           </label>
           <div class="inbox-batch-actions">
-            <button type="button" id="inbox-batch-reject-btn" class="btn btn--sm" ${selectedCount === 0 || state.batchApproving ? 'disabled' : ''} title="Reject selected cards with a reason">✕ Reject (${selectedCount})</button>
+            <button type="button" id="inbox-batch-reject-btn" class="btn btn--sm" ${selectedCount === 0 || state.batchApproving ? 'disabled' : ''} title="Reject selected cards with a reason">Reject (${selectedCount})</button>
             <button type="button" id="inbox-batch-approve-btn" class="btn btn--sm btn--primary" ${selectedCount === 0 || state.batchApproving ? 'disabled' : ''} title="Approve and execute selected cards sequentially">
-              ${state.batchApproving ? "Applying..." : `✓ Approve (${selectedCount})`}
+              ${state.batchApproving ? "Applying..." : `Approve (${selectedCount})`}
             </button>
           </div>
         </div>
@@ -4495,7 +4495,7 @@ function renderQueueDrawer(): string {
 
     const itemsHtml = filteredItems.length === 0
       ? `<div style="text-align:center; padding:3rem 1rem; color:var(--md-default-fg-color--light);">
-           <span style="font-size:2rem; display:block; margin-bottom:0.75rem;">🎉</span>
+           
            <strong>No cards match this filter</strong>
            <p style="font-size:0.85rem; margin-top:0.35rem;">All tasks are clear or pending cards are filtered out.</p>
          </div>`
@@ -4533,7 +4533,7 @@ function renderQueueDrawer(): string {
                 ${item.has_conflict ? `
                   <div class="inbox-conflict-banner">
                     <div style="font-weight:600; display:flex; align-items:center; gap:0.3rem;">
-                      <span>⚠️ Diff Conflict Collision Detected</span>
+                      <span>Diff Conflict Collision Detected</span>
                     </div>
                     <div style="font-size:0.75rem;">${escapeHtml(item.conflict_description || "Overlaps with another queued task")}</div>
                     <div style="font-size:0.72rem; opacity:0.85;">Conflicting task: ${escapeHtml(item.conflicting_tasks.join(", "))}</div>
@@ -4555,7 +4555,7 @@ function renderQueueDrawer(): string {
           return `
             <div class="inbox-group">
               <div class="inbox-group__title">
-                <span>📁 ${escapeHtml(projName)}</span>
+                <span>${escapeHtml(projName)}</span>
                 <span class="mono" style="font-size:0.68rem; font-weight:normal; text-transform:none;">${escapeHtml(projDir)}</span>
               </div>
               ${cardsHtml}
@@ -4577,13 +4577,13 @@ function renderQueueDrawer(): string {
       <div class="queue-drawer" onclick="event.stopPropagation();">
         <div class="queue-drawer__header">
           <div class="row-inline" style="gap:0.5rem; align-items:center;">
-            <h2 class="panel-title" style="margin:0;">📋 Task Queue & Inbox</h2>
+            <h2 class="panel-title" style="margin:0;">Task Queue & Inbox</h2>
           </div>
           <div class="row-inline" style="gap:0.5rem; align-items:center;">
             ${state.queueDrawerTab === "queue"
               ? `<button type="button" id="clear-completed-queue-btn" class="btn btn--sm" title="Clear completed, failed, and cancelled tasks">Clear Finished</button>`
-              : `<button type="button" id="refresh-inbox-btn" class="btn btn--sm" title="Refresh Unified Inbox and scan diffs">↻ Refresh</button>`}
-            <button type="button" id="close-queue-drawer-btn" class="btn btn--sm" title="Close drawer">✕</button>
+              : `<button type="button" id="refresh-inbox-btn" class="btn btn--sm" title="Refresh Unified Inbox and scan diffs">Refresh</button>`}
+            <button type="button" id="close-queue-drawer-btn" class="btn btn--sm" title="Close drawer">Close</button>
           </div>
         </div>
         ${tabNavHtml}
@@ -6235,7 +6235,7 @@ function bindEvents(): void {
 
       const cacheKey = presetEl?.value || baseUrl;
       state.fetchedModelsForPreset[cacheKey] = models;
-      const okMsg = `<span class="badge badge--ok">✓ Fetched ${models.length} live models from provider</span>`;
+      const okMsg = `<span class="badge badge--ok">Fetched ${models.length} live models from provider</span>`;
       state.fetchModelsStatus = okMsg;
       if (statusEl) statusEl.innerHTML = okMsg;
 

@@ -26,6 +26,18 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg"}
 VIDEO_EXTS = {".mp4", ".mov", ".webm"}
 CODE_EXTS = {".py", ".c", ".cpp", ".h", ".hpp", ".ino", ".rs", ".js", ".jsx", ".ts", ".sh", ".kt"}
 
+EMOJI_PATTERN = re.compile(
+    r'[\U0001F000-\U0001FAFF'
+    r'\U00002700-\U000027BF'
+    r'\U00002600-\U000026FF'
+    r'\U00002B50-\U00002B55'
+    r'\U0000231A-\U000023FA]'
+)
+
+
+def strip_emojis(text: str) -> str:
+    return EMOJI_PATTERN.sub('', text)
+
 
 def fmt_size(num_bytes: int) -> str:
     if num_bytes <= 0:
@@ -52,11 +64,11 @@ def build_assets_markdown(proj_name: str, inv_entry: dict, projects_dir: str, si
     project_full_path = os.path.join(projects_dir, proj_name)
 
     if total_files == 0:
-        return f"\n## 📁 Directory Status\n\n*This project folder (`{project_full_path}`) is currently empty (0 files).*\n"
+        return f"\n## Directory Status\n\n*This project folder (`{project_full_path}`) is currently empty (0 files).*\n"
 
     md = []
     ext_summary = ", ".join(f"`{ext}` ({cnt})" for ext, cnt in sorted(ext_counts.items(), key=lambda x: -x[1])[:10])
-    md.append(f"\n## 📁 Directory Summary\n")
+    md.append(f"\n## Directory Summary\n")
     md.append(f"- **Location:** `{project_full_path}`")
     md.append(f"- **Total Files:** {total_files} ({fmt_size(total_size)})")
     if ext_summary:
@@ -65,7 +77,7 @@ def build_assets_markdown(proj_name: str, inv_entry: dict, projects_dir: str, si
     # 1. Manuals, PDFs, CAD & Documents
     docs = [f for f in files if f["ext"] in DOC_EXTS]
     if docs:
-        md.append("\n## 📄 Manuals, Documents & CAD Files\n")
+        md.append("\n## Manuals, Documents & CAD Files\n")
         md.append("| File | Type | Size | Action |")
         md.append("| :--- | :--- | :--- | :--- |")
         for d in docs[:40]:
@@ -79,15 +91,15 @@ def build_assets_markdown(proj_name: str, inv_entry: dict, projects_dir: str, si
 
     # 2. Text / Note Snippets
     if snippets:
-        md.append("\n## 📝 Notes & File Excerpts\n")
+        md.append("\n## Notes & File Excerpts\n")
         for s in snippets[:5]:
             md.append(f"### `{s['file']}`\n")
-            md.append("```text\n" + s["excerpt"].strip() + "\n```\n")
+            md.append("```text\n" + strip_emojis(s["excerpt"].strip()) + "\n```\n")
 
     # 3. Videos
     videos = [f for f in files if f["ext"] in VIDEO_EXTS and f["size"] > 0]
     if videos:
-        md.append("\n## 🎬 Video Clips\n")
+        md.append("\n## Video Clips\n")
         for v in videos[:6]:
             url = file_url(proj_name, v["path"], site_domain, port_api)
             md.append(f"- **[{v['path']}]({url})** ({fmt_size(v['size'])})")
@@ -97,7 +109,7 @@ def build_assets_markdown(proj_name: str, inv_entry: dict, projects_dir: str, si
     images = [f for f in files if f["ext"] in IMAGE_EXTS]
     if images:
         non_empty_images = [img for img in images if img["size"] > 0]
-        md.append(f"\n## 🖼️ Photo & Media Gallery ({len(images)} images)\n")
+        md.append(f"\n## Photo & Media Gallery ({len(images)} images)\n")
         if non_empty_images:
             md.append('<div class="project-media-grid">')
             for img in non_empty_images[:24]:
@@ -122,7 +134,7 @@ def build_assets_markdown(proj_name: str, inv_entry: dict, projects_dir: str, si
         and f["ext"] not in CODE_EXTS
     ]
     if other_files:
-        md.append(f"\n## 📦 Additional Assets ({len(other_files)} files)\n")
+        md.append(f"\n## Additional Assets ({len(other_files)} files)\n")
         md.append("| File | Size |")
         md.append("| :--- | :--- |")
         for o in other_files[:35]:
@@ -171,6 +183,7 @@ def main():
             overview = f"Reference files, media, and documentation stored in `{os.path.join(projects_dir, proj_name)}`."
             content = f"# {title}\n\n## Overview\n\n{overview}\n"
             content += build_assets_markdown(proj_name, inv_entry, projects_dir, site_domain, port_api)
+            content = strip_emojis(content)
             with open(doc_path, "w", encoding="utf-8") as out:
                 out.write(content)
             rebuilt_count += 1
@@ -178,11 +191,23 @@ def main():
             if os.path.exists(doc_path):
                 with open(doc_path, "r", encoding="utf-8", errors="ignore") as f:
                     existing = f.read()
-                if "## 📁 Directory Summary" in existing:
-                    existing = existing.split("## 📁 Directory Summary")[0].rstrip()
+                for marker in (
+                    "\n## Directory Summary",
+                    "\n## \U0001f4c1 Directory Summary",
+                    "\n## Directory Status",
+                    "\n---\n\n## Directory Summary",
+                    "\n---\n\n## \U0001f4c1 Directory Summary",
+                    "## Directory Summary",
+                    "## \U0001f4c1 Directory Summary",
+                ):
+                    if marker in existing:
+                        existing = existing.split(marker)[0].rstrip()
+                        break
                 # Strip broken relative links to LICENSE or CONTRIBUTING.md
                 existing = re.sub(r"\[([^\]]+)\]\((?:LICENSE|CONTRIBUTING\.md)\)", r"`\1`", existing)
+                existing = strip_emojis(existing)
                 content = existing.rstrip() + "\n\n---\n" + build_assets_markdown(proj_name, inv_entry, projects_dir, site_domain, port_api)
+                content = strip_emojis(content)
                 with open(doc_path, "w", encoding="utf-8") as out:
                     out.write(content)
                 enriched_count += 1

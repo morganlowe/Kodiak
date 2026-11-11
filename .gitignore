@@ -40,6 +40,15 @@ ProjectsWiki/docs/*.md
 !ProjectsWiki/docs/index.md
 !ProjectsWiki/docs/demo-project.md
 
+# Staged Windows resource bundles
+src-tauri/resources/ProjectsWiki/*.py
+src-tauri/resources/ProjectsWiki/*.sh
+src-tauri/resources/ProjectsWiki/*.json
+src-tauri/resources/ProjectsWiki/*.exe
+src-tauri/resources/ProjectsWiki/docs/*.md
+!src-tauri/resources/ProjectsWiki/docs/index.md
+!src-tauri/resources/ProjectsWiki/docs/demo-project.md
+
 # Internal development docs & proposals (local only)
 docs/internal/
 docs/proposals/

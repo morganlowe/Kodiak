@@ -158,7 +158,7 @@ def build_doc_for_project(
     with open(doc_path, "w", encoding="utf-8") as f:
         f.write(doc_content + "\n")
 
-    print(f"[✓] Successfully wrote documentation to {doc_path}")
+    print(f"[OK] Successfully wrote documentation to {doc_path}")
     return True
 
 
@@ -168,7 +168,7 @@ def sync_catalog():
     if os.path.exists(make_wiki_py):
         try:
             subprocess.run([sys.executable, make_wiki_py], cwd=WIKI_DIR, check=True)
-            print("[✓] Projects Wiki catalog and mkdocs.yml updated.")
+            print("[OK] Projects Wiki catalog and mkdocs.yml updated.")
         except Exception as e:
             print(f"[!] Warning: failed to refresh catalog via make_wiki.py: {e}")
 

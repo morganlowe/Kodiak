@@ -39,7 +39,7 @@ hide:
           ⊞ Grid
         </button>
         <button type="button" id="view-list-btn" class="view-toggle-btn" aria-pressed="false" title="Compact List View">
-          ☰ List
+          List
         </button>
       </div>
 
@@ -60,7 +60,7 @@ hide:
       </button>
 
       <button type="button" id="random-peek-btn" class="explorer-btn explorer-btn--accent" title="Preview a random project via AJAX">
-        🎲 Surprise Me
+        Surprise Me
       </button>
     </div>
   </div>
@@ -85,10 +85,10 @@ hide:
     </div>
     <div class="wiki-modal__actions">
       <button type="button" id="modal-tune-btn" class="explorer-btn explorer-btn--ghost" aria-expanded="false" title="Fix or tune this project's description, title, or category">
-        ✏️ Tune / Edit
+        Tune / Edit
       </button>
       <button type="button" id="modal-random-btn" class="explorer-btn explorer-btn--ghost" title="Load another random project">
-        🎲 Next Random
+        Next Random
       </button>
       <a id="modal-fullpage-link" href="#" class="explorer-btn explorer-btn--primary">
         Open Full Page →
@@ -102,7 +102,7 @@ hide:
         aria-label="Close preview"
         title="Close (Esc)"
       >
-        ✕
+        &times;
       </button>
     </div>
   </div>
@@ -110,7 +110,7 @@ hide:
   <div id="modal-tune-drawer" class="tune-drawer" hidden>
     <div class="tune-drawer__section tune-drawer__ai">
       <label for="tune-prompt-input" class="tune-label">
-        ✨ <strong>Quick Correction / AI Tune</strong> — Tell the wiki what this project actually is:
+        <strong>Quick Correction / AI Tune</strong> — Tell the wiki what this project actually is:
       </label>
       <div class="tune-ai-row">
         <input
@@ -120,7 +120,7 @@ hide:
           placeholder="e.g., It's not a camshaft, it's a custom Raspberry Pi Wi-Fi security camera I made ages ago..."
         />
         <button type="button" id="tune-ai-btn" class="explorer-btn explorer-btn--accent">
-          ✨ Smart Tune
+          Smart Tune
         </button>
       </div>
     </div>
@@ -155,7 +155,7 @@ hide:
         Cancel
       </button>
       <button type="button" id="tune-save-btn" class="explorer-btn explorer-btn--primary">
-        💾 Save Changes
+        Save Changes
       </button>
     </div>
   </div>
