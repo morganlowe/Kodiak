@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.8] — 2026-11-11
+
+### Fixed
+
+- **Windows Release Staging Directory (`.github/workflows/release.yml`)**: Moved staged Windows NSIS installers out of `dist/windows-releases/` into `$env:RUNNER_TEMP\windows-releases` so Vite's `dist/` cleanup during the second Tauri build does not erase `Kodiak_<ver>_x64-without-wiki-setup.exe` before upload.
+
+### Changed
+
+- Updated documentation and package versions to `v1.1.8` (`Kodiak_1.1.8_x64-with-wiki-setup.exe` and `Kodiak_1.1.8_x64-without-wiki-setup.exe`).
+
 ## [1.1.7] — 2026-11-11
 
 ### Added
@@ -237,7 +247,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Split Arch `PKGBUILD` producing `kodiak` and `kodiak-projectswiki` packages with dependency hooks (`python-mkdocs-material`, `python-requests`, `python-toml`).
 - Debian/Ubuntu `.deb` binary packages with `apt` dependency resolution.
 
-[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.7...HEAD
+[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.8...HEAD
+[1.1.8]: https://github.com/morganlowe/Kodiak/compare/v1.1.7...v1.1.8
 [1.1.7]: https://github.com/morganlowe/Kodiak/compare/v1.1.6...v1.1.7
 [1.1.6]: https://github.com/morganlowe/Kodiak/compare/v1.1.5...v1.1.6
 [1.1.5]: https://github.com/morganlowe/Kodiak/compare/v1.1.4...v1.1.5

@@ -94,13 +94,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Without-wiki tauri build failed with exit code $LASTEXITCODE"
           }
-          New-Item -ItemType Directory -Force -Path dist/windows-releases | Out-Null
+          $stageDir = Join-Path $env:RUNNER_TEMP "windows-releases"
+          New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
           $nsis = @(Get-ChildItem -Path src-tauri/target/release/bundle/nsis -Filter "*-setup.exe")
           if ($nsis.Count -ne 1) {
             throw "Expected 1 without-wiki NSIS installer, found $($nsis.Count)"
           }
           $ver = "${{ needs.prepare-release.outputs.version }}"
-          Move-Item -Path $nsis[0].FullName -Destination "dist/windows-releases/Kodiak_${ver}_x64-without-wiki-setup.exe" -Force
+          Move-Item -Path $nsis[0].FullName -Destination (Join-Path $stageDir "Kodiak_${ver}_x64-without-wiki-setup.exe") -Force
 
       - name: Build ProjectsWiki Windows Executable (Windows only)
         if: matrix.platform == 'windows-latest'
@@ -122,13 +123,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "With-wiki tauri build failed with exit code $LASTEXITCODE"
           }
-          New-Item -ItemType Directory -Force -Path dist/windows-releases | Out-Null
+          $stageDir = Join-Path $env:RUNNER_TEMP "windows-releases"
+          New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
           $nsis = @(Get-ChildItem -Path src-tauri/target/release/bundle/nsis -Filter "*-setup.exe")
           if ($nsis.Count -ne 1) {
             throw "Expected 1 with-wiki NSIS installer, found $($nsis.Count)"
           }
           $ver = "${{ needs.prepare-release.outputs.version }}"
-          Move-Item -Path $nsis[0].FullName -Destination "dist/windows-releases/Kodiak_${ver}_x64-with-wiki-setup.exe" -Force
+          Move-Item -Path $nsis[0].FullName -Destination (Join-Path $stageDir "Kodiak_${ver}_x64-with-wiki-setup.exe") -Force
 
       - name: Upload Windows release assets
         if: matrix.platform == 'windows-latest'
@@ -138,8 +140,9 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           $ver = "${{ needs.prepare-release.outputs.version }}"
-          $withWiki = "dist/windows-releases/Kodiak_${ver}_x64-with-wiki-setup.exe"
-          $withoutWiki = "dist/windows-releases/Kodiak_${ver}_x64-without-wiki-setup.exe"
+          $stageDir = Join-Path $env:RUNNER_TEMP "windows-releases"
+          $withWiki = Join-Path $stageDir "Kodiak_${ver}_x64-with-wiki-setup.exe"
+          $withoutWiki = Join-Path $stageDir "Kodiak_${ver}_x64-without-wiki-setup.exe"
           if (-not (Test-Path $withWiki) -or -not (Test-Path $withoutWiki)) {
             throw "Missing expected Windows installer(s): $withWiki / $withoutWiki"
           }
