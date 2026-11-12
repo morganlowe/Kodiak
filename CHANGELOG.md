@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.7] — 2026-11-11
+
+### Added
+
+- **Dual Windows Release Installers (With & Without ProjectsWiki)**:
+  - Added `src-tauri/tauri.nowiki.conf.json` (`bundle.resources: []`) to produce a standalone core Kodiak bundle without bundled `ProjectsWiki` resources.
+  - Updated `.github/workflows/release.yml` to build and attach both `Kodiak_1.1.7_x64-with-wiki-setup.exe` (including `kodiak-projectswiki.exe`, templates, and docs) and `Kodiak_1.1.7_x64-without-wiki-setup.exe` (core orchestrator only) on Windows tags alongside Linux `.deb` and `.AppImage` bundles.
+
+### Changed
+
+- **Documentation & Version Bump**:
+  - Updated `README.md` Windows installation instructions to document both `Kodiak_1.1.7_x64-with-wiki-setup.exe` and `Kodiak_1.1.7_x64-without-wiki-setup.exe` and bumped package versions to `v1.1.7`.
+
 ## [1.1.6] — 2026-11-11
 
 ### Added
@@ -224,7 +237,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Split Arch `PKGBUILD` producing `kodiak` and `kodiak-projectswiki` packages with dependency hooks (`python-mkdocs-material`, `python-requests`, `python-toml`).
 - Debian/Ubuntu `.deb` binary packages with `apt` dependency resolution.
 
-[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.6...HEAD
+[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.7...HEAD
+[1.1.7]: https://github.com/morganlowe/Kodiak/compare/v1.1.6...v1.1.7
 [1.1.6]: https://github.com/morganlowe/Kodiak/compare/v1.1.5...v1.1.6
 [1.1.5]: https://github.com/morganlowe/Kodiak/compare/v1.1.4...v1.1.5
 [1.1.4]: https://github.com/morganlowe/Kodiak/compare/v1.1.3...v1.1.4

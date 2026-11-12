@@ -5,8 +5,29 @@ on:
     tags:
       - 'v*.*.*'
 
+permissions:
+  contents: write
+
 jobs:
+  prepare-release:
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Ensure GitHub Release exists
+        id: meta
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "${{ github.repository }}" --title "Kodiak $TAG" --notes "See CHANGELOG.md for release details."
+          fi
+
   release:
+    needs: prepare-release
     permissions:
       contents: write
     strategy:
@@ -14,9 +35,7 @@ jobs:
       matrix:
         include:
           - platform: 'ubuntu-22.04'
-            args: '--bundles deb,appimage'
           - platform: 'windows-latest'
-            args: '--bundles nsis'
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -44,24 +63,87 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Build ProjectsWiki Windows Executable (Windows only)
-        if: matrix.platform == 'windows-latest'
-        run: |
-          python -m pip install --upgrade pip
-          pip install pyinstaller mkdocs mkdocs-material pyyaml
-          python scripts/build_windows_wiki.py
-
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build Tauri app & create GitHub release
-        uses: tauri-apps/tauri-action@v0
+      - name: Build Tauri bundles (Linux only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: npx --no-install tauri build --ci --bundles deb,appimage
+
+      - name: Upload Linux release assets
+        if: matrix.platform == 'ubuntu-22.04'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Kodiak ${{ github.ref_name }}'
-          releaseBody: 'See CHANGELOG.md for release details.'
-          releaseDraft: false
-          prerelease: false
-          args: ${{ matrix.args }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          shopt -s nullglob
+          debs=(src-tauri/target/release/bundle/deb/*.deb)
+          appimages=(src-tauri/target/release/bundle/appimage/*.AppImage)
+          if [ ${#debs[@]} -eq 0 ] || [ ${#appimages[@]} -eq 0 ]; then
+            echo "Missing expected Linux artifacts (deb=${#debs[@]}, appimage=${#appimages[@]})" >&2
+            exit 1
+          fi
+          gh release upload "$TAG" "${debs[@]}" "${appimages[@]}" --repo "${{ github.repository }}" --clobber
+
+      - name: Build Windows installer without ProjectsWiki (Windows only)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path src-tauri/target/release/bundle/nsis -Filter "*.exe" -ErrorAction SilentlyContinue | Remove-Item -Force
+          npx --no-install tauri build --ci --bundles nsis --config src-tauri/tauri.nowiki.conf.json
+          if ($LASTEXITCODE -ne 0) {
+            throw "Without-wiki tauri build failed with exit code $LASTEXITCODE"
+          }
+          New-Item -ItemType Directory -Force -Path dist/windows-releases | Out-Null
+          $nsis = @(Get-ChildItem -Path src-tauri/target/release/bundle/nsis -Filter "*-setup.exe")
+          if ($nsis.Count -ne 1) {
+            throw "Expected 1 without-wiki NSIS installer, found $($nsis.Count)"
+          }
+          $ver = "${{ needs.prepare-release.outputs.version }}"
+          Move-Item -Path $nsis[0].FullName -Destination "dist/windows-releases/Kodiak_${ver}_x64-without-wiki-setup.exe" -Force
+
+      - name: Build ProjectsWiki Windows Executable (Windows only)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed" }
+          pip install pyinstaller mkdocs mkdocs-material pyyaml
+          if ($LASTEXITCODE -ne 0) { throw "pip install failed" }
+          python scripts/build_windows_wiki.py
+          if ($LASTEXITCODE -ne 0) { throw "build_windows_wiki.py failed" }
+
+      - name: Build Windows installer with ProjectsWiki (Windows only)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path src-tauri/target/release/bundle/nsis -Filter "*.exe" -ErrorAction SilentlyContinue | Remove-Item -Force
+          npx --no-install tauri build --ci --bundles nsis
+          if ($LASTEXITCODE -ne 0) {
+            throw "With-wiki tauri build failed with exit code $LASTEXITCODE"
+          }
+          New-Item -ItemType Directory -Force -Path dist/windows-releases | Out-Null
+          $nsis = @(Get-ChildItem -Path src-tauri/target/release/bundle/nsis -Filter "*-setup.exe")
+          if ($nsis.Count -ne 1) {
+            throw "Expected 1 with-wiki NSIS installer, found $($nsis.Count)"
+          }
+          $ver = "${{ needs.prepare-release.outputs.version }}"
+          Move-Item -Path $nsis[0].FullName -Destination "dist/windows-releases/Kodiak_${ver}_x64-with-wiki-setup.exe" -Force
+
+      - name: Upload Windows release assets
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $ver = "${{ needs.prepare-release.outputs.version }}"
+          $withWiki = "dist/windows-releases/Kodiak_${ver}_x64-with-wiki-setup.exe"
+          $withoutWiki = "dist/windows-releases/Kodiak_${ver}_x64-without-wiki-setup.exe"
+          if (-not (Test-Path $withWiki) -or -not (Test-Path $withoutWiki)) {
+            throw "Missing expected Windows installer(s): $withWiki / $withoutWiki"
+          }
+          gh release upload "$env:TAG" $withWiki $withoutWiki --repo "${{ github.repository }}" --clobber
+          if ($LASTEXITCODE -ne 0) {
+            throw "gh release upload failed with exit code $LASTEXITCODE"
+          }
