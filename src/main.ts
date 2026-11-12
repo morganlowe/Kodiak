@@ -167,6 +167,37 @@ interface RescanResult {
   added_projects: string[];
 }
 
+type CreateTargetKind = "project" | "folder";
+
+interface ProjectCreationContext {
+  projects_dir: string;
+  active_project: string | null;
+  existing_folders: string[];
+}
+
+interface CreateProjectOrFolderRequest {
+  kind: CreateTargetKind;
+  parent_dir: string;
+  name: string;
+  grant_level: GrantLevel;
+  set_active: boolean;
+  init_git: boolean;
+  create_readme: boolean;
+  description: string | null;
+}
+
+interface CreateProjectOrFolderResult {
+  created_path: string;
+  folder_name: string;
+  kind: CreateTargetKind;
+  added_to_whitelist: boolean;
+  set_as_active: boolean;
+  git_initialized: boolean;
+  readme_created: boolean;
+  warnings: string[];
+  config: AppConfig;
+}
+
 interface TaskRunLogResponse {
   task_id: string;
   content: string;
@@ -981,6 +1012,9 @@ function showProjectContextMenu(x: number, y: number, projPath: string) {
   menu.style.minWidth = "170px";
 
   menu.innerHTML = `
+    <button type="button" id="ctx-new-subfolder-btn" style="width:100%; text-align:left; background:transparent; border:none; color:var(--md-default-fg-color); padding:7px 10px; border-radius:4px; font-size:0.8rem; cursor:pointer; display:flex; align-items:center; gap:8px; font-weight:500;">
+      New Subfolder Here...
+    </button>
     <button type="button" id="ctx-exclude-btn" style="width:100%; text-align:left; background:transparent; border:none; color:#f3f4f6; padding:7px 10px; border-radius:4px; font-size:0.8rem; cursor:pointer; display:flex; align-items:center; gap:8px; font-weight:500;">
       Exclude from Listing
     </button>
@@ -994,6 +1028,22 @@ function showProjectContextMenu(x: number, y: number, projPath: string) {
   }
   if (rect.bottom > window.innerHeight) {
     menu.style.top = `${window.innerHeight - rect.height - 8}px`;
+  }
+
+  const newSubBtn = menu.querySelector("#ctx-new-subfolder-btn") as HTMLElement | null;
+  if (newSubBtn) {
+    newSubBtn.addEventListener("mouseenter", () => {
+      newSubBtn.style.background = "var(--wiki-accent-soft)";
+      newSubBtn.style.color = "var(--wiki-accent)";
+    });
+    newSubBtn.addEventListener("mouseleave", () => {
+      newSubBtn.style.background = "transparent";
+      newSubBtn.style.color = "var(--md-default-fg-color)";
+    });
+    newSubBtn.addEventListener("click", () => {
+      menu.remove();
+      openCreateProjectModal("folder", projPath);
+    });
   }
 
   const btn = menu.querySelector("#ctx-exclude-btn") as HTMLElement;
@@ -1051,6 +1101,654 @@ async function handleRescanProjects(isManual = false): Promise<void> {
     state.rescanningProjects = false;
     renderApp();
   }
+}
+
+const formAriaFlagged = new WeakSet<HTMLElement>();
+const formAriaAnnounced = new WeakSet<HTMLElement>();
+let formAnnounceTimer: number | undefined;
+let formAnnouncedField: HTMLElement | null = null;
+
+function ensureFormAnnouncer(): HTMLElement {
+  let announcer = document.getElementById("kodiak-form-announcer");
+  if (!announcer) {
+    announcer = document.createElement("div");
+    announcer.id = "kodiak-form-announcer";
+    announcer.setAttribute("aria-live", "polite");
+    announcer.classList.add("visually-hidden");
+    document.body.append(announcer);
+  }
+  return announcer;
+}
+
+function linkFieldError(el: HTMLElement, shown: boolean): void {
+  const errorId = el.dataset.error;
+  if (!errorId) return;
+  const ids = (el.getAttribute("aria-describedby") || "")
+    .split(/\s+/)
+    .filter((id) => id && id !== errorId);
+  if (shown) ids.push(errorId);
+  if (ids.length > 0) el.setAttribute("aria-describedby", ids.join(" "));
+  else el.removeAttribute("aria-describedby");
+}
+
+function syncFieldAria(el: Element | null, announce = false): void {
+  if (!el || !el.matches?.("input, select, textarea")) return;
+  const field = el as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+  const supportsUserInvalid = typeof CSS !== "undefined" && CSS.supports("selector(:user-invalid)");
+  const invalid =
+    field.classList.contains("user-invalid-fallback") ||
+    (supportsUserInvalid && field.matches(":user-invalid"));
+
+  const announcer = ensureFormAnnouncer();
+  if (invalid) {
+    if (announce && !formAriaAnnounced.has(field)) {
+      const errorId = field.dataset.error;
+      const errorEl = errorId ? document.getElementById(errorId) : null;
+      if (errorEl) {
+        const labelText = field.labels?.[0]?.textContent?.replace(/\*/g, "").trim() || "";
+        const prefix = labelText ? `${labelText}: ` : "";
+        window.clearTimeout(formAnnounceTimer);
+        announcer.textContent = "";
+        formAnnouncedField = field;
+        formAnnounceTimer = window.setTimeout(() => {
+          announcer.textContent = `${prefix}${errorEl.textContent?.trim() || ""}`;
+        }, 500);
+      }
+      formAriaAnnounced.add(field);
+    }
+    field.setAttribute("aria-invalid", "true");
+    linkFieldError(field, true);
+    formAriaFlagged.add(field);
+  } else if (formAriaFlagged.has(field) || field.getAttribute("aria-invalid") !== "true") {
+    field.setAttribute("aria-invalid", "false");
+    linkFieldError(field, false);
+    formAriaFlagged.delete(field);
+    formAriaAnnounced.delete(field);
+    if (formAnnouncedField === field) {
+      window.clearTimeout(formAnnounceTimer);
+      announcer.textContent = "";
+    }
+  }
+}
+
+function validateFolderNameInput(input: HTMLInputElement, errorEl: HTMLElement | null): void {
+  const raw = input.value;
+  const trimmed = raw.trim().replace(/\/+$/, "");
+  let customMsg = "";
+  let displayMsg = "Error: Enter a folder or project name.";
+
+  if (raw.length > 0 && raw.trim().length === 0) {
+    customMsg = "Error: Folder or project name cannot be whitespace only.";
+    displayMsg = customMsg;
+  } else if (trimmed.length > 0) {
+    if (trimmed.startsWith("/")) {
+      customMsg = "Error: Enter a folder name or relative subpath without a leading '/'.";
+    } else if (trimmed.includes("\\")) {
+      customMsg = "Error: Use '/' instead of '\\' for nested folder paths.";
+    } else {
+      const segs = trimmed.split("/");
+      for (const seg of segs) {
+        if (!seg) {
+          customMsg = "Error: Remove empty '//' segments from the folder path.";
+          break;
+        }
+        if (seg === "." || seg === "..") {
+          customMsg = "Error: '.' and '..' path segments are not allowed.";
+          break;
+        }
+        if (seg.startsWith(".")) {
+          customMsg = "Error: Folder names starting with '.' are blocked by security policy.";
+          break;
+        }
+        if (/[<>:"|?*\x00-\x1f]/.test(seg)) {
+          customMsg = "Error: Remove invalid filename characters (< > : \" | ? *).";
+          break;
+        }
+      }
+    }
+    if (customMsg) displayMsg = customMsg;
+  }
+
+  input.setCustomValidity(customMsg);
+  if (errorEl) {
+    errorEl.textContent = displayMsg;
+  }
+}
+
+function validateCustomParentInput(
+  input: HTMLInputElement,
+  isCustomSelected: boolean,
+  errorEl: HTMLElement | null
+): void {
+  if (!isCustomSelected) {
+    input.required = false;
+    input.setCustomValidity("");
+    return;
+  }
+  input.required = true;
+  const val = input.value.trim();
+  let customMsg = "";
+  let displayMsg = "Error: Enter an absolute parent directory path or ~/....";
+
+  if (val.length > 0) {
+    const isAbs = val.startsWith("/") || val === "~" || val.startsWith("~/") || /^[A-Za-z]:[/\\]/.test(val);
+    if (!isAbs) {
+      customMsg = "Error: Parent directory must be an absolute path or start with '~/'.";
+    } else if (val.split(/[/\\]+/).includes("..")) {
+      customMsg = "Error: Parent directory cannot contain '..' traversal segments.";
+    }
+    if (customMsg) displayMsg = customMsg;
+  }
+
+  input.setCustomValidity(customMsg);
+  if (errorEl) {
+    errorEl.textContent = displayMsg;
+  }
+}
+
+function joinPreviewPath(parentDir: string, childSubpath: string): string {
+  const cleanParent = parentDir.trim().replace(/\/+$/, "") || "/";
+  const cleanChild = childSubpath.trim().replace(/^\/+|\/+$/g, "");
+  if (!cleanChild) return cleanParent === "/" ? "/..." : `${cleanParent}/...`;
+  return cleanParent === "/" ? `/${cleanChild}` : `${cleanParent}/${cleanChild}`;
+}
+
+function ensureCreateProjectDialog(): HTMLDialogElement {
+  const existing = document.getElementById("create-project-dialog") as HTMLDialogElement | null;
+  if (existing) return existing;
+
+  ensureFormAnnouncer();
+
+  const dialog = document.createElement("dialog");
+  dialog.id = "create-project-dialog";
+  dialog.className = "kodiak-dialog";
+  dialog.setAttribute("closedby", "any");
+  dialog.setAttribute("aria-labelledby", "create-project-dialog-title");
+  dialog.innerHTML = `
+    <form id="create-project-form" class="kodiak-dialog__form" aria-labelledby="create-project-dialog-title" novalidate>
+      <div class="kodiak-dialog__header">
+        <div>
+          <h2 id="create-project-dialog-title" class="kodiak-dialog__title">New Folder / Project</h2>
+          <p class="kodiak-dialog__subtitle">Create a directory on disk and optionally register it as a whitelisted Kodiak project.</p>
+        </div>
+        <button type="button" id="create-proj-close-btn" class="btn btn--sm" aria-label="Close dialog">Close</button>
+      </div>
+
+      <fieldset class="create-type-fieldset">
+        <legend class="form-label">What to Create</legend>
+        <div class="create-type-options">
+          <div class="create-type-option">
+            <input type="radio" id="create-kind-project" name="create_kind" value="project" checked />
+            <label for="create-kind-project">New Project (create folder and add to whitelist)</label>
+          </div>
+          <div class="create-type-option">
+            <input type="radio" id="create-kind-folder" name="create_kind" value="folder" />
+            <label for="create-kind-folder">Folder Only (create directory on disk)</label>
+          </div>
+        </div>
+      </fieldset>
+
+      <div class="form-field">
+        <label class="form-label" for="create-proj-parent-select">Parent Directory <span aria-hidden="true">*</span></label>
+        <span id="create-proj-parent-hint" class="form-hint">Choose where the new folder or project will be created.</span>
+        <select id="create-proj-parent-select" name="parent_preset" class="form-select" aria-describedby="create-proj-parent-hint" aria-invalid="false"></select>
+      </div>
+
+      <div id="create-proj-custom-parent-wrap" class="form-field" hidden>
+        <label class="form-label" for="create-proj-custom-parent">Custom Parent Directory Path <span aria-hidden="true">*</span></label>
+        <span id="create-proj-custom-parent-hint" class="form-hint">Enter an absolute path or ~/... without '..' segments.</span>
+        <input
+          type="text"
+          id="create-proj-custom-parent"
+          name="custom_parent_dir"
+          class="form-input mono"
+          placeholder="e.g., ~/Projects or /home/user/Workspace"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="none"
+          spellcheck="false"
+          enterkeyhint="next"
+          aria-describedby="create-proj-custom-parent-hint"
+          aria-invalid="false"
+          data-error="create-proj-custom-parent-error"
+        />
+        <div id="create-proj-custom-parent-error" class="form-error-msg">Error: Enter an absolute parent directory path or ~/....</div>
+      </div>
+
+      <div class="form-field">
+        <label class="form-label" for="create-proj-name">Folder / Project Name <span aria-hidden="true">*</span></label>
+        <span id="create-proj-name-hint" class="form-hint">Enter a folder name or relative subpath (e.g., my-app or hardware/esp32-node). Intermediate folders are created automatically.</span>
+        <input
+          type="text"
+          id="create-proj-name"
+          name="folder_name"
+          class="form-input mono"
+          required
+          autofocus
+          placeholder="e.g., my-new-project"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="none"
+          spellcheck="false"
+          enterkeyhint="done"
+          aria-describedby="create-proj-name-hint"
+          aria-invalid="false"
+          data-error="create-proj-name-error"
+        />
+        <div id="create-proj-name-error" class="form-error-msg">Error: Enter a folder or project name.</div>
+      </div>
+
+      <div class="create-path-preview">
+        <span class="form-label">Target Directory Preview</span>
+        <code id="create-proj-path-preview" class="mono create-path-preview__value"></code>
+      </div>
+
+      <div id="create-proj-options-section" class="create-proj-options">
+        <div class="form-field">
+          <label class="form-label" for="create-proj-grant">Initial Grant Level</label>
+          <select id="create-proj-grant" name="grant_level" class="form-select">
+            <option value="READ" selected>READ — Read & propose only; all writes queue</option>
+            <option value="CREATE">CREATE — READ + create new files named in plan</option>
+            <option value="BUILD">BUILD — CREATE + mkdir + build/test commands</option>
+            <option value="AUTONOMOUS">AUTONOMOUS — Full R/W/X inside tree (bounded by deny list)</option>
+          </select>
+        </div>
+
+        <div class="form-field">
+          <label class="form-label" for="create-proj-description">Project Description (optional, written to README.md)</label>
+          <input
+            type="text"
+            id="create-proj-description"
+            name="description"
+            class="form-input"
+            placeholder="Short summary of what this project does"
+            enterkeyhint="done"
+          />
+        </div>
+
+        <div class="create-checkbox-list">
+          <div class="create-checkbox-row">
+            <input type="checkbox" id="create-proj-set-active" name="set_active" checked />
+            <label for="create-proj-set-active">Set as active project in Workbench</label>
+          </div>
+          <div class="create-checkbox-row">
+            <input type="checkbox" id="create-proj-init-git" name="init_git" checked />
+            <label for="create-proj-init-git">Initialize Git repository (<code>git init</code>)</label>
+          </div>
+          <div class="create-checkbox-row">
+            <input type="checkbox" id="create-proj-readme" name="create_readme" checked />
+            <label for="create-proj-readme">Create starter <code>README.md</code></label>
+          </div>
+        </div>
+      </div>
+
+      <div id="create-proj-server-error" class="create-dialog__error" role="alert" hidden></div>
+
+      <div class="kodiak-dialog__footer">
+        <button type="button" id="create-proj-cancel-btn" class="btn">Cancel</button>
+        <button type="submit" id="create-proj-submit-btn" class="btn btn--primary">Create Project</button>
+      </div>
+    </form>
+  `;
+
+  document.body.appendChild(dialog);
+
+  const form = dialog.querySelector("#create-project-form") as HTMLFormElement;
+  const closeBtn = dialog.querySelector("#create-proj-close-btn") as HTMLButtonElement;
+  const cancelBtn = dialog.querySelector("#create-proj-cancel-btn") as HTMLButtonElement;
+  const submitBtn = dialog.querySelector("#create-proj-submit-btn") as HTMLButtonElement;
+  const parentSelect = dialog.querySelector("#create-proj-parent-select") as HTMLSelectElement;
+  const customParentWrap = dialog.querySelector("#create-proj-custom-parent-wrap") as HTMLElement;
+  const customParentInput = dialog.querySelector("#create-proj-custom-parent") as HTMLInputElement;
+  const customParentError = dialog.querySelector("#create-proj-custom-parent-error") as HTMLElement;
+  const nameInput = dialog.querySelector("#create-proj-name") as HTMLInputElement;
+  const nameError = dialog.querySelector("#create-proj-name-error") as HTMLElement;
+  const previewEl = dialog.querySelector("#create-proj-path-preview") as HTMLElement;
+  const optionsSection = dialog.querySelector("#create-proj-options-section") as HTMLElement;
+  const serverErrorEl = dialog.querySelector("#create-proj-server-error") as HTMLElement;
+  const kindRadios = Array.from(dialog.querySelectorAll<HTMLInputElement>('input[name="create_kind"]'));
+
+  const getSelectedKind = (): CreateTargetKind =>
+    (dialog.querySelector('input[name="create_kind"]:checked') as HTMLInputElement | null)?.value === "folder"
+      ? "folder"
+      : "project";
+
+  const resolveParentInputVal = (): string =>
+    parentSelect.value === "__custom__" ? customParentInput.value.trim() : parentSelect.value;
+
+  const updatePreviewAndMode = () => {
+    const kind = getSelectedKind();
+    optionsSection.hidden = kind === "folder";
+    submitBtn.textContent = kind === "folder" ? "Create Folder" : "Create Project";
+    const isCustom = parentSelect.value === "__custom__";
+    customParentWrap.hidden = !isCustom;
+    validateCustomParentInput(customParentInput, isCustom, customParentError);
+    previewEl.textContent = joinPreviewPath(resolveParentInputVal(), nameInput.value);
+  };
+
+  if (!("closedBy" in HTMLDialogElement.prototype)) {
+    const isOutside = (e: PointerEvent) => {
+      const r = dialog.getBoundingClientRect();
+      return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+    };
+    let pressedOutside = false;
+    dialog.addEventListener("pointerdown", (e) => {
+      pressedOutside = e.target === dialog && isOutside(e);
+    });
+    dialog.addEventListener("pointerup", (e) => {
+      if (pressedOutside && e.target === dialog && isOutside(e)) {
+        dialog.close("backdrop");
+      }
+      pressedOutside = false;
+    });
+  }
+
+  dialog.addEventListener("close", () => {
+    dialog.returnValue = "";
+    submitBtn.disabled = false;
+    updatePreviewAndMode();
+  });
+
+  closeBtn.addEventListener("click", () => dialog.close("cancel"));
+  cancelBtn.addEventListener("click", () => dialog.close("cancel"));
+
+  for (const radio of kindRadios) {
+    radio.addEventListener("change", () => {
+      serverErrorEl.hidden = true;
+      updatePreviewAndMode();
+    });
+  }
+
+  parentSelect.addEventListener("change", () => {
+    serverErrorEl.hidden = true;
+    updatePreviewAndMode();
+    if (parentSelect.value === "__custom__") {
+      customParentInput.focus();
+    }
+  });
+
+  const fallbackDirty = new WeakMap<HTMLElement, { hasInteracted: boolean; hasBlurred: boolean }>();
+  const supportsUserInvalid = typeof CSS !== "undefined" && CSS.supports("selector(:user-invalid)");
+
+  form.addEventListener("reset", () => {
+    for (const control of Array.from(form.elements)) {
+      if (control instanceof HTMLElement) {
+        fallbackDirty.delete(control);
+        control.classList.remove("user-invalid-fallback", "user-valid-fallback");
+      }
+    }
+  });
+
+  const handleFieldInput = (input: HTMLInputElement, revalidate: () => void) => {
+    serverErrorEl.hidden = true;
+    revalidate();
+    previewEl.textContent = joinPreviewPath(resolveParentInputVal(), nameInput.value);
+    const ok = input.validity.valid;
+    if (!supportsUserInvalid) {
+      const st = fallbackDirty.get(input) || { hasInteracted: false, hasBlurred: false };
+      st.hasInteracted = true;
+      fallbackDirty.set(input, st);
+      if (st.hasBlurred) {
+        input.classList.toggle("user-invalid-fallback", !ok);
+        input.classList.toggle("user-valid-fallback", ok);
+      }
+    } else if (ok) {
+      input.classList.remove("user-invalid-fallback");
+    }
+    syncFieldAria(input, false);
+  };
+
+  const handleFieldBlur = (input: HTMLInputElement, revalidate: () => void) => {
+    revalidate();
+    if (!supportsUserInvalid) {
+      const st = fallbackDirty.get(input) || { hasInteracted: false, hasBlurred: false };
+      st.hasBlurred = true;
+      fallbackDirty.set(input, st);
+      if (st.hasInteracted) {
+        const ok = input.validity.valid;
+        input.classList.toggle("user-invalid-fallback", !ok);
+        input.classList.toggle("user-valid-fallback", ok);
+      }
+    }
+    syncFieldAria(input, true);
+  };
+
+  nameInput.addEventListener("input", () =>
+    handleFieldInput(nameInput, () => validateFolderNameInput(nameInput, nameError))
+  );
+  nameInput.addEventListener("blur", () =>
+    handleFieldBlur(nameInput, () => validateFolderNameInput(nameInput, nameError))
+  );
+
+  customParentInput.addEventListener("input", () =>
+    handleFieldInput(customParentInput, () =>
+      validateCustomParentInput(customParentInput, parentSelect.value === "__custom__", customParentError)
+    )
+  );
+  customParentInput.addEventListener("blur", () =>
+    handleFieldBlur(customParentInput, () =>
+      validateCustomParentInput(customParentInput, parentSelect.value === "__custom__", customParentError)
+    )
+  );
+
+  form.addEventListener(
+    "invalid",
+    (e) => {
+      const target = e.target as HTMLInputElement | null;
+      if (!target) return;
+      if (!supportsUserInvalid) {
+        fallbackDirty.set(target, { hasInteracted: true, hasBlurred: true });
+        target.classList.remove("user-valid-fallback");
+      }
+      target.classList.add("user-invalid-fallback");
+      formAriaAnnounced.add(target);
+      syncFieldAria(target, false);
+    },
+    true
+  );
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    serverErrorEl.hidden = true;
+
+    const isCustom = parentSelect.value === "__custom__";
+    validateCustomParentInput(customParentInput, isCustom, customParentError);
+    validateFolderNameInput(nameInput, nameError);
+
+    if (!form.checkValidity()) {
+      const firstInvalid = form.querySelector<HTMLElement>('[aria-invalid="true"], :invalid');
+      firstInvalid?.focus();
+      return;
+    }
+
+    const kind = getSelectedKind();
+    const grantLevel = ((dialog.querySelector("#create-proj-grant") as HTMLSelectElement).value as GrantLevel) || "READ";
+    const setActive = (dialog.querySelector("#create-proj-set-active") as HTMLInputElement).checked;
+    const initGit = (dialog.querySelector("#create-proj-init-git") as HTMLInputElement).checked;
+    const createReadme = (dialog.querySelector("#create-proj-readme") as HTMLInputElement).checked;
+    const descVal = (dialog.querySelector("#create-proj-description") as HTMLInputElement).value.trim();
+
+    const request: CreateProjectOrFolderRequest = {
+      kind,
+      parent_dir: resolveParentInputVal(),
+      name: nameInput.value.trim(),
+      grant_level: grantLevel,
+      set_active: setActive,
+      init_git: initGit,
+      create_readme: createReadme,
+      description: descVal || null,
+    };
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Creating...";
+
+    try {
+      const res = await invoke<CreateProjectOrFolderResult>("create_project_or_folder", { request });
+      state.config = res.config;
+
+      if (res.kind === "project" && res.set_as_active) {
+        state.currentTask = null;
+        state.liveDraft = null;
+        state.readOnlyHistorical = false;
+        state.stages = { interpret: "idle", execute: "idle", verify: "idle", done: "idle" };
+      }
+
+      const extras: string[] = [];
+      if (res.readme_created) extras.push("README.md");
+      if (res.git_initialized) extras.push("git init");
+      const extrasSuffix = extras.length > 0 ? ` (${extras.join(", ")})` : "";
+      const warnSuffix = res.warnings.length > 0 ? ` — Warnings: ${res.warnings.join("; ")}` : "";
+
+      state.uiBannerError = null;
+      if (res.kind === "project") {
+        state.uiBannerInfo = `Created project '${res.folder_name}' at ${res.created_path} [${grantLevel}]${extrasSuffix}${warnSuffix}`;
+      } else {
+        state.uiBannerInfo = `Created folder '${res.folder_name}' at ${res.created_path}${warnSuffix}`;
+      }
+
+      dialog.close("created");
+      await refreshAllState();
+    } catch (err) {
+      serverErrorEl.textContent = `Error: ${String(err)}`;
+      serverErrorEl.hidden = false;
+      submitBtn.disabled = false;
+      submitBtn.textContent = kind === "folder" ? "Create Folder" : "Create Project";
+    }
+  });
+
+  return dialog;
+}
+
+async function openCreateProjectModal(
+  defaultKind: CreateTargetKind = "project",
+  defaultParentDir?: string
+): Promise<void> {
+  const dialog = ensureCreateProjectDialog();
+  const form = dialog.querySelector("#create-project-form") as HTMLFormElement;
+  const parentSelect = dialog.querySelector("#create-proj-parent-select") as HTMLSelectElement;
+  const customParentWrap = dialog.querySelector("#create-proj-custom-parent-wrap") as HTMLElement;
+  const customParentInput = dialog.querySelector("#create-proj-custom-parent") as HTMLInputElement;
+  const customParentError = dialog.querySelector("#create-proj-custom-parent-error") as HTMLElement;
+  const nameInput = dialog.querySelector("#create-proj-name") as HTMLInputElement;
+  const nameError = dialog.querySelector("#create-proj-name-error") as HTMLElement;
+  const descInput = dialog.querySelector("#create-proj-description") as HTMLInputElement;
+  const grantSelect = dialog.querySelector("#create-proj-grant") as HTMLSelectElement;
+  const setActiveCb = dialog.querySelector("#create-proj-set-active") as HTMLInputElement;
+  const initGitCb = dialog.querySelector("#create-proj-init-git") as HTMLInputElement;
+  const readmeCb = dialog.querySelector("#create-proj-readme") as HTMLInputElement;
+  const optionsSection = dialog.querySelector("#create-proj-options-section") as HTMLElement;
+  const submitBtn = dialog.querySelector("#create-proj-submit-btn") as HTMLButtonElement;
+  const previewEl = dialog.querySelector("#create-proj-path-preview") as HTMLElement;
+  const serverErrorEl = dialog.querySelector("#create-proj-server-error") as HTMLElement;
+
+  let ctx: ProjectCreationContext = {
+    projects_dir: state.wikiDetails?.projects_dir || state.config?.projects_dir || "~/Projects",
+    active_project: state.config?.active_project ?? null,
+    existing_folders: [],
+  };
+  try {
+    ctx = await invoke<ProjectCreationContext>("get_project_creation_context");
+  } catch (err) {
+    console.debug("Failed to load project creation context:", err);
+  }
+
+  parentSelect.innerHTML = "";
+  const rootOpt = new Option(`Projects Root (${ctx.projects_dir})`, ctx.projects_dir);
+  parentSelect.appendChild(rootOpt);
+
+  if (ctx.active_project && ctx.active_project !== ctx.projects_dir) {
+    const activeName = ctx.active_project.split("/").filter(Boolean).pop() || ctx.active_project;
+    parentSelect.appendChild(new Option(`Active Project (${activeName})`, ctx.active_project));
+  }
+
+  if (ctx.existing_folders.length > 0) {
+    const group = document.createElement("optgroup");
+    group.label = "Subfolders in Projects Root";
+    const baseRoot = ctx.projects_dir.replace(/\/+$/, "");
+    for (const folder of ctx.existing_folders) {
+      const fullPath = `${baseRoot}/${folder}`;
+      if (fullPath !== ctx.active_project) {
+        group.appendChild(new Option(`${folder}/`, fullPath));
+      }
+    }
+    if (group.children.length > 0) {
+      parentSelect.appendChild(group);
+    }
+  }
+
+  parentSelect.appendChild(new Option("Custom parent directory...", "__custom__"));
+
+  if (defaultParentDir) {
+    const matching = Array.from(parentSelect.options).find((o) => o.value === defaultParentDir);
+    if (matching) {
+      parentSelect.value = defaultParentDir;
+      customParentWrap.hidden = true;
+      customParentInput.value = ctx.projects_dir;
+    } else {
+      parentSelect.value = "__custom__";
+      customParentWrap.hidden = false;
+      customParentInput.value = defaultParentDir;
+    }
+  } else {
+    parentSelect.value = ctx.projects_dir;
+    customParentWrap.hidden = true;
+    customParentInput.value = ctx.projects_dir;
+  }
+
+  const radioProj = dialog.querySelector("#create-kind-project") as HTMLInputElement;
+  const radioFolder = dialog.querySelector("#create-kind-folder") as HTMLInputElement;
+  radioProj.checked = defaultKind === "project";
+  radioFolder.checked = defaultKind === "folder";
+
+  nameInput.value = "";
+  descInput.value = "";
+  grantSelect.value = "READ";
+  setActiveCb.checked = true;
+  initGitCb.checked = true;
+  readmeCb.checked = true;
+
+  // Reset form validation and ARIA states
+  form.reset();
+  // Re-apply explicit selections after form.reset()
+  radioProj.checked = defaultKind === "project";
+  radioFolder.checked = defaultKind === "folder";
+  if (defaultParentDir) {
+    const matching = Array.from(parentSelect.options).find((o) => o.value === defaultParentDir);
+    if (matching) {
+      parentSelect.value = defaultParentDir;
+      customParentWrap.hidden = true;
+    } else {
+      parentSelect.value = "__custom__";
+      customParentWrap.hidden = false;
+      customParentInput.value = defaultParentDir;
+    }
+  } else {
+    parentSelect.value = ctx.projects_dir;
+    customParentWrap.hidden = true;
+    customParentInput.value = ctx.projects_dir;
+  }
+
+  for (const field of [nameInput, customParentInput, parentSelect]) {
+    field.classList.remove("user-invalid-fallback", "user-valid-fallback");
+    if ("setCustomValidity" in field) field.setCustomValidity("");
+    field.setAttribute("aria-invalid", "false");
+    linkFieldError(field, false);
+    formAriaFlagged.delete(field);
+    formAriaAnnounced.delete(field);
+  }
+  validateCustomParentInput(customParentInput, parentSelect.value === "__custom__", customParentError);
+  validateFolderNameInput(nameInput, nameError);
+  serverErrorEl.hidden = true;
+  optionsSection.hidden = defaultKind === "folder";
+  submitBtn.disabled = false;
+  submitBtn.textContent = defaultKind === "folder" ? "Create Folder" : "Create Project";
+  const effectiveParent = parentSelect.value === "__custom__" ? customParentInput.value : parentSelect.value;
+  previewEl.textContent = joinPreviewPath(effectiveParent, "");
+
+  if (!dialog.open) {
+    dialog.showModal();
+  }
+  nameInput.focus();
 }
 
 async function refreshAllState(): Promise<void> {
@@ -1491,7 +2189,10 @@ function renderWorkbenchTab(): string {
         cfg.whitelist.length === 0
           ? `<div class="stage-alert">
               <span>No whitelisted project directories configured yet. Per human authority (${renderCharterChip(2, "Nothing happens without you")}), Kodiak touches nothing outside whitelisted directories.</span>
-              <button type="button" class="btn btn--accent btn--sm" data-nav="settings">Add Project in Settings →</button>
+              <div class="row-inline" style="gap:0.45rem;">
+                <button type="button" id="wb-empty-new-project-btn" class="btn btn--primary btn--sm">+ New Project</button>
+                <button type="button" class="btn btn--accent btn--sm" data-nav="settings">Add Project in Settings →</button>
+              </div>
             </div>`
           : ""
       }
@@ -1544,6 +2245,7 @@ function renderWorkbenchTab(): string {
                     .join("")
             }
           </select>
+          <button type="button" id="wb-new-project-btn" class="btn btn--sm" title="Create a new folder or project">+ New Project</button>
         </div>
 
         <div class="row-inline">
@@ -1925,6 +2627,7 @@ function renderSidebar(): string {
             <div class="row-inline" style="align-items:center; gap:0.25rem;">
               <span class="badge badge--neutral" style="font-size:0.65rem;" title="${escapeHtml(projectCountTooltip)}">${projectCountBadge}</span>
               <button type="button" class="side-icon-btn ${state.rescanningProjects ? "is-spinning" : ""}" id="rescan-projects-btn" title="Rescan projects directory" ${state.rescanningProjects ? "disabled" : ""} onclick="event.stopPropagation();">↻</button>
+              <button type="button" class="side-icon-btn" id="new-project-btn" title="New Folder or Project">+</button>
             </div>
           </div>
           ${
@@ -3495,6 +4198,7 @@ function renderSettingsTab(): string {
           </select>
         </div>
         <button type="button" id="add-whitelist-btn" class="btn btn--primary">+ Add to Whitelist</button>
+        <button type="button" id="settings-new-project-btn" class="btn btn--accent" title="Create a new folder on disk and optionally add it to the whitelist">+ New Folder / Project</button>
         <button type="button" id="settings-rescan-projects-btn" class="btn btn--secondary ${state.rescanningProjects ? "is-spinning" : ""}" ${state.rescanningProjects ? "disabled" : ""}>↻ Rescan Directory</button>
       </div>
 
@@ -3682,7 +4386,7 @@ function renderSettingsTab(): string {
           ${
             editingProv
               ? `<button type="button" id="save-alt-provider-btn" class="btn btn--primary" style="min-width:140px;">Save Changes</button>
-                 <button type="button" id="cancel-edit-alt-provider-btn" class="btn btn--neutral">Cancel</button>`
+                 <button type="button" id="cancel-edit-alt-provider-bottom-btn" class="btn btn--neutral">Cancel</button>`
               : `<button type="button" id="add-alt-provider-btn" class="btn btn--primary" style="min-width:160px;">+ Add Provider</button>`
           }
         </div>
@@ -4023,8 +4727,11 @@ function renderDashboardTab(): string {
     ? `<div style="text-align:center; padding:3rem; background:var(--wiki-surface); border:1px solid var(--wiki-border); border-radius:var(--wiki-radius);">
          
          <strong>No Whitelisted Projects Configured</strong>
-         <p style="font-size:0.85rem; color:var(--md-default-fg-color--light); margin-top:0.35rem;">Add your project folders in Settings to start delegating tasks and reviewing diffs.</p>
-         <button type="button" class="btn btn--primary" id="dash-go-settings-btn" style="margin-top:0.75rem;">Configure Projects in Settings →</button>
+         <p style="font-size:0.85rem; color:var(--md-default-fg-color--light); margin-top:0.35rem;">Create a new project folder or add existing project folders in Settings to start delegating tasks and reviewing diffs.</p>
+         <div class="row-inline" style="justify-content:center; gap:0.5rem; margin-top:0.75rem;">
+           <button type="button" class="btn btn--primary" id="dash-empty-new-project-btn">+ New Project</button>
+           <button type="button" class="btn" id="dash-go-settings-btn">Configure Projects in Settings →</button>
+         </div>
        </div>`
     : `
       <div class="dashboard-projects-grid">
@@ -4103,7 +4810,10 @@ function renderDashboardTab(): string {
             Unified repository health, dirty Git changes, approval loads, and local-first telemetry.
           </p>
         </div>
-        <button type="button" id="refresh-dashboard-btn" class="btn btn--sm" title="Refresh project states, git status, and telemetry">↻ Refresh</button>
+        <div class="row-inline" style="gap:0.5rem;">
+          <button type="button" id="dash-new-project-btn" class="btn btn--sm btn--primary" title="Create a new folder or project">+ New Project</button>
+          <button type="button" id="refresh-dashboard-btn" class="btn btn--sm" title="Refresh project states, git status, and telemetry">↻ Refresh</button>
+        </div>
       </div>
 
       ${telemetryHtml}
@@ -4129,7 +4839,7 @@ function renderAboutTab(): string {
         <div style="flex:1; min-width:240px;">
           <div class="row-inline" style="gap:0.75rem; align-items:baseline;">
             <h1 style="margin:0; font-size:1.8rem; font-weight:700; color:var(--md-default-fg-color);">Kodiak</h1>
-            <span class="badge badge--ok" style="font-size:0.85rem;">v1.1.5</span>
+            <span class="badge badge--ok" style="font-size:0.85rem;">v1.1.6</span>
           </div>
           <p style="margin:0.35rem 0 0.5rem 0; font-size:1.05rem; font-weight:500; color:var(--md-default-fg-color);">
             The bear who runs the job site — local-first AI task delegation
@@ -4248,7 +4958,7 @@ function renderAboutTab(): string {
             <span><strong>Brand Asset:</strong> Morninglion Industries</span>
           </div>
           <div class="row-inline muted">
-            <span>Kodiak Task Delegation System (v1.1.5)</span>
+            <span>Kodiak Task Delegation System (v1.1.6)</span>
           </div>
         </div>
         <div style="text-align:center; padding-top:1.5rem; border-top:1px solid var(--wiki-border); margin-top:1.25rem;">
@@ -5121,6 +5831,10 @@ function bindEvents(): void {
     e.stopPropagation();
     handleRescanProjects(true);
   });
+  document.getElementById("new-project-btn")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void openCreateProjectModal("project");
+  });
   const searchInput = document.getElementById("sidebar-project-search") as HTMLInputElement | null;
   searchInput?.addEventListener("input", (e) => {
     const target = e.target as HTMLInputElement;
@@ -5426,6 +6140,12 @@ function bindEvents(): void {
     }
     await invoke<AppConfig>("update_config", { newConfig: state.config });
     await refreshAllState();
+  });
+  document.getElementById("wb-new-project-btn")?.addEventListener("click", () => {
+    void openCreateProjectModal("project");
+  });
+  document.getElementById("wb-empty-new-project-btn")?.addEventListener("click", () => {
+    void openCreateProjectModal("project");
   });
 
   // Top Workbench Context Header Actions
@@ -5922,6 +6642,9 @@ function bindEvents(): void {
   document.getElementById("settings-rescan-projects-btn")?.addEventListener("click", () => {
     handleRescanProjects(true);
   });
+  document.getElementById("settings-new-project-btn")?.addEventListener("click", () => {
+    void openCreateProjectModal("project");
+  });
 
   // Settings: Add whitelist entry
   document.getElementById("add-whitelist-btn")?.addEventListener("click", async () => {
@@ -6403,12 +7126,14 @@ function bindEvents(): void {
   });
 
   // Settings: Cancel edit alternate provider
-  document.getElementById("cancel-edit-alt-provider-btn")?.addEventListener("click", () => {
+  const cancelEditAltProvider = () => {
     state.editingAltProviderIdx = null;
     state.altProviderFormDraft = null;
     state.fetchModelsStatus = null;
     renderApp();
-  });
+  };
+  document.getElementById("cancel-edit-alt-provider-btn")?.addEventListener("click", cancelEditAltProvider);
+  document.getElementById("cancel-edit-alt-provider-bottom-btn")?.addEventListener("click", cancelEditAltProvider);
 
   // Settings: Save edited alternate provider
   document.getElementById("save-alt-provider-btn")?.addEventListener("click", async () => {
@@ -6896,6 +7621,12 @@ function bindEvents(): void {
   document.getElementById("dash-go-settings-btn")?.addEventListener("click", () => {
     state.tab = "settings";
     renderApp();
+  });
+  document.getElementById("dash-new-project-btn")?.addEventListener("click", () => {
+    void openCreateProjectModal("project");
+  });
+  document.getElementById("dash-empty-new-project-btn")?.addEventListener("click", () => {
+    void openCreateProjectModal("project");
   });
 
   document.querySelectorAll<HTMLElement>(".set-active-project-btn").forEach((btn) => {

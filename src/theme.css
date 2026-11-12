@@ -1727,6 +1727,215 @@ body {
   margin-top: auto;
 }
 
+/* ===== Create Folder / Project Native Modal & Form Validation ===== */
+.visually-hidden:where(:not(:focus-within, :active)) {
+  position: absolute !important;
+  clip-path: inset(50%) !important;
+  overflow: hidden !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  white-space: nowrap !important;
+}
+
+dialog.kodiak-dialog {
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--wiki-border);
+  border-radius: var(--wiki-radius);
+  background: var(--wiki-surface);
+  color: var(--md-default-fg-color);
+  box-shadow: var(--shadow-modal);
+  max-inline-size: min(38rem, calc(100vw - 2rem));
+  inline-size: 100%;
+  max-block-size: calc(100dvh - 2rem);
+}
+
+dialog.kodiak-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+dialog.kodiak-dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog.kodiak-dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: var(--backdrop-overlay);
+  backdrop-filter: blur(4px);
+}
+
+.kodiak-dialog__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+  padding: 1.25rem;
+  overflow-y: auto;
+}
+
+.kodiak-dialog__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-block-end: 0.75rem;
+  border-block-end: 1px solid var(--wiki-border);
+}
+
+.kodiak-dialog__title {
+  margin: 0;
+  font-size: 1.08rem;
+  font-weight: 700;
+  color: var(--md-default-fg-color);
+}
+
+.kodiak-dialog__subtitle {
+  margin: 0.2rem 0 0 0;
+  font-size: 0.8rem;
+  color: var(--md-default-fg-color--light);
+}
+
+.kodiak-dialog__form .form-input,
+.kodiak-dialog__form .form-select {
+  font: inherit;
+  font-size: max(1rem, 1em);
+  min-block-size: 2.5rem;
+}
+
+.kodiak-dialog__form input:focus-visible,
+.kodiak-dialog__form select:focus-visible,
+.kodiak-dialog__form button:focus-visible {
+  outline: 2px solid var(--wiki-accent);
+  outline-offset: 2px;
+}
+
+.form-hint {
+  display: block;
+  font-size: 0.76rem;
+  color: var(--md-default-fg-color--light);
+  line-height: 1.35;
+}
+
+.form-error-msg {
+  display: none;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--status-bad);
+  margin-block-start: 0.2rem;
+}
+
+.kodiak-dialog__form :is(input, select, textarea):is(:user-invalid, .user-invalid-fallback) {
+  border-color: var(--status-bad-border);
+  background: var(--status-bad-soft);
+}
+
+.kodiak-dialog__form :is(input, select, textarea):is(:user-invalid, .user-invalid-fallback) ~ .form-error-msg {
+  display: block;
+}
+
+.kodiak-dialog__form :is(input, select, textarea):is(:user-valid, .user-valid-fallback):not([type="radio"]):not([type="checkbox"]) {
+  border-color: var(--status-ok-border);
+}
+
+.create-type-fieldset {
+  border: 1px solid var(--wiki-border);
+  border-radius: var(--wiki-radius-sm);
+  padding: 0.65rem 0.85rem 0.75rem;
+  margin: 0;
+  background: var(--wiki-surface-elevated);
+}
+
+.create-type-fieldset > legend {
+  padding-inline: 0.35rem;
+}
+
+.create-type-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-block-start: 0.25rem;
+}
+
+.create-type-option,
+.create-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.84rem;
+  color: var(--md-default-fg-color);
+}
+
+.create-type-option input[type="radio"],
+.create-checkbox-row input[type="checkbox"] {
+  accent-color: var(--wiki-accent);
+  inline-size: 1rem;
+  block-size: 1rem;
+  margin: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.create-type-option label,
+.create-checkbox-row label {
+  cursor: pointer;
+  line-height: 1.35;
+}
+
+.create-path-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--wiki-radius-sm);
+  border: 1px solid var(--wiki-border);
+  background: var(--wiki-surface-elevated);
+}
+
+.create-path-preview__value {
+  font-size: 0.8rem;
+  color: var(--md-default-fg-color);
+  word-break: break-all;
+}
+
+.create-proj-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.create-checkbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.65rem 0.8rem;
+  border-radius: var(--wiki-radius-sm);
+  border: 1px solid var(--wiki-border);
+  background: var(--wiki-surface-elevated);
+}
+
+.create-dialog__error {
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--wiki-radius-sm);
+  border: 1px solid var(--status-bad-border);
+  background: var(--status-bad-soft);
+  color: var(--status-bad);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.kodiak-dialog__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding-block-start: 0.75rem;
+  border-block-start: 1px solid var(--wiki-border);
+}
+
 
 
 

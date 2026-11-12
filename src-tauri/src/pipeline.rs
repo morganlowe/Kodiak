@@ -792,6 +792,311 @@ pub fn detect_projects_in_dir_service(dir_path: &str) -> Vec<String> {
     detected
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CreateTargetKind {
+    Project,
+    Folder,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectCreationContext {
+    pub projects_dir: String,
+    pub active_project: Option<String>,
+    pub existing_folders: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateProjectOrFolderRequest {
+    pub kind: CreateTargetKind,
+    pub parent_dir: String,
+    pub name: String,
+    #[serde(default)]
+    pub grant_level: GrantLevel,
+    #[serde(default)]
+    pub set_active: bool,
+    #[serde(default)]
+    pub init_git: bool,
+    #[serde(default)]
+    pub create_readme: bool,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateProjectOrFolderResult {
+    pub created_path: String,
+    pub folder_name: String,
+    pub kind: CreateTargetKind,
+    pub added_to_whitelist: bool,
+    pub set_as_active: bool,
+    pub git_initialized: bool,
+    pub readme_created: bool,
+    pub warnings: Vec<String>,
+    pub config: AppConfig,
+}
+
+/// Returns the resolved projects root directory, active project, and non-excluded subfolders
+/// for populating the in-app "New Folder / Project" dialog.
+pub fn get_project_creation_context_service(cfg: &AppConfig) -> ProjectCreationContext {
+    let p_dir = resolve_projects_dir(cfg);
+    let p_dir_str = p_dir.to_string_lossy().to_string();
+    let exclusion_set: std::collections::HashSet<&str> =
+        cfg.exclusion_list.iter().map(|s| s.as_str()).collect();
+
+    let existing_folders = detect_projects_in_dir_service(&p_dir_str)
+        .into_iter()
+        .filter(|name| {
+            let full = p_dir.join(name).to_string_lossy().to_string();
+            !exclusion_set.contains(name.as_str()) && !exclusion_set.contains(full.as_str())
+        })
+        .collect();
+
+    ProjectCreationContext {
+        projects_dir: p_dir_str,
+        active_project: cfg.active_project.clone(),
+        existing_folders,
+    }
+}
+
+fn validate_relative_subpath(raw_name: &str) -> Result<Vec<String>, String> {
+    let trimmed = raw_name.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return Err("Folder or project name is required.".to_string());
+    }
+    if trimmed.contains('\0') {
+        return Err("Invalid folder name: null bytes are not allowed.".to_string());
+    }
+    if trimmed.starts_with('/') {
+        return Err("Enter a folder name or relative subpath without a leading '/'.".to_string());
+    }
+    if trimmed.contains('\\') {
+        return Err("Use '/' instead of '\\' for nested folder paths.".to_string());
+    }
+
+    let mut segments = Vec::new();
+    for seg in trimmed.split('/') {
+        if seg.is_empty() {
+            return Err("Invalid folder path: empty path segment ('//') is not allowed.".to_string());
+        }
+        if seg == "." || seg == ".." {
+            return Err("Invalid folder path: '.' and '..' segments are not allowed.".to_string());
+        }
+        if seg.starts_with('.') {
+            return Err(format!(
+                "Folder name '{}' cannot start with '.' per Kodiak's path deny-list policy.",
+                seg
+            ));
+        }
+        if seg
+            .chars()
+            .any(|c| c.is_control() || matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*'))
+        {
+            return Err(format!(
+                "Folder name '{}' contains invalid filename characters.",
+                seg
+            ));
+        }
+        segments.push(seg.to_string());
+    }
+
+    Ok(segments)
+}
+
+fn validate_safe_creation_target(target: &Path) -> Result<(), String> {
+    check_path_deny_list(target)?;
+
+    if target == Path::new("/") {
+        return Err("Cannot create a project or folder at filesystem root '/'.".to_string());
+    }
+    if let Some(home) = dirs::home_dir() {
+        if target == home {
+            return Err("Cannot create a project directly as your home directory; choose a subfolder.".to_string());
+        }
+    }
+
+    let protected_prefixes = [
+        "/etc", "/boot", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/proc", "/sys", "/dev",
+        "/run", "/root", "/var/log", "/var/lib",
+    ];
+    let lower_str = target.to_string_lossy().to_ascii_lowercase();
+    for prefix in protected_prefixes {
+        if lower_str == prefix || lower_str.starts_with(&format!("{prefix}/")) {
+            return Err(format!(
+                "Deny list violation: creating folders under protected system path '{}' is prohibited.",
+                prefix
+            ));
+        }
+    }
+
+    for ancestor in target.ancestors() {
+        if let Some(name) = ancestor.file_name().and_then(|n| n.to_str()) {
+            let lower_name = name.to_ascii_lowercase();
+            if matches!(
+                lower_name.as_str(),
+                ".ssh" | ".gnupg" | ".aws" | ".config" | ".local"
+            ) {
+                return Err(format!(
+                    "Deny list violation: creating folders inside protected directory '{}' is prohibited.",
+                    ancestor.display()
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Creates a new directory on disk and (for `CreateTargetKind::Project`) optionally
+/// initializes git / README.md, whitelists it in `cfg`, and sets it as the active project.
+pub async fn create_project_or_folder_service(
+    cfg: &mut AppConfig,
+    req: CreateProjectOrFolderRequest,
+) -> Result<CreateProjectOrFolderResult, String> {
+    let parent_trimmed = req.parent_dir.trim();
+    if parent_trimmed.is_empty() {
+        return Err("Parent directory is required.".to_string());
+    }
+    if parent_trimmed.contains('\0') {
+        return Err("Invalid parent directory: null bytes are not allowed.".to_string());
+    }
+
+    let expanded_parent = expand_tilde(parent_trimmed);
+    if !expanded_parent.is_absolute() {
+        return Err(
+            "Parent directory must be an absolute path (or start with '~/').".to_string(),
+        );
+    }
+    if expanded_parent
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err("Parent directory cannot contain '..' traversal segments.".to_string());
+    }
+    if expanded_parent.exists() && !expanded_parent.is_dir() {
+        return Err(format!(
+            "Parent path '{}' exists and is not a directory.",
+            expanded_parent.display()
+        ));
+    }
+
+    let canonical_parent =
+        resolve_canonical_target(&expanded_parent, &expanded_parent.to_string_lossy())?;
+    validate_safe_creation_target(&canonical_parent)?;
+
+    let segments = validate_relative_subpath(&req.name)?;
+    let relative_subpath = segments.join("/");
+    let canonical_target = resolve_canonical_target(&canonical_parent, &relative_subpath)?;
+    validate_safe_creation_target(&canonical_target)?;
+
+    if canonical_target.exists() || fs::symlink_metadata(&canonical_target).is_ok() {
+        return Err(format!(
+            "Directory '{}' already exists.",
+            canonical_target.display()
+        ));
+    }
+
+    fs::create_dir_all(&canonical_target).map_err(|e| {
+        format!(
+            "Failed to create directory '{}': {e}",
+            canonical_target.display()
+        )
+    })?;
+
+    let created_canonical = fs::canonicalize(&canonical_target).unwrap_or(canonical_target);
+    let created_str = created_canonical.to_string_lossy().to_string();
+    let folder_name = created_canonical
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| segments.last().cloned().unwrap_or_else(|| relative_subpath.clone()));
+
+    let mut warnings = Vec::new();
+    let mut added_to_whitelist = false;
+    let mut set_as_active = false;
+    let mut git_initialized = false;
+    let mut readme_created = false;
+
+    if req.kind == CreateTargetKind::Project {
+        if req.create_readme {
+            let desc = req.description.as_deref().map(str::trim).unwrap_or("");
+            let readme_content = if desc.is_empty() {
+                format!("# {folder_name}\n\nCreated with Kodiak.\n")
+            } else {
+                format!("# {folder_name}\n\n{desc}\n")
+            };
+            let readme_path = created_canonical.join("README.md");
+            if let Err(e) = fs::write(&readme_path, readme_content) {
+                warnings.push(format!("Created directory, but failed to write README.md: {e}"));
+            } else {
+                readme_created = true;
+            }
+        }
+
+        if req.init_git {
+            match Command::new("git")
+                .arg("init")
+                .current_dir(&created_canonical)
+                .output()
+            {
+                Ok(out) if out.status.success() => {
+                    git_initialized = true;
+                }
+                Ok(out) => {
+                    let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                    warnings.push(format!(
+                        "Created directory, but 'git init' exited with {}: {}",
+                        out.status, stderr
+                    ));
+                }
+                Err(e) => {
+                    warnings.push(format!(
+                        "Created directory, but could not run 'git init': {e}"
+                    ));
+                }
+            }
+        }
+
+        let norm_created = created_str.trim_end_matches('/');
+        let already_whitelisted = cfg.whitelist.iter().any(|w| {
+            let w_expanded = expand_tilde(&w.path);
+            let w_canon = fs::canonicalize(&w_expanded).unwrap_or(w_expanded);
+            w_canon.to_string_lossy().trim_end_matches('/') == norm_created
+        });
+
+        if !already_whitelisted {
+            cfg.whitelist.push(WhitelistEntry {
+                path: created_str.clone(),
+                level: req.grant_level,
+            });
+            added_to_whitelist = true;
+        }
+
+        cfg.exclusion_list
+            .retain(|ex| ex.trim_end_matches('/') != norm_created);
+
+        if req.set_active || cfg.active_project.is_none() {
+            cfg.active_project = Some(created_str.clone());
+            set_as_active = true;
+        }
+
+        if cfg.wiki_enabled && added_to_whitelist {
+            let _ = sync_wiki_catalog_service(cfg).await;
+        }
+    }
+
+    Ok(CreateProjectOrFolderResult {
+        created_path: created_str,
+        folder_name,
+        kind: req.kind,
+        added_to_whitelist,
+        set_as_active,
+        git_initialized,
+        readme_created,
+        warnings,
+        config: cfg.clone(),
+    })
+}
+
 /// Probes system host configuration, unprivileged port status, and detected projects for setup wizard.
 pub async fn get_wiki_setup_info_service(cfg: &AppConfig) -> Result<WikiSetupInfo, String> {
     let p_dir = resolve_projects_dir(cfg);

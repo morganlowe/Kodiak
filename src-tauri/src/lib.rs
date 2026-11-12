@@ -28,9 +28,11 @@ use prompts::DIGEST_LOG_PROMPT_PREFIX;
 use pipeline::{
     ai_build_wiki_project_service, build_posture_summary, call_ollama_generate, check_system_health,
     classify_cloud_error_from_str, complete_wiki_setup_service, create_initial_task_record,
-    detect_projects_in_dir_service, fetch_provider_models, get_detailed_wiki_status, get_wiki_setup_info_service,
+    create_project_or_folder_service, detect_projects_in_dir_service, fetch_provider_models,
+    get_detailed_wiki_status, get_project_creation_context_service, get_wiki_setup_info_service,
     list_wiki_projects_service, ping_alt_provider, probe_cloud_health, rebuild_wiki_assets_service,
-    rescan_projects_service, RescanResult,
+    rescan_projects_service, CreateProjectOrFolderRequest, CreateProjectOrFolderResult,
+    CreateTargetKind, ProjectCreationContext, RescanResult,
     resolve_active_project_root, restart_wiki_service, run_execute_stage_with_events,
     run_interpret_stage, run_interpret_stage_with_provider, run_shell_command_bounded,
     run_verify_stage, run_verify_stage_with_provider, save_and_return_record,
@@ -222,6 +224,54 @@ async fn rescan_projects_dir(state: State<'_, AppState>) -> Result<RescanResult,
         save_config(&cfg)?;
     }
     *state.config.lock().map_err(|e| e.to_string())? = cfg;
+    Ok(res)
+}
+
+#[tauri::command]
+fn get_project_creation_context(state: State<'_, AppState>) -> Result<ProjectCreationContext, String> {
+    let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
+    Ok(get_project_creation_context_service(&cfg))
+}
+
+#[tauri::command]
+async fn create_project_or_folder(
+    state: State<'_, AppState>,
+    request: CreateProjectOrFolderRequest,
+) -> Result<CreateProjectOrFolderResult, String> {
+    let mut cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
+    let kind = request.kind;
+    let requested_grant = request.grant_level;
+    let mut res = create_project_or_folder_service(&mut cfg, request).await?;
+    if matches!(kind, CreateTargetKind::Project) {
+        save_config(&cfg)?;
+        *state.config.lock().map_err(|e| e.to_string())? = cfg.clone();
+        res.config = cfg;
+    }
+    log_decision(
+        "project_management",
+        0,
+        ActionClass::Mkdir,
+        &res.created_path,
+        &format!(
+            "User created {} '{}'",
+            if matches!(kind, CreateTargetKind::Project) {
+                "project"
+            } else {
+                "folder"
+            },
+            res.folder_name
+        ),
+        &res.created_path,
+        if matches!(kind, CreateTargetKind::Project) {
+            requested_grant
+        } else {
+            GrantLevel::Read
+        },
+        false,
+        false,
+        "user_created",
+        "Explicit user creation via UI dialog",
+    );
     Ok(res)
 }
 
@@ -2939,6 +2989,8 @@ pub fn run() {
             set_wiki_enabled,
             detect_projects_in_dir,
             rescan_projects_dir,
+            get_project_creation_context,
+            create_project_or_folder,
             run_task_pipeline,
             retry_task_stage,
             approve_card,
@@ -5912,6 +5964,138 @@ tier = "low"
         let res2 = rescan_projects_service(&mut cfg).await.unwrap();
         assert_eq!(res2.added_count, 0);
         assert_eq!(cfg.whitelist.len(), 1);
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[tokio::test]
+    async fn test_create_project_and_folder_lifecycle_and_safety() {
+        let temp_dir = std::env::temp_dir().join(format!("kodiak-create-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let canonical_temp = std::fs::canonicalize(&temp_dir).unwrap();
+
+        let mut cfg = AppConfig::default();
+        cfg.projects_dir = canonical_temp.to_string_lossy().to_string();
+        cfg.wiki_enabled = false;
+
+        // 1. Create a plain folder (with nested path) without adding to whitelist
+        let folder_res = create_project_or_folder_service(
+            &mut cfg,
+            CreateProjectOrFolderRequest {
+                kind: CreateTargetKind::Folder,
+                parent_dir: canonical_temp.to_string_lossy().to_string(),
+                name: "hardware/sensors".to_string(),
+                grant_level: GrantLevel::Read,
+                set_active: true,
+                init_git: true,
+                create_readme: true,
+                description: Some("Should not be written for folder".to_string()),
+            },
+        )
+        .await
+        .unwrap();
+
+        let expected_folder = canonical_temp.join("hardware").join("sensors");
+        assert!(expected_folder.is_dir());
+        assert_eq!(folder_res.created_path, expected_folder.to_string_lossy().to_string());
+        assert_eq!(folder_res.folder_name, "sensors");
+        assert!(!folder_res.added_to_whitelist);
+        assert!(!folder_res.set_as_active);
+        assert!(!folder_res.readme_created);
+        assert!(!folder_res.git_initialized);
+        assert!(cfg.whitelist.is_empty());
+        assert!(cfg.active_project.is_none());
+
+        // 2. Context lists top-level subfolder "hardware"
+        let ctx = get_project_creation_context_service(&cfg);
+        assert_eq!(ctx.projects_dir, canonical_temp.to_string_lossy().to_string());
+        assert_eq!(ctx.existing_folders, vec!["hardware".to_string()]);
+
+        // 3. Create a new project inside hardware/sensors
+        let proj_res = create_project_or_folder_service(
+            &mut cfg,
+            CreateProjectOrFolderRequest {
+                kind: CreateTargetKind::Project,
+                parent_dir: expected_folder.to_string_lossy().to_string(),
+                name: "esp32-node".to_string(),
+                grant_level: GrantLevel::Create,
+                set_active: true,
+                init_git: true,
+                create_readme: true,
+                description: Some("Environmental telemetry firmware".to_string()),
+            },
+        )
+        .await
+        .unwrap();
+
+        let expected_proj = expected_folder.join("esp32-node");
+        assert!(expected_proj.is_dir());
+        assert!(expected_proj.join("README.md").is_file());
+        let readme_txt = std::fs::read_to_string(expected_proj.join("README.md")).unwrap();
+        assert!(readme_txt.contains("# esp32-node"));
+        assert!(readme_txt.contains("Environmental telemetry firmware"));
+        assert!(proj_res.added_to_whitelist);
+        assert!(proj_res.set_as_active);
+        assert!(proj_res.readme_created);
+        assert_eq!(cfg.whitelist.len(), 1);
+        assert_eq!(cfg.whitelist[0].path, expected_proj.to_string_lossy().to_string());
+        assert_eq!(cfg.whitelist[0].level, GrantLevel::Create);
+        assert_eq!(cfg.active_project.as_deref(), Some(expected_proj.to_string_lossy().as_ref()));
+
+        // 4. Reject creating duplicate directory
+        let dup_err = create_project_or_folder_service(
+            &mut cfg,
+            CreateProjectOrFolderRequest {
+                kind: CreateTargetKind::Project,
+                parent_dir: expected_folder.to_string_lossy().to_string(),
+                name: "esp32-node".to_string(),
+                grant_level: GrantLevel::Read,
+                set_active: false,
+                init_git: false,
+                create_readme: false,
+                description: None,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(dup_err.contains("already exists"), "Unexpected error: {dup_err}");
+
+        // 5. Reject traversal, hidden dot-folders, and protected paths
+        for bad_name in ["../escape", ".hidden", "sub/.secret", "/abs-path", "a//b"] {
+            let err = create_project_or_folder_service(
+                &mut cfg,
+                CreateProjectOrFolderRequest {
+                    kind: CreateTargetKind::Folder,
+                    parent_dir: canonical_temp.to_string_lossy().to_string(),
+                    name: bad_name.to_string(),
+                    grant_level: GrantLevel::Read,
+                    set_active: false,
+                    init_git: false,
+                    create_readme: false,
+                    description: None,
+                },
+            )
+            .await
+            .unwrap_err();
+            assert!(!err.is_empty());
+        }
+
+        let protected_err = create_project_or_folder_service(
+            &mut cfg,
+            CreateProjectOrFolderRequest {
+                kind: CreateTargetKind::Folder,
+                parent_dir: "/etc".to_string(),
+                name: "kodiak-test".to_string(),
+                grant_level: GrantLevel::Read,
+                set_active: false,
+                init_git: false,
+                create_readme: false,
+                description: None,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(protected_err.contains("Deny list"), "Unexpected error: {protected_err}");
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

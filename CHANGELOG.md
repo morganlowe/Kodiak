@@ -7,14 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.6] — 2026-11-11
+
+### Added
+
+- **In-App New Folder & Project Creation**:
+  - Added backend services (`get_project_creation_context_service`, `create_project_or_folder_service`) and Tauri commands (`get_project_creation_context`, `create_project_or_folder`) in `src-tauri/src/pipeline.rs` and `src-tauri/src/lib.rs` with deny-list / system-path guards, relative subpath validation (`validate_relative_subpath`, `validate_safe_creation_target`), optional starter `README.md`, optional `git init`, optional whitelist registration (grant level `READ` / `CREATE` / `BUILD` / `AUTONOMOUS`), and active project switching.
+  - Added a dedicated modal `<dialog>` (`#create-project-dialog` in `src/main.ts` and `src/theme.css`) with project vs folder modes, preset parent selector, custom parent input with live validation and resolved path preview, accessible labels/hints/validation feedback, and trigger actions from the Sidebar, Workbench, Settings, Dashboard, and project context menu (`New Subfolder Here...`).
+  - Added Rust unit test `test_create_project_and_folder_lifecycle_and_safety` covering project/folder creation, subpath checks, deny-list protection, and whitelist enrollment.
+
 ### Changed
 
-- **Author Copyright & Systems Ownership**:
+- **Author Copyright, Acknowledgements & Documentation**:
+  - Enforced the repository-wide no-emojis policy across UI elements, documentation, and changelog entries.
+  - Replaced the footer emblem with the bordered Morninglion Industries emblem (`src/main.ts`).
   - Updated copyright and systems architecture attribution to **Morgan Lowe** across `README.md`, `package.json`, `src-tauri/Cargo.toml`, `PKGBUILD`, `scripts/build_deb.sh`, and the desktop application's About panel (`src/main.ts`).
-  - Added formal **Acknowledgements & Shout-Outs** section recognizing:
-    - Primary author: **Morgan Lowe** (systems architecture, security model design, multi-platform packaging, engineering direction).
-    - AI Model Collaborators: **Proton Lumo**, **Google Gemini Models** (Gemini 2.5 Pro / Flash & DeepMind Antigravity orchestration), **OpenAI ChatGPT & o-series models**, **Anthropic Claude Models** (Claude 3.7 / 3.5 Sonnet), and **Local Ollama Models** (`llama3.2:3b`, `qwen2.5-coder:7b`/`14b`).
-    - Core Technologies & Ecosystem: Python 3, MkDocs Material, PyInstaller, PyYAML, Jinja2, Rust, Tauri v2, Tokio, Reqwest, Serde, Sysinfo, Notify, Chrono, Parking_lot, TypeScript, Vite, Arch Linux (`makepkg`/`pacman`), Debian/Ubuntu (`dpkg-deb`), AppImageKit, NSIS, and NVIDIA CUDA.
+  - Added **Acknowledgements & Shout-Outs** (recognizing Morgan Lowe, AI model collaborators, open-source ecosystem, and Frank development hardware specifications) and improved `README.md` navigation and package install instructions.
+
+### Fixed
+
+- **Packaging Hygiene**: Strictly excluded non-template project markdown documentation files from packaged assets.
+- **Settings Edit Provider Cancel Action**: Removed duplicate `cancel-edit-alt-provider-btn` element ID when editing an alternate provider (`#cancel-edit-alt-provider-bottom-btn`) and wired both Cancel buttons in `src/main.ts` to the same reset handler.
 
 ## [1.1.5] — 2026-11-10
 
@@ -211,7 +224,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Split Arch `PKGBUILD` producing `kodiak` and `kodiak-projectswiki` packages with dependency hooks (`python-mkdocs-material`, `python-requests`, `python-toml`).
 - Debian/Ubuntu `.deb` binary packages with `apt` dependency resolution.
 
-[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.5...HEAD
+[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.6...HEAD
+[1.1.6]: https://github.com/morganlowe/Kodiak/compare/v1.1.5...v1.1.6
 [1.1.5]: https://github.com/morganlowe/Kodiak/compare/v1.1.4...v1.1.5
 [1.1.4]: https://github.com/morganlowe/Kodiak/compare/v1.1.3...v1.1.4
 [1.1.3]: https://github.com/morganlowe/Kodiak/compare/v1.1.2...v1.1.3

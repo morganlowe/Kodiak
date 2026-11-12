@@ -6,7 +6,7 @@
 
   **Autonomous Desktop Orchestrator & Local-First AI Development Partner for Linux & Windows**
 
-  [![Version: v1.1.5](https://img.shields.io/badge/Version-v1.1.5-success.svg)](https://github.com/morganlowe/Kodiak/releases)
+  [![Version: v1.1.6](https://img.shields.io/badge/Version-v1.1.6-success.svg)](https://github.com/morganlowe/Kodiak/releases)
   [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
   [![Platform: Linux | Windows | Arch | Debian](https://img.shields.io/badge/Platform-Linux_%7C_Windows_%7C_Arch_%7C_Debian-orange.svg)](#prebuilt-packages)
   [![Tech: Rust | Tauri v2 | TypeScript](https://img.shields.io/badge/Stack-Rust_%7C_Tauri_v2_%7C_TypeScript-red.svg)](#system-architecture)
@@ -127,10 +127,10 @@ Kodiak provides a split `PKGBUILD` producing the desktop orchestrator (`/usr/bin
 
 ```bash
 # Install both Core Orchestrator and Projects Wiki
-sudo pacman -U kodiak-1.1.5-1-x86_64.pkg.tar.zst kodiak-projectswiki-1.1.5-1-any.pkg.tar.zst
+sudo pacman -U kodiak-1.1.6-1-x86_64.pkg.tar.zst kodiak-projectswiki-1.1.6-1-any.pkg.tar.zst
 
 # Or install Core Orchestrator only
-sudo pacman -U kodiak-1.1.5-1-x86_64.pkg.tar.zst
+sudo pacman -U kodiak-1.1.6-1-x86_64.pkg.tar.zst
 ```
 
 To build and install directly from source via `makepkg` / `make`:
@@ -150,8 +150,8 @@ make install
 Single standalone binary with zero dependencies — works on all modern Linux distributions:
 
 ```bash
-chmod +x Kodiak_1.1.5_amd64.AppImage
-./Kodiak_1.1.5_amd64.AppImage
+chmod +x Kodiak_1.1.6_amd64.AppImage
+./Kodiak_1.1.6_amd64.AppImage
 ```
 
 </details>
@@ -161,7 +161,7 @@ chmod +x Kodiak_1.1.5_amd64.AppImage
 <br />
 
 ```bash
-sudo dpkg -i dist/deb/kodiak_1.1.5-1_amd64.deb dist/deb/kodiak-projectswiki_1.1.5-1_all.deb
+sudo dpkg -i dist/deb/kodiak_1.1.6-1_amd64.deb dist/deb/kodiak-projectswiki_1.1.6-1_all.deb
 sudo apt-get install -f
 ```
 
@@ -171,7 +171,7 @@ sudo apt-get install -f
 <summary><strong>Windows 10 & 11 (NSIS Setup Installer)</strong></summary>
 <br />
 
-Download **`Kodiak_1.1.5_x64-setup.exe`** from [GitHub Releases](https://github.com/morganlowe/Kodiak/releases).
+Download **`Kodiak_1.1.6_x64-setup.exe`** from [GitHub Releases](https://github.com/morganlowe/Kodiak/releases).
 
 * Packages both the **Kodiak** desktop orchestrator and the standalone **ProjectsWiki** engine (`kodiak-projectswiki.exe`).
 * Zero Python or pip setup required: includes an embedded MkDocs Material runtime, Sync API, and automated catalog generator.
@@ -354,7 +354,7 @@ Kodiak generates default configuration files on first launch. Expand the section
 <br />
 
 ```toml
-# Kodiak v1.1.5 Core Orchestrator Configuration
+# Kodiak v1.1.6 Core Orchestrator Configuration
 
 [general]
 theme = "kodiak-dark"
