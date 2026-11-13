@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
+    <script>
+      try {
+        var s = localStorage.getItem("kodiak-color-scheme");
+        if (s === "light" || s === "dark") {
+          document.querySelector('meta[name="color-scheme"]').content = s;
+        }
+      } catch (e) {}
+    </script>
     <title>Kodiak — Local-First AI Task Delegation</title>
     <link rel="stylesheet" href="/src/theme.css" />
   </head>

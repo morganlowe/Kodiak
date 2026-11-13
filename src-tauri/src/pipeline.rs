@@ -1,8 +1,8 @@
 //! Tiered AI Pipeline (Interpret → Local Execute → Cloud Verify) & Service Health (§1, §2, §4, §5).
 
 use crate::config::{
-    cloud_debug_file_path, expand_tilde, journal_file_path, resolve_projects_dir, resolve_wiki_dir,
-    AppConfig, GrantLevel, WhitelistEntry,
+    cloud_debug_file_path, data_dir_path, expand_tilde, journal_file_path, resolve_projects_dir,
+    resolve_wiki_dir, AppConfig, GrantLevel, WhitelistEntry,
 };
 use crate::enforcer::{
     check_command_deny_list, check_path_deny_list, evaluate_action, get_pipeline_generated_files,
@@ -249,6 +249,223 @@ pub async fn start_lumo_bridge_service(cfg: &AppConfig) -> Result<HealthStatus, 
     Err(
         "Invoked 'systemctl --user start lumo-tamer', but GET /v1/models did not respond within 8 seconds. \
         Check 'systemctl --user status lumo-tamer' or journalctl --user -u lumo-tamer."
+            .to_string(),
+    )
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LumoAuthStatus {
+    pub tamer_found: bool,
+    pub tamer_path: Option<String>,
+    pub authenticated: bool,
+    pub status_text: String,
+    pub browser_available: Option<String>,
+    pub cdp_reachable: bool,
+}
+
+fn resolve_tamer_script() -> Option<PathBuf> {
+    if let Some(home) = dirs::home_dir() {
+        let plugin_tamer = home.join(".gemini/config/plugins/local-delegation/scripts/tamer");
+        if plugin_tamer.exists() {
+            return Some(plugin_tamer);
+        }
+    }
+    let cmd = if cfg!(windows) { "where" } else { "which" };
+    if let Ok(out) = Command::new(cmd).arg("tamer").output() {
+        if out.status.success() {
+            let line = String::from_utf8_lossy(&out.stdout).lines().next().unwrap_or("").trim().to_string();
+            if !line.is_empty() {
+                return Some(PathBuf::from(line));
+            }
+        }
+    }
+    None
+}
+
+fn resolve_chromium_browser() -> Option<String> {
+    let candidates = if cfg!(windows) {
+        vec!["chrome.exe", "msedge.exe"]
+    } else {
+        vec!["google-chrome-stable", "google-chrome", "chromium", "chromium-browser"]
+    };
+    let finder = if cfg!(windows) { "where" } else { "which" };
+    for bin in candidates {
+        if let Ok(out) = Command::new(finder).arg(bin).output() {
+            if out.status.success() {
+                return Some(bin.to_string());
+            }
+        }
+    }
+    None
+}
+
+pub async fn check_lumo_auth_status() -> LumoAuthStatus {
+    let tamer = resolve_tamer_script();
+    let browser_available = resolve_chromium_browser();
+    let cdp_client = Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_millis(800))
+        .build()
+        .unwrap_or_default();
+    let cdp_reachable = cdp_client
+        .get("http://127.0.0.1:9222/json/version")
+        .send()
+        .await
+        .map(|r| r.status().is_success())
+        .unwrap_or(false);
+
+    let Some(tamer_path) = tamer else {
+        return LumoAuthStatus {
+            tamer_found: false,
+            tamer_path: None,
+            authenticated: false,
+            status_text: "lumo-tamer script not found at ~/.gemini/config/plugins/local-delegation/scripts/tamer or on PATH.".to_string(),
+            browser_available,
+            cdp_reachable,
+        };
+    };
+
+    let tamer_str = tamer_path.to_string_lossy().to_string();
+    let res = timeout(
+        Duration::from_secs(5),
+        AsyncCommand::new(&tamer_path).args(["auth", "status"]).output(),
+    )
+    .await;
+
+    match res {
+        Ok(Ok(out)) => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            let combined = format!("{stdout}\n{stderr}").trim().to_string();
+            let lower = combined.to_ascii_lowercase();
+            let authenticated = out.status.success()
+                && !lower.contains("not authenticated")
+                && !lower.contains("invalid")
+                && !lower.contains("expired")
+                && !lower.contains("no tokens");
+            LumoAuthStatus {
+                tamer_found: true,
+                tamer_path: Some(tamer_str),
+                authenticated,
+                status_text: if combined.is_empty() {
+                    format!("Exit status: {}", out.status)
+                } else {
+                    combined
+                },
+                browser_available,
+                cdp_reachable,
+            }
+        }
+        Ok(Err(e)) => LumoAuthStatus {
+            tamer_found: true,
+            tamer_path: Some(tamer_str),
+            authenticated: false,
+            status_text: format!("Failed to run tamer auth status: {e}"),
+            browser_available,
+            cdp_reachable,
+        },
+        Err(_) => LumoAuthStatus {
+            tamer_found: true,
+            tamer_path: Some(tamer_str),
+            authenticated: false,
+            status_text: "Timed out checking tamer auth status.".to_string(),
+            browser_available,
+            cdp_reachable,
+        },
+    }
+}
+
+pub fn launch_lumo_auth_browser() -> Result<String, String> {
+    let browser = resolve_chromium_browser().ok_or_else(|| {
+        "No Chromium-based browser (google-chrome-stable, google-chrome, chromium) found on PATH.".to_string()
+    })?;
+    let cdp_dir = data_dir_path()?.join("lumo-cdp");
+    fs::create_dir_all(&cdp_dir)
+        .map_err(|e| format!("Failed to create Lumo browser profile directory: {e}"))?;
+
+    Command::new(&browser)
+        .arg("--remote-debugging-port=9222")
+        .arg(format!("--user-data-dir={}", cdp_dir.display()))
+        .arg("https://lumo.proton.me")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("Failed to launch {browser}: {e}"))?;
+
+    Ok(format!(
+        "Launched {browser} with CDP on port 9222. Log in to https://lumo.proton.me in that window, then click 'Extract Tokens & Restart Bridge'."
+    ))
+}
+
+pub async fn complete_lumo_browser_auth(cfg: &AppConfig) -> Result<HealthStatus, String> {
+    let cdp_client = Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_millis(1200))
+        .build()
+        .unwrap_or_default();
+    let cdp_ok = cdp_client
+        .get("http://127.0.0.1:9222/json/version")
+        .send()
+        .await
+        .map(|r| r.status().is_success())
+        .unwrap_or(false);
+    if !cdp_ok {
+        return Err(
+            "CDP endpoint http://127.0.0.1:9222 is not reachable. Click 'Open Lumo Login Browser' first and log in to https://lumo.proton.me."
+                .to_string(),
+        );
+    }
+
+    let tamer_path = resolve_tamer_script().ok_or_else(|| {
+        "lumo-tamer script not found at ~/.gemini/config/plugins/local-delegation/scripts/tamer.".to_string()
+    })?;
+
+    let mut child = AsyncCommand::new(&tamer_path)
+        .args(["auth", "browser"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn tamer auth browser: {e}"))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        use tokio::io::AsyncWriteExt;
+        let _ = stdin.write_all(b"\n").await;
+        let _ = stdin.shutdown().await;
+    }
+
+    let output = timeout(Duration::from_secs(20), child.wait_with_output())
+        .await
+        .map_err(|_| "Timed out waiting for 'tamer auth browser' (20s).".to_string())?
+        .map_err(|e| format!("Failed waiting for 'tamer auth browser': {e}"))?;
+
+    if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "tamer auth browser failed ({}): {} {}",
+            output.status,
+            stdout.trim(),
+            stderr.trim()
+        ));
+    }
+
+    let _ = Command::new("systemctl")
+        .args(["--user", "restart", "lumo-tamer"])
+        .output()
+        .map_err(|e| format!("Failed to invoke 'systemctl --user restart lumo-tamer': {e}"))?;
+
+    for _ in 0..20 {
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        let status = check_system_health(cfg).await;
+        if status.bridge_reachable {
+            return Ok(status);
+        }
+    }
+
+    Err(
+        "Tokens extracted and restarted lumo-tamer, but GET /v1/models did not respond within 8 seconds."
             .to_string(),
     )
 }
@@ -1851,7 +2068,9 @@ pub async fn call_lumo_chat(
                         });
                         return Err(err_msg);
                     }
-                    let err_msg = format!("Cloud Lumo Bridge returned HTTP {status}: {text}");
+                    let err_msg = format!(
+                        "Cloud Lumo Bridge returned HTTP {status}: {text} (If your Lumo session expired, use 'Re-auth Lumo' in Settings or the error banner.)"
+                    );
                     append_cloud_debug_log(&CloudRequestDebugEntry {
                         timestamp: Utc::now().to_rfc3339(),
                         stage: stage.to_string(),

@@ -5,7 +5,15 @@
    ========================================================================== */
 
 :root {
-  color-scheme: dark light;
+  color-scheme: light dark;
+
+  &:has(> head > meta[name="color-scheme"][content="dark"]) {
+    color-scheme: dark;
+  }
+
+  &:has(> head > meta[name="color-scheme"][content="light"]) {
+    color-scheme: light;
+  }
 
   /* Core Wiki Custom Properties (from ProjectsWiki/docs/extra.css) */
   --wiki-accent: #ff6e40;
@@ -54,13 +62,50 @@
   --pill-count-bg: rgba(0, 0, 0, 0.18);
 }
 
+:root:has(> head > meta[name="color-scheme"][content="light"]) {
+  --wiki-accent: #e65100;
+  --wiki-accent-hover: #f97316;
+  --wiki-accent-soft: rgba(230, 81, 0, 0.11);
+  --wiki-border: rgba(15, 23, 42, 0.15);
+  --wiki-border-hover: rgba(230, 81, 0, 0.65);
+  --md-default-bg-color: #f8fafc;
+  --md-code-bg-color: #ffffff;
+  --md-default-fg-color: #0f172a;
+  --md-default-fg-color--light: #475569;
+  --md-default-fg-color--lighter: #64748b;
+  --md-accent-contrast: #ffffff;
+  --status-ok: #16a34a;
+  --status-warn: #d97706;
+  --status-bad: #dc2626;
+  --shadow-toolbar: 0 4px 20px rgba(15, 23, 42, 0.08);
+  --shadow-card-hover: 0 8px 24px rgba(15, 23, 42, 0.10);
+  --shadow-modal: 0 24px 64px rgba(15, 23, 42, 0.22);
+  --backdrop-overlay: rgba(15, 23, 42, 0.45);
+  --pill-count-bg: rgba(15, 23, 42, 0.07);
+}
+
 @media (prefers-color-scheme: light) {
+  :root:has(> head > meta[name="color-scheme"][content="light dark"]),
   :root[data-theme="auto"] {
+    --wiki-accent: #e65100;
+    --wiki-accent-hover: #f97316;
+    --wiki-accent-soft: rgba(230, 81, 0, 0.11);
+    --wiki-border: rgba(15, 23, 42, 0.15);
+    --wiki-border-hover: rgba(230, 81, 0, 0.65);
     --md-default-bg-color: #f8fafc;
     --md-code-bg-color: #ffffff;
     --md-default-fg-color: #0f172a;
     --md-default-fg-color--light: #475569;
     --md-default-fg-color--lighter: #64748b;
+    --md-accent-contrast: #ffffff;
+    --status-ok: #16a34a;
+    --status-warn: #d97706;
+    --status-bad: #dc2626;
+    --shadow-toolbar: 0 4px 20px rgba(15, 23, 42, 0.08);
+    --shadow-card-hover: 0 8px 24px rgba(15, 23, 42, 0.10);
+    --shadow-modal: 0 24px 64px rgba(15, 23, 42, 0.22);
+    --backdrop-overlay: rgba(15, 23, 42, 0.45);
+    --pill-count-bg: rgba(15, 23, 42, 0.07);
   }
 }
 
@@ -1467,7 +1512,7 @@ body {
 
 .queue-tab-btn:hover {
   color: var(--md-default-fg-color);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--pill-count-bg);
 }
 
 .queue-tab-btn.is-active {
@@ -1513,7 +1558,7 @@ body {
 }
 
 .inbox-filter-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--pill-count-bg);
 }
 
 .inbox-filter-btn.is-active {

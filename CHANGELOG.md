@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.9] — 2026-11-12
+
+### Added
+
+- **Light / Dark / Match System Theme (`index.html`, `src/theme.css`, `src/main.ts`)**:
+  - Added an **Appearance & Theme** selector in Settings with **Match System (Currently Light/Dark)**, **Light**, and **Dark** modes.
+  - Added synchronous FOUC-prevention in `index.html` and mapped `<meta name="color-scheme">` to `:root` `color-scheme` with full light-mode custom property overrides and live OS `prefers-color-scheme` / `localStorage` sync.
+- **Integrated Lumo Bridge Authentication (`src-tauri/src/pipeline.rs`, `src-tauri/src/lib.rs`, `src/main.ts`)**:
+  - Added Tauri commands (`check_lumo_auth`, `launch_lumo_login_browser`, `complete_lumo_auth`) and a **Lumo Bridge Authentication** panel in Settings to check `lumo-tamer` session status, launch Chrome/Chromium with CDP on port `9222` using a persistent `lumo-cdp` profile, extract tokens non-interactively, and restart `lumo-tamer`.
+  - Added an actionable re-authentication hint to `HTTP 500` Lumo Bridge errors and a **Re-auth Lumo** button directly on `Cloud Lumo Bridge` stage failure banners.
+
+### Changed
+
+- Updated documentation and package versions to `v1.1.9` (`Kodiak_1.1.9_x64-with-wiki-setup.exe` and `Kodiak_1.1.9_x64-without-wiki-setup.exe`).
+
 ## [1.1.8] — 2026-11-11
 
 ### Fixed
@@ -247,7 +262,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Split Arch `PKGBUILD` producing `kodiak` and `kodiak-projectswiki` packages with dependency hooks (`python-mkdocs-material`, `python-requests`, `python-toml`).
 - Debian/Ubuntu `.deb` binary packages with `apt` dependency resolution.
 
-[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.8...HEAD
+[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.9...HEAD
+[1.1.9]: https://github.com/morganlowe/Kodiak/compare/v1.1.8...v1.1.9
 [1.1.8]: https://github.com/morganlowe/Kodiak/compare/v1.1.7...v1.1.8
 [1.1.7]: https://github.com/morganlowe/Kodiak/compare/v1.1.6...v1.1.7
 [1.1.6]: https://github.com/morganlowe/Kodiak/compare/v1.1.5...v1.1.6

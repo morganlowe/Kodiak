@@ -37,7 +37,8 @@ use pipeline::{
     run_interpret_stage, run_interpret_stage_with_provider, run_shell_command_bounded,
     run_verify_stage, run_verify_stage_with_provider, save_and_return_record,
     start_lumo_bridge_service, start_wiki_service, stop_wiki_service, sync_wiki_catalog_service,
-    CloudErrorKind, HealthStatus, ProviderTestResult, StageProvider, WikiSetupInfo,
+    check_lumo_auth_status, complete_lumo_browser_auth, launch_lumo_auth_browser,
+    CloudErrorKind, HealthStatus, LumoAuthStatus, ProviderTestResult, StageProvider, WikiSetupInfo,
     WikiSetupPayload, WikiStatusDetails,
 };
 use chrono::Utc;
@@ -102,6 +103,22 @@ async fn check_health(state: State<'_, AppState>) -> Result<HealthStatus, String
 async fn start_lumo_bridge(state: State<'_, AppState>) -> Result<HealthStatus, String> {
     let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
     start_lumo_bridge_service(&cfg).await
+}
+
+#[tauri::command]
+async fn check_lumo_auth() -> Result<LumoAuthStatus, String> {
+    Ok(check_lumo_auth_status().await)
+}
+
+#[tauri::command]
+async fn launch_lumo_login_browser() -> Result<String, String> {
+    launch_lumo_auth_browser()
+}
+
+#[tauri::command]
+async fn complete_lumo_auth(state: State<'_, AppState>) -> Result<HealthStatus, String> {
+    let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
+    complete_lumo_browser_auth(&cfg).await
 }
 
 #[tauri::command]
@@ -2976,6 +2993,9 @@ pub fn run() {
             set_cruise_control,
             check_health,
             start_lumo_bridge,
+            check_lumo_auth,
+            launch_lumo_login_browser,
+            complete_lumo_auth,
             start_wiki_server,
             stop_wiki_server,
             restart_wiki_server,

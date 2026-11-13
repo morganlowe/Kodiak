@@ -7,6 +7,51 @@ import { CHARTER_TENETS, renderCharterChip } from "./charter";
 
 type GrantLevel = "READ" | "CREATE" | "BUILD" | "AUTONOMOUS";
 type ActionClass = "read" | "create" | "overwrite" | "mkdir" | "execute" | "request";
+interface LumoAuthStatus {
+  tamer_found: boolean;
+  tamer_path: string | null;
+  authenticated: boolean;
+  status_text: string;
+  browser_available: string | null;
+  cdp_reachable: boolean;
+}
+
+type ThemePreference = "system" | "light" | "dark";
+const THEME_STORAGE_KEY = "kodiak-color-scheme";
+
+function getSystemColorScheme(): "light" | "dark" {
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function getThemePreference(): ThemePreference {
+  try {
+    const val = localStorage.getItem(THEME_STORAGE_KEY);
+    if (val === "light" || val === "dark") return val;
+  } catch {
+    // ignore storage access errors
+  }
+  return "system";
+}
+
+function applyThemePreference(pref: ThemePreference): void {
+  const meta = document.querySelector('meta[name="color-scheme"]') as HTMLMetaElement | null;
+  if (pref === "system") {
+    try {
+      localStorage.removeItem(THEME_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+    if (meta) meta.content = "light dark";
+  } else {
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, pref);
+    } catch {
+      // ignore
+    }
+    if (meta) meta.content = pref;
+  }
+}
+
 type ActiveTab = "workbench" | "dashboard" | "wiki" | "settings" | "about";
 type StageName = "interpret" | "execute" | "verify" | "done";
 type StageStatus = "idle" | "active" | "completed" | "failed";
@@ -518,6 +563,8 @@ interface AppState {
   promptText: string;
   runningPipeline: boolean;
   startingBridge: boolean;
+  lumoAuthStatus: LumoAuthStatus | null;
+  lumoAuthBusy: boolean;
   startingWiki: boolean;
   stoppingWiki: boolean;
   syncingWiki: boolean;
@@ -649,6 +696,8 @@ const state: AppState = {
   promptText: "",
   runningPipeline: false,
   startingBridge: false,
+  lumoAuthStatus: null,
+  lumoAuthBusy: false,
   startingWiki: false,
   stoppingWiki: false,
   syncingWiki: false,
@@ -2959,15 +3008,22 @@ function renderTaskResults(task: TaskRecord): string {
               <strong>Stage '${escapeHtml(task.failed_stage)}' failed:</strong>
               <span>${escapeHtml(task.stage_error ?? "Unknown error")}</span>
             </div>
-            <button
-              type="button"
-              id="retry-stage-btn"
-              data-task-id="${escapeHtml(task.task_id)}"
-              class="btn btn--primary btn--sm"
-              ${state.runningPipeline ? "disabled" : ""}
-            >
-              ↻ Retry Stage '${escapeHtml(task.failed_stage)}' Only
-            </button>
+            <div class="row-inline" style="gap:0.5rem;">
+              ${
+                (task.stage_error ?? "").includes("Cloud Lumo Bridge")
+                  ? `<button type="button" id="stage-reauth-lumo-btn" class="btn btn--sm">Re-auth Lumo</button>`
+                  : ""
+              }
+              <button
+                type="button"
+                id="retry-stage-btn"
+                data-task-id="${escapeHtml(task.task_id)}"
+                class="btn btn--primary btn--sm"
+                ${state.runningPipeline ? "disabled" : ""}
+              >
+                ↻ Retry Stage '${escapeHtml(task.failed_stage)}' Only
+              </button>
+            </div>
           </div>`
         : ""
     }
@@ -4075,6 +4131,83 @@ function renderSettingsTab(): string {
         : ""
     }
 
+    <!-- Appearance & Theme -->
+    <section class="panel-card" id="appearance-settings-section">
+      <div class="panel-header">
+        <div class="row-inline">
+          <h2 class="panel-title">Appearance & Theme</h2>
+          <span class="badge badge--neutral">${
+            (() => {
+              const p = getThemePreference();
+              if (p === "system") return `Match System (Currently ${getSystemColorScheme() === "dark" ? "Dark" : "Light"})`;
+              return p === "dark" ? "Dark" : "Light";
+            })()
+          }</span>
+        </div>
+        <span class="muted">Choose Light, Dark, or Match System (follows your OS color scheme automatically).</span>
+      </div>
+      <div class="row-inline" style="gap:0.5rem; flex-wrap:wrap;">
+        <button type="button" class="btn btn--sm ${getThemePreference() === "system" ? "btn--primary" : ""}" data-theme-pref="system">
+          Match System (Currently ${getSystemColorScheme() === "dark" ? "Dark" : "Light"})
+        </button>
+        <button type="button" class="btn btn--sm ${getThemePreference() === "light" ? "btn--primary" : ""}" data-theme-pref="light">
+          Light
+        </button>
+        <button type="button" class="btn btn--sm ${getThemePreference() === "dark" ? "btn--primary" : ""}" data-theme-pref="dark">
+          Dark
+        </button>
+      </div>
+    </section>
+
+    <!-- Lumo Bridge Authentication -->
+    <section class="panel-card" id="lumo-auth-section">
+      <div class="panel-header">
+        <div class="row-inline">
+          <h2 class="panel-title">Lumo Bridge Authentication</h2>
+          ${
+            state.lumoAuthStatus
+              ? state.lumoAuthStatus.authenticated
+                ? `<span class="badge badge--good">Authenticated</span>`
+                : `<span class="badge badge--bad">Needs Re-auth</span>`
+              : `<span class="badge badge--neutral">Not Checked</span>`
+          }
+          ${
+            state.lumoAuthStatus?.cdp_reachable
+              ? `<span class="badge badge--good">CDP :9222 Live</span>`
+              : ""
+          }
+        </div>
+        <span class="muted">Manage Proton Lumo browser session tokens for lumo-tamer directly inside Kodiak.</span>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:0.75rem;">
+        <div style="padding:0.75rem 1rem; background:var(--wiki-surface); border:1px solid var(--wiki-border); border-radius:var(--wiki-radius-sm);">
+          <div style="font-size:0.84rem;">
+            <strong>Session Status:</strong>
+            <span class="mono">${escapeHtml(state.lumoAuthStatus ? state.lumoAuthStatus.status_text : "Click 'Check Auth Status' to inspect lumo-tamer.")}</span>
+          </div>
+          ${
+            state.lumoAuthStatus?.browser_available
+              ? `<div class="muted" style="font-size:0.78rem; margin-top:0.25rem;">Detected browser: <span class="mono">${escapeHtml(state.lumoAuthStatus.browser_available)}</span></div>`
+              : ""
+          }
+        </div>
+        <div class="row-inline" style="gap:0.5rem; flex-wrap:wrap;">
+          <button type="button" id="lumo-launch-browser-btn" class="btn btn--sm btn--primary" ${state.lumoAuthBusy ? "disabled" : ""}>
+            1. Open Lumo Login Browser
+          </button>
+          <button type="button" id="lumo-complete-auth-btn" class="btn btn--sm" ${state.lumoAuthBusy ? "disabled" : ""}>
+            ${state.lumoAuthBusy ? "Authenticating..." : "2. Extract Tokens & Restart Bridge"}
+          </button>
+          <button type="button" id="lumo-check-auth-btn" class="btn btn--sm" ${state.lumoAuthBusy ? "disabled" : ""}>
+            Check Auth Status
+          </button>
+        </div>
+        <p class="muted" style="margin:0; font-size:0.78rem;">
+          Step 1 launches your browser with a persistent Kodiak profile on CDP port 9222 at <span class="mono">https://lumo.proton.me</span>. Log in there, then click Step 2 to extract tokens and restart <span class="mono">lumo-tamer</span>.
+        </p>
+      </div>
+    </section>
+
     <!-- Projects Wiki & AI Documentation Hub Integration -->
     <section class="panel-card">
       <div class="panel-header">
@@ -4839,7 +4972,7 @@ function renderAboutTab(): string {
         <div style="flex:1; min-width:240px;">
           <div class="row-inline" style="gap:0.75rem; align-items:baseline;">
             <h1 style="margin:0; font-size:1.8rem; font-weight:700; color:var(--md-default-fg-color);">Kodiak</h1>
-            <span class="badge badge--ok" style="font-size:0.85rem;">v1.1.8</span>
+            <span class="badge badge--ok" style="font-size:0.85rem;">v1.1.9</span>
           </div>
           <p style="margin:0.35rem 0 0.5rem 0; font-size:1.05rem; font-weight:500; color:var(--md-default-fg-color);">
             The bear who runs the job site — local-first AI task delegation
@@ -4958,7 +5091,7 @@ function renderAboutTab(): string {
             <span><strong>Brand Asset:</strong> Morninglion Industries</span>
           </div>
           <div class="row-inline muted">
-            <span>Kodiak Task Delegation System (v1.1.8)</span>
+            <span>Kodiak Task Delegation System (v1.1.9)</span>
           </div>
         </div>
         <div style="text-align:center; padding-top:1.5rem; border-top:1px solid var(--wiki-border); margin-top:1.25rem;">
@@ -6063,6 +6196,80 @@ function bindEvents(): void {
   };
   document.getElementById("start-bridge-btn")?.addEventListener("click", handleStartBridge);
   document.getElementById("start-bridge-inline-btn")?.addEventListener("click", handleStartBridge);
+
+  // Theme preference buttons
+  document.querySelectorAll<HTMLElement>("[data-theme-pref]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const pref = btn.getAttribute("data-theme-pref") as ThemePreference | null;
+      if (!pref) return;
+      applyThemePreference(pref);
+      renderApp();
+    });
+  });
+
+  // Lumo Auth: jump from stage error banner to Settings -> Lumo Auth
+  document.getElementById("stage-reauth-lumo-btn")?.addEventListener("click", async () => {
+    state.tab = "settings";
+    renderApp();
+    try {
+      state.lumoAuthStatus = await invoke<LumoAuthStatus>("check_lumo_auth");
+      renderApp();
+    } catch {
+      // ignore
+    }
+    document.getElementById("lumo-auth-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  // Lumo Auth: Check status
+  document.getElementById("lumo-check-auth-btn")?.addEventListener("click", async () => {
+    state.lumoAuthBusy = true;
+    state.uiBannerError = null;
+    renderApp();
+    try {
+      state.lumoAuthStatus = await invoke<LumoAuthStatus>("check_lumo_auth");
+    } catch (err) {
+      state.uiBannerError = String(err);
+    } finally {
+      state.lumoAuthBusy = false;
+      renderApp();
+    }
+  });
+
+  // Lumo Auth: Step 1 - Launch browser with CDP
+  document.getElementById("lumo-launch-browser-btn")?.addEventListener("click", async () => {
+    state.lumoAuthBusy = true;
+    state.uiBannerError = null;
+    state.uiBannerInfo = null;
+    renderApp();
+    try {
+      const msg = await invoke<string>("launch_lumo_login_browser");
+      state.uiBannerInfo = msg;
+      state.lumoAuthStatus = await invoke<LumoAuthStatus>("check_lumo_auth");
+    } catch (err) {
+      state.uiBannerError = String(err);
+    } finally {
+      state.lumoAuthBusy = false;
+      renderApp();
+    }
+  });
+
+  // Lumo Auth: Step 2 - Extract tokens & restart lumo-tamer
+  document.getElementById("lumo-complete-auth-btn")?.addEventListener("click", async () => {
+    state.lumoAuthBusy = true;
+    state.uiBannerError = null;
+    state.uiBannerInfo = null;
+    renderApp();
+    try {
+      state.health = await invoke<HealthStatus>("complete_lumo_auth");
+      state.lumoAuthStatus = await invoke<LumoAuthStatus>("check_lumo_auth");
+      state.uiBannerInfo = "Lumo tokens extracted and lumo-tamer restarted cleanly.";
+    } catch (err) {
+      state.uiBannerError = String(err);
+    } finally {
+      state.lumoAuthBusy = false;
+      renderApp();
+    }
+  });
 
   // Prompt input sync & @ mention detection
   const promptEl = document.getElementById("task-prompt-input") as HTMLTextAreaElement | null;
@@ -7875,6 +8082,19 @@ window.addEventListener("contextmenu", (e) => {
     return;
   }
   e.preventDefault();
+});
+
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  if (getThemePreference() === "system") {
+    renderApp();
+  }
+});
+
+window.addEventListener("storage", (e) => {
+  if (e.key === THEME_STORAGE_KEY) {
+    applyThemePreference(getThemePreference());
+    renderApp();
+  }
 });
 
 refreshAllState();
