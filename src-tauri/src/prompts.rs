@@ -21,7 +21,7 @@ HARD CONSTRAINTS:
 5. Every step MUST declare `route_tool` from this exact set:
    - "summarize_file"       (routes to local llama3.2:3b; requires `target_path`)
    - "search_and_summarize" (routes to local rg + llama3.2:3b; requires `search_pattern` and `target_path`)
-   - "draft_code"           (routes to local qwen2.5-coder:7b to draft a new file or edit an existing file; requires `target_path` and `instruction`)
+   - "draft_code"           (routes to local qwen2.5-coder:7b to create a new file or edit an existing file — use this for BOTH source code AND Markdown/text documents such as status.md or README.md; requires a concrete `target_path` and detailed `instruction`; pair with `action_class`: "create" for new files or "overwrite" for existing files)
    - "review_git_diff"      (routes to local qwen2.5-coder:7b)
    - "digest_log_or_errors" (routes to local llama3.2:3b)
    - "mkdir"                (creates directory `target_path`)
@@ -42,11 +42,21 @@ HARD CONSTRAINTS:
    - For "draft_code" edits on existing files, declare `intent`: "edit" (targeted modification) or "rewrite" (replacing majority of file).
 9. REQUEST MANDATE:
    - If any step would require facts not present in the user prompt, referenced memories, or whitelisted files, you MUST insert a REQUEST (information) step obtaining those facts before any step that drafts from them. Drafting from assumed values is forbidden.
+10. TWO-PHASE DISCOVERY:
+   - ONLY set `"phase": "discovery"` and `"needs_planning_followup": true` when the user asks to create, edit, fix, refactor, or build files across multiple files and no `Prior Round Context` summaries are present yet.
+   - NEVER set `needs_planning_followup: true` for read-only tasks (summarizing, explaining, inspecting, auditing, or reviewing a project) — for read-only tasks set `"phase": "implementation"` and `"needs_planning_followup": false`. Never set `needs_planning_followup: true` once `Prior Round Context` summaries are already provided.
+   - When asked to create or update a project summary/status document (e.g. `status.md`) and `Prior Round Context` already contains project summaries or a `Prior Synthesized Response`, go straight to `"phase": "implementation"`, `"needs_planning_followup": false`, using `"draft_code"` (`action_class`: "create" or "overwrite") on that document target (plus targeted read steps only if concrete details are still missing).
+   - When asked to summarize a project or create a project status document (`status.md` covering project details, current status, what is done, and what needs done), inspect representative core source/entrypoint/config files from the project file list (e.g., root `.py`/`.rs`/`.ts`/`.yml`/`.toml`/`.json` files and key `src/` or `app/` files, plus read-only `git status`) rather than stopping at `README.md` or `MIGRATION.md` alone, which may be minimal stubs.
+11. ITERATIVE ROUNDS & REPAIR:
+   - When `Prior Round Context` is included (previous plan, condensed summaries, diffs, verification critique, rejected card reasons, test/build error digests, user answers, or follow-up instructions), plan ONLY the targeted steps needed to address the feedback, fix issues, or implement the next increment.
+   - When `Current Follow-Up Request` is present in the user task prompt, treat that follow-up request as the PRIMARY objective for this round (using the Round 1 prompt as background context), and reuse grounded facts already present in `Prior Round Context`.
 
 Required JSON schema:
 {
   "goal": "Clear, corrected 1-sentence statement of the task goal",
   "estimated_risk": "low" | "medium" | "high",
+  "phase": "discovery" | "implementation" | "repair",
+  "needs_planning_followup": false,
   "files_involved": ["relative/path/file1", "relative/path/file2"],
   "memories_used": ["memory-id-1"],
   "steps": [
@@ -86,12 +96,16 @@ You receive ONLY:
 CRITICAL GROUNDING RULE: If Grounding & Epistemic Warnings are present, scrutinize whether the proposed diffs or step outputs rely on unverified past pipeline hallucinations. If an unverified source was used to substantiate claims or facts not in the user prompt or authoritative specs, you MUST flag concerns or fail the verification with a clear rationale.
 CRITICAL GROUNDING & SPEC RULE: When a draft contains numeric, hardware, or specification claims, check that a cited source step actually delivered content (the memory delivery metric and step logs are evidence). Zero-delivery grounding or drafting without obtaining external facts via REQUEST is an automatic CONCERNS or FAIL.
 CRITICAL IRRELEVANT-CONTENT RULE: FAIL any diff containing content unrelated to the task goal (unrequested features, new functions serving no plan step, behaviors the task never mentions) — citing the unrelated element explicitly — even if syntactically plausible. Diffs must strictly address the specified goal without injecting unsolicited additions (exemplar: injecting unrequested keyboard-backlight functions into an unrelated Arduino sketch is an immediate FAIL).
+CRITICAL APPROVAL-STATUS RULE: Check each Action Card's `status` field. If any create/overwrite/mkdir/execute card has `status="pending_approval"`, NEVER claim the file has already been created or written to disk — explicitly state in `"response"` that the draft/change is staged and awaiting user approval via "Approve & Execute". Similarly, if `status="dry_run"`, state that it was suppressed by Dry-Run mode.
 
 Evaluate whether the proposed diffs and outputs accurately and safely fulfill the plan.
+When `verdict` is `"concerns"` or `"fail"`, make `rationale` concrete and actionable (naming specific files, steps, or missing checks) so a repair pass can resolve each item directly.
+Also provide `"response"`: a clear, well-structured direct answer to the user's request grounded strictly in the condensed local step summaries, command outputs, and diffs (for example: complete project summary, status, dependencies, or concise report of changes drafted/applied). Never invent facts absent from the evidence.
 Respond with ONLY valid JSON matching this schema:
 {
   "verdict": "pass" | "concerns" | "fail",
-  "rationale": "One concise paragraph explaining why the changes pass, raise concerns, or fail against the plan."
+  "rationale": "One concise paragraph explaining why the changes pass, raise concerns, or fail against the plan.",
+  "response": "Direct user-facing answer or summary grounded strictly in the local step summaries, command outputs, and diffs."
 }"#;
 
 /// Exact prompt contract from `ollama_delegate_mcp.py` (`summarize_file`, L521-L530).

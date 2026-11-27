@@ -76,7 +76,8 @@ type PipelineEvent =
   | { kind: "stage_changed"; task_id: string; stage: string; status: string; detail: string | null; timestamp: string }
   | { kind: "ticker_log"; task_id: string; stage: string; level: string; message: string; timestamp: string }
   | { kind: "draft_stream_chunk"; task_id: string; step_id: number; title: string; action_class: string; target_path: string; model: string; chunk: string; accumulated: string }
-  | { kind: "draft_stream_done"; task_id: string; step_id: number; target_path: string; success: boolean; error: string | null };
+  | { kind: "draft_stream_done"; task_id: string; step_id: number; target_path: string; success: boolean; error: string | null }
+  | { kind: "round_changed"; task_id: string; round_number: number; trigger: string; detail: string | null; timestamp: string };
 
 interface QueueItem {
   queue_id: string;
@@ -203,6 +204,11 @@ interface AppConfig {
   exclusion_list?: string[];
   custom_css?: string;
   ui_collapsed?: Record<string, boolean>;
+  auto_repair_enabled?: boolean;
+  max_auto_repair_rounds?: number;
+  discovery_pass_enabled?: boolean;
+  pause_on_request?: boolean;
+  pause_after_plan?: boolean;
 }
 
 interface RescanResult {
@@ -358,6 +364,8 @@ interface TaskPlan {
   files_involved: string[];
   memories_used?: string[];
   steps: PlanStep[];
+  phase?: string | null;
+  needs_planning_followup?: boolean;
 }
 
 interface MemoryEntry {
@@ -484,6 +492,7 @@ interface MultiProjectDashboardResponse {
 interface VerificationResult {
   verdict: string;
   rationale: string;
+  response?: string | null;
 }
 
 interface ChoiceCard {
@@ -493,6 +502,19 @@ interface ChoiceCard {
   chosen_option?: string | null;
   chosen_at?: string | null;
   chosen_provider?: string | null;
+}
+
+interface TaskRoundSnapshot {
+  round_number: number;
+  timestamp: string;
+  trigger: string;
+  user_note?: string | null;
+  plan: TaskPlan | null;
+  step_logs: StepExecutionLog[];
+  action_cards: ActionCard[];
+  verification: VerificationResult | null;
+  failed_stage: string | null;
+  stage_error: string | null;
 }
 
 interface TaskRecord {
@@ -527,6 +549,14 @@ interface TaskRecord {
   local_grade_verify?: boolean;
   provider_interpret?: string | null;
   provider_verify?: string | null;
+  current_round?: number;
+  rounds?: TaskRoundSnapshot[];
+  paused_at_step_id?: number | null;
+  pause_reason?: string | null;
+  auto_repair_attempts?: number;
+  discovery_completed?: boolean;
+  followup_notes?: string[];
+  awaiting_plan_approval?: boolean;
 }
 
 interface JournalEntry {
@@ -633,6 +663,12 @@ interface AppState {
   batchApproving: boolean;
   inboxFilter: "all" | "conflicts" | "safe";
   dashboardData: MultiProjectDashboardResponse | null;
+  followupText: string;
+  expandedRounds: Record<number, boolean>;
+  lastBatchApprovedTaskIds: string[];
+  tickerCollapsed: boolean;
+  planReviseText: string;
+  uncheckedPlanSteps: Record<number, boolean>;
 }
 
 const COLLAPSED_STORAGE_KEY = "kodiak:ui_collapsed";
@@ -754,6 +790,12 @@ const state: AppState = {
   sessionAltConsent: false,
   appSessionStartTime: Date.now(),
   activeRunLog: null,
+  followupText: "",
+  expandedRounds: {},
+  lastBatchApprovedTaskIds: [],
+  tickerCollapsed: false,
+  planReviseText: "",
+  uncheckedPlanSteps: {},
 };
 
 let tickerHover = false;
@@ -913,12 +955,30 @@ function handlePipelineEvent(ev: PipelineEvent): void {
         };
       }
       break;
+    case "round_changed":
+      state.ticker.push({
+        level: "info",
+        message: `[Round ${ev.round_number}] ${ev.trigger}${ev.detail ? `: ${ev.detail}` : ""}`,
+        timestamp: ev.timestamp,
+      });
+      if (state.ticker.length > 500) state.ticker.shift();
+      if (ev.task_id && !state.readOnlyHistorical) {
+        refreshAllState().then(() => {
+          const found = state.history.find((h) => h.task_id === ev.task_id);
+          if (found) {
+            state.currentTask = found;
+            renderApp();
+          }
+        });
+      }
+      break;
   }
   updateLiveDom();
 }
 
 function resetLiveRun(keepTicker: boolean): void {
   state.liveDraft = null;
+  state.tickerCollapsed = false;
   if (!keepTicker) state.ticker = [];
 }
 
@@ -2298,6 +2358,14 @@ function renderWorkbenchTab(): string {
         </div>
 
         <div class="row-inline">
+          <label class="row-inline" style="gap:0.35rem; font-size:0.78rem; cursor:pointer;" title="Pause after Stage 1 so you can review, uncheck steps, or revise the plan before local Ollama executes">
+            <input type="checkbox" id="wb-pause-after-plan-toggle" ${cfg.pause_after_plan ?? true ? "checked" : ""} />
+            <span>Pause for Plan Review</span>
+          </label>
+          <label class="row-inline" style="gap:0.35rem; font-size:0.78rem; cursor:pointer;" title="Automatically feed Verify FAIL or shell build/test errors into a repair round">
+            <input type="checkbox" id="wb-auto-repair-toggle" ${cfg.auto_repair_enabled ? "checked" : ""} />
+            <span>Auto-Repair (${cfg.max_auto_repair_rounds ?? 2})</span>
+          </label>
           <span class="muted" style="font-size:0.75rem;">Cloud plans & verifies; local builds. ${renderCharterChip(1, "Your files stay home")} • ${renderCharterChip(5, "Local first")}</span>
           <button
             type="button"
@@ -2330,9 +2398,6 @@ function renderWorkbenchTab(): string {
       </div>
     </section>
 
-    <!-- Slice 2: live stage progress bar -->
-    <div class="stage-progress" id="stage-progress" aria-label="Pipeline stage progress">${renderStageProgress()}</div>
-
     ${
       state.ticker.length > 0 || state.runningPipeline
         ? `<section class="panel-card">
@@ -2347,9 +2412,14 @@ function renderWorkbenchTab(): string {
                 <button type="button" id="ticker-copy-all-btn" class="btn btn--sm" title="Copy all ticker log lines as text">Copy All Lines</button>
                 <span class="muted">${state.tickerLocked ? "Scroll locked" : "Auto-scroll (pauses on hover)"}</span>
                 <button type="button" id="ticker-lock-btn" class="btn btn--sm">${state.tickerLocked ? "Unlock scroll" : "Lock scroll"}</button>
+                <button type="button" id="ticker-collapse-btn" class="btn btn--sm">${state.tickerCollapsed ? "Expand" : "Collapse"}</button>
               </div>
             </div>
-            <div class="ticker-body" id="ticker-body">${state.ticker.map(tickerLineHtml).join("")}</div>
+            ${
+              state.tickerCollapsed
+                ? ""
+                : `<div class="ticker-body" id="ticker-body">${state.ticker.map(tickerLineHtml).join("")}</div>`
+            }
           </section>`
         : ""
     }
@@ -2981,425 +3051,727 @@ function renderResolvedChoiceCards(task: TaskRecord): string {
     .join("");
 }
 
+function renderActionCardMarkup(
+  task: TaskRecord,
+  card: ActionCard,
+  planStepIds: Set<number>,
+  interactive: boolean
+): string {
+  const hasShellErr =
+    card.action_class === "execute" &&
+    !!card.execution_output &&
+    /error(\[|:)|FAILED|Command exited with status [^0]|panicked at|Traceback/i.test(card.execution_output);
+
+  return `
+    <article class="${cardBorderClass(card.status, card.action_class)}">
+      <button type="button" class="copy-btn-corner" data-copy-text="${escapeHtml(
+        card.diff_or_command.startsWith("---") || card.diff_or_command.includes("\n+++")
+          ? card.diff_or_command
+          : `\`\`\`\n${card.diff_or_command}\n\`\`\``
+      )}" data-copy-label="Diff / Command">Copy</button>
+      <div class="row-between">
+        <div class="row-inline">
+          <span class="badge">Step #${card.step_id}</span>
+          <strong>${escapeHtml(card.title)}</strong>
+          <span class="badge badge--neutral">${escapeHtml(card.action_class)}</span>
+          ${card.request_kind ? `<span class="badge badge--accent">${escapeHtml(card.request_kind.toUpperCase())}</span>` : ""}
+          ${
+            card.target_path && card.target_path.trim().length > 0 && card.target_path !== "."
+              ? `<span class="mono">${escapeHtml(card.target_path)}</span>`
+              : ""
+          }
+        </div>
+        ${cardStatusBadge(card)}
+      </div>
+      ${
+        card.warning_chip
+          ? `<div class="warning-row">
+              <span class="chip-warning">${escapeHtml(card.warning_chip)}</span>
+              ${
+                interactive && card.warning_chip.includes("PIPELINE-GENERATED")
+                  ? `<button type="button" class="btn-user-authored" data-project="${escapeHtml(
+                      card.directory
+                    )}" data-target="${escapeHtml(card.target_path)}">Mark as user-authored</button>`
+                  : ""
+              }
+            </div>`
+          : ""
+      }
+      ${
+        card.memory_delivery_chip
+          ? `<div class="memory-delivery-row">
+              <span class="chip-memory">${escapeHtml(card.memory_delivery_chip)}</span>
+            </div>`
+          : ""
+      }
+      ${
+        card.inconsistency_note
+          ? `<div class="inconsistency-box">
+              <strong>Safety Warning:</strong> ${escapeHtml(card.inconsistency_note)}
+            </div>`
+          : ""
+      }
+      ${
+        card.question
+          ? `<div class="request-field request-field--question" style="font-size:0.95rem; margin-block:0.35rem; color:var(--wiki-text);"><strong>Question:</strong> ${escapeHtml(card.question)}</div>`
+          : ""
+      }
+      ${
+        card.answer_format
+          ? `<div class="request-field muted" style="font-size:0.8rem; margin-block-end:0.35rem;"><strong>Format:</strong> <code>${escapeHtml(card.answer_format)}</code></div>`
+          : ""
+      }
+      ${
+        card.justification
+          ? `<div class="request-field"><strong>Justification:</strong> ${escapeHtml(card.justification)}</div>`
+          : ""
+      }
+      ${
+        card.consequences_of_decline
+          ? `<div class="request-field"><strong>Consequences if declined:</strong> ${escapeHtml(card.consequences_of_decline)}</div>`
+          : ""
+      }
+      ${
+        card.user_provided_info
+          ? `<div class="request-field request-field--provided"><strong>Provided Info:</strong> ${escapeHtml(card.user_provided_info)}</div>`
+          : ""
+      }
+      <p class="muted" style="margin:0; font-size:0.8rem;">
+        ${escapeHtml(card.decision_reason)}
+      </p>
+      ${
+        card.diff_or_command && card.diff_or_command.trim().length > 0
+          ? `<div class="diff-view">${renderDiffLines(card.diff_or_command)}</div>`
+          : ""
+      }
+      ${
+        card.execution_output
+          ? `<div class="diff-view"><strong>Execution Output:</strong>\n${escapeHtml(
+              card.execution_output
+            )}</div>`
+          : ""
+      }
+      ${
+        !interactive
+          ? ""
+          : card.status === "pending_approval"
+          ? card.action_class === "request" && card.request_kind === "information"
+            ? `<div class="request-info-input-area" style="margin-block-start:0.5rem; display:flex; flex-direction:column; gap:0.4rem;">
+                ${
+                  card.suggested_default
+                    ? `<div class="row-between" style="background:var(--wiki-bg-card); padding:0.4rem 0.6rem; border:1px solid var(--wiki-border); border-radius:var(--wiki-radius-sm); font-size:0.82rem;">
+                        <span><strong>Suggested:</strong> <code>${escapeHtml(card.suggested_default)}</code></span>
+                        <button type="button" class="btn btn--sm use-suggestion-btn" data-card-id="${escapeHtml(card.card_id)}" data-suggestion="${escapeHtml(card.suggested_default)}">
+                          Use suggestion
+                        </button>
+                      </div>`
+                    : ""
+                }
+                <textarea
+                  class="form-input request-info-textarea"
+                  data-card-id="${escapeHtml(card.card_id)}"
+                  placeholder="Enter requested information here..."
+                  rows="2"
+                  style="width:100%; font-family:var(--wiki-font-mono); font-size:0.82rem;"
+                ></textarea>
+                <div class="row-between">
+                  <span class="muted" style="font-size:0.8rem;">Stays local; only concise excerpt sent to verify.</span>
+                  <div class="row-inline">
+                    <button type="button" class="btn btn--primary provide-resume-btn" data-task-id="${escapeHtml(task.task_id)}" data-card-id="${escapeHtml(card.card_id)}" ${state.runningPipeline ? "disabled" : ""}>
+                      Provide &amp; Resume
+                    </button>
+                    <button type="button" class="btn btn--ok provide-info-btn" data-task-id="${escapeHtml(task.task_id)}" data-card-id="${escapeHtml(card.card_id)}">
+                      Provide Only
+                    </button>
+                    <button type="button" class="btn btn--bad skip-info-btn" data-task-id="${escapeHtml(task.task_id)}" data-card-id="${escapeHtml(card.card_id)}">
+                      Skip
+                    </button>
+                  </div>
+                </div>
+              </div>`
+            : card.action_class === "request" && card.request_kind === "capability"
+            ? `<div class="row-between" style="margin-block-start:0.5rem;">
+                <span class="muted" style="font-size:0.8rem;">Grants task-scoped access to external path. config.toml remains untouched.</span>
+                <div class="row-inline">
+                  <button type="button" class="btn btn--primary grant-resume-btn" data-task-id="${escapeHtml(task.task_id)}" data-card-id="${escapeHtml(card.card_id)}" ${state.runningPipeline ? "disabled" : ""}>
+                    Grant &amp; Resume
+                  </button>
+                  <button type="button" class="btn btn--ok approve-card-btn" data-task-id="${escapeHtml(task.task_id)}" data-card-id="${escapeHtml(card.card_id)}">
+                    Grant (Task-Scoped)
+                  </button>
+                  <button type="button" class="btn btn--bad reject-card-btn" data-task-id="${escapeHtml(task.task_id)}" data-card-id="${escapeHtml(card.card_id)}">
+                    Decline
+                  </button>
+                </div>
+              </div>`
+            : `<div class="row-between" style="margin-block-start:0.25rem; flex-wrap:wrap; gap:0.45rem;">
+                <div class="row-inline" style="flex:1 1 320px;">
+                  <input type="text" class="form-input reject-reason-input step-feedback-input" data-card-id="${escapeHtml(card.card_id)}" data-step-id="${card.step_id}" placeholder="Feedback for revision or reason for rejection..." style="flex:1;" />
+                </div>
+                <div class="row-inline">
+                  ${
+                    planStepIds.has(card.step_id)
+                      ? `<button type="button" class="btn btn--sm revise-step-btn" data-task-id="${escapeHtml(task.task_id)}" data-step-id="${card.step_id}" data-card-id="${escapeHtml(card.card_id)}" ${state.runningPipeline ? "disabled" : ""}>Revise with Feedback</button>`
+                      : ""
+                  }
+                  <button type="button" class="btn btn--ok approve-card-btn" data-task-id="${escapeHtml(task.task_id)}" data-card-id="${escapeHtml(card.card_id)}">
+                    Approve & Execute
+                  </button>
+                  <button type="button" class="btn btn--bad reject-card-btn" data-task-id="${escapeHtml(task.task_id)}" data-card-id="${escapeHtml(card.card_id)}">
+                    Reject
+                  </button>
+                </div>
+              </div>`
+          : planStepIds.has(card.step_id) || hasShellErr
+          ? `<div class="step-retry-bar">
+              ${
+                planStepIds.has(card.step_id)
+                  ? `<input type="text" class="form-input step-feedback-input" data-step-id="${card.step_id}" data-card-id="${escapeHtml(card.card_id)}" placeholder="Optional feedback to revise this step..." style="flex:1 1 240px;" />`
+                  : `<span></span>`
+              }
+              <div class="row-inline" style="gap:0.4rem; flex-wrap:wrap;">
+                ${
+                  hasShellErr
+                    ? `<button type="button" class="btn btn--sm btn--primary fix-card-errors-btn" data-task-id="${escapeHtml(task.task_id)}" data-card-id="${escapeHtml(card.card_id)}" ${state.runningPipeline ? "disabled" : ""}>Fix Errors in Next Round</button>`
+                    : ""
+                }
+                ${
+                  planStepIds.has(card.step_id)
+                    ? `<button type="button" class="btn btn--sm retry-step-btn" data-task-id="${escapeHtml(task.task_id)}" data-step-id="${card.step_id}" ${state.runningPipeline ? "disabled" : ""}>Retry Step</button>
+                       <button type="button" class="btn btn--sm revise-step-btn" data-task-id="${escapeHtml(task.task_id)}" data-step-id="${card.step_id}" data-card-id="${escapeHtml(card.card_id)}" ${state.runningPipeline ? "disabled" : ""}>Revise with Feedback</button>`
+                    : ""
+                }
+              </div>
+            </div>`
+          : ""
+      }
+    </article>
+  `;
+}
+
+function formatTriggerLabel(trigger: string): string {
+  switch (trigger) {
+    case "initial":
+      return "Initial Prompt";
+    case "user_followup":
+      return "Follow-Up";
+    case "plan_revision":
+      return "Plan Revision";
+    case "auto_repair":
+      return "Auto-Repair";
+    case "discovery_followup":
+      return "Discovery -> Implementation";
+    case "reinterpret":
+      return "Re-plan";
+    case "reexecute":
+      return "Re-execute";
+    case "reverify":
+      return "Re-verify";
+    case "request_resume":
+      return "Resumed with Info";
+    case "step_retry":
+      return "Step Retry";
+    default:
+      return trigger;
+  }
+}
+
+interface ConversationTurnData {
+  round_number: number;
+  timestamp: string;
+  trigger: string;
+  user_text: string | null;
+  plan: TaskPlan | null;
+  step_logs: StepExecutionLog[];
+  action_cards: ActionCard[];
+  verification: VerificationResult | null;
+  failed_stage: string | null;
+  stage_error: string | null;
+}
+
+function renderConversationTurn(
+  task: TaskRecord,
+  turn: ConversationTurnData,
+  isActiveRound: boolean,
+  isQuota: boolean,
+  planStepIds: Set<number>
+): string {
+  const showPlanGate = isActiveRound && !!task.awaiting_plan_approval && !!turn.plan;
+  const hasResponse = !!(turn.verification?.response && turn.verification.response.trim().length > 0);
+  const openLogsByDefault =
+    isActiveRound && !hasResponse && !(turn.failed_stage === "interpret" && !turn.plan);
+  const openPlanByDefault = !isActiveRound ? false : turn.step_logs.length === 0;
+
+  return `
+    <div class="chat-turn chat-turn--user">
+      <div class="row-between" style="gap:0.5rem;">
+        <div class="row-inline" style="gap:0.45rem; flex-wrap:wrap;">
+          <span class="badge badge--accent">You</span>
+          <span class="badge">Round ${turn.round_number}</span>
+          <span class="badge badge--neutral">${escapeHtml(formatTriggerLabel(turn.trigger))}</span>
+          ${
+            turn.round_number === 1
+              ? `<span class="mono muted" style="font-size:0.78rem;">${escapeHtml(task.project_dir)}</span>`
+              : ""
+          }
+          <span class="muted" style="font-size:0.76rem;">${escapeHtml(turn.timestamp.slice(0, 19).replace("T", " "))}</span>
+        </div>
+        ${
+          turn.round_number === 1
+            ? `<button type="button" class="btn btn--sm copy-prompt-to-input-btn" data-prompt="${escapeHtml(task.prompt)}" title="Copy initial prompt back into the prompt box above">
+                Load into Prompt Box
+              </button>`
+            : ""
+        }
+      </div>
+      ${
+        turn.user_text
+          ? `<div style="white-space:pre-wrap; font-size:0.92rem;">${escapeHtml(turn.user_text)}</div>`
+          : `<div class="muted" style="font-size:0.84rem;">Triggered ${escapeHtml(formatTriggerLabel(turn.trigger))}</div>`
+      }
+    </div>
+
+    <div class="chat-turn chat-turn--assistant">
+      <div class="row-between" style="gap:0.5rem;">
+        <div class="row-inline" style="gap:0.45rem; flex-wrap:wrap;">
+          <span class="badge badge--ok">Kodiak</span>
+          <span class="badge badge--neutral">Round ${turn.round_number}</span>
+          ${
+            isActiveRound && task.local_grade_plan
+              ? `<span class="badge badge--warn" title="Planned via local model during cloud unavailability">LOCAL-GRADE PLANNING (${renderCharterChip(5, "Local first")})</span>`
+              : ""
+          }
+          ${
+            isActiveRound && task.provider_interpret && !task.local_grade_plan && task.provider_interpret !== task.cloud_model
+              ? `<span class="badge badge--neutral">Plan: ${escapeHtml(task.provider_interpret)}</span>`
+              : ""
+          }
+          ${
+            isActiveRound && task.provider_verify && !task.local_grade_verify && task.provider_verify !== task.cloud_model
+              ? `<span class="badge badge--neutral">Verify: ${escapeHtml(task.provider_verify)}</span>`
+              : ""
+          }
+        </div>
+      </div>
+
+      ${
+        isActiveRound && task.paused_at_step_id != null
+          ? `<div class="paused-banner">
+              <div>
+                <strong>Execution paused at Step #${task.paused_at_step_id}:</strong>
+                <span>${escapeHtml(task.pause_reason ?? "Answer or grant the pending REQUEST card below, then resume.")}</span>
+              </div>
+              <div class="row-inline" style="gap:0.45rem;">
+                <button type="button" id="resume-paused-btn" class="btn btn--sm btn--primary" data-task-id="${escapeHtml(task.task_id)}" ${state.runningPipeline ? "disabled" : ""}>
+                  Resume Task
+                </button>
+                <button type="button" id="replan-paused-btn" class="btn btn--sm" data-task-id="${escapeHtml(task.task_id)}" ${state.runningPipeline ? "disabled" : ""}>
+                  Re-plan with Info
+                </button>
+              </div>
+            </div>`
+          : ""
+      }
+
+      ${isActiveRound && task.deferred ? renderDeferredCard(task) : ""}
+      ${isActiveRound ? renderResolvedChoiceCards(task) : ""}
+      ${
+        isActiveRound && turn.failed_stage && isQuota && !task.deferred
+          ? renderChoiceCard(task)
+          : turn.failed_stage && (!isActiveRound || !task.deferred)
+          ? `<div class="stage-alert">
+              <div>
+                <strong>Stage '${escapeHtml(turn.failed_stage)}' failed:</strong>
+                <span>${escapeHtml(turn.stage_error ?? "Unknown error")}</span>
+              </div>
+              ${
+                isActiveRound
+                  ? `<div class="row-inline" style="gap:0.5rem;">
+                      ${
+                        (turn.stage_error ?? "").includes("Cloud Lumo Bridge")
+                          ? `<button type="button" id="stage-reauth-lumo-btn" class="btn btn--sm">Re-auth Lumo</button>`
+                          : ""
+                      }
+                      <button type="button" id="retry-stage-btn" data-task-id="${escapeHtml(task.task_id)}" class="btn btn--primary btn--sm" ${state.runningPipeline ? "disabled" : ""}>
+                        Retry Stage '${escapeHtml(turn.failed_stage)}' Only
+                      </button>
+                    </div>`
+                  : ""
+              }
+            </div>`
+          : ""
+      }
+
+      ${
+        showPlanGate && turn.plan
+          ? `<div class="plan-gate-card">
+              <div class="row-between" style="gap:0.5rem; flex-wrap:wrap;">
+                <div class="row-inline" style="gap:0.45rem; flex-wrap:wrap;">
+                  <strong>Plan Ready for Review</strong>
+                  <span class="${riskBadgeClass(turn.plan.estimated_risk)}">Risk: ${escapeHtml(turn.plan.estimated_risk)}</span>
+                  <span class="badge badge--neutral">Files: ${escapeHtml(turn.plan.files_involved.join(", ") || "none")}</span>
+                </div>
+                <span class="muted" style="font-size:0.8rem;">Uncheck unwanted steps, revise with feedback, or approve to run on local Ollama.</span>
+              </div>
+              <p style="margin:0;"><strong>Goal:</strong> ${escapeHtml(turn.plan.goal)}</p>
+              <div style="display:flex; flex-direction:column; gap:0.45rem;">
+                ${turn.plan.steps
+                  .map((s) => {
+                    const isChecked = !state.uncheckedPlanSteps[s.id];
+                    return `
+                      <label class="plan-step-row" style="cursor:pointer;">
+                        <div class="row-inline" style="align-items:flex-start; gap:0.55rem; flex:1;">
+                          <input type="checkbox" class="plan-step-checkbox" data-step-id="${s.id}" ${isChecked ? "checked" : ""} />
+                          <div style="display:flex; flex-direction:column; gap:0.2rem;">
+                            <div class="row-inline" style="flex-wrap:wrap; gap:0.4rem;">
+                              <span class="badge">#${s.id}</span>
+                              <strong>${escapeHtml(s.title)}</strong>
+                              ${
+                                s.target_path && s.target_path.trim().length > 0 && s.target_path !== "."
+                                  ? `<span class="mono muted">${escapeHtml(s.target_path)}</span>`
+                                  : ""
+                              }
+                            </div>
+                            <span class="muted" style="font-size:0.8rem;">${escapeHtml(s.instruction)}</span>
+                          </div>
+                        </div>
+                        <div class="row-inline" style="flex-shrink:0; gap:0.35rem;">
+                          <span class="badge badge--neutral">${escapeHtml(s.action_class)}</span>
+                          <span class="badge">${escapeHtml(s.route_tool)}</span>
+                        </div>
+                      </label>
+                    `;
+                  })
+                  .join("")}
+              </div>
+              <div class="row-between" style="gap:0.5rem; flex-wrap:wrap;">
+                <input
+                  type="text"
+                  id="plan-revise-input"
+                  class="form-input"
+                  value="${escapeHtml(state.planReviseText)}"
+                  placeholder="Tell Kodiak how to adjust this plan (e.g., use root mkdocs.yml, skip step 2)..."
+                  style="flex:1 1 300px;"
+                  ${state.runningPipeline ? "disabled" : ""}
+                />
+                <div class="row-inline" style="gap:0.45rem; flex-wrap:wrap;">
+                  <button type="button" id="approve-plan-btn" class="btn btn--primary" data-task-id="${escapeHtml(task.task_id)}" ${state.runningPipeline ? "disabled" : ""}>
+                    Approve &amp; Execute Plan
+                  </button>
+                  <button type="button" id="revise-plan-btn" class="btn btn--sm" data-task-id="${escapeHtml(task.task_id)}" ${state.runningPipeline ? "disabled" : ""}>
+                    Revise Plan
+                  </button>
+                  <button type="button" id="discard-plan-btn" class="btn btn--sm btn--bad" data-task-id="${escapeHtml(task.task_id)}" ${state.runningPipeline ? "disabled" : ""}>
+                    Discard Plan
+                  </button>
+                </div>
+              </div>
+            </div>`
+          : turn.plan
+          ? `<details class="turn-details" ${openPlanByDefault ? "open" : ""}>
+              <summary>Plan (${turn.plan.steps.length} step${turn.plan.steps.length === 1 ? "" : "s"}, Risk: ${escapeHtml(turn.plan.estimated_risk)}) — ${escapeHtml(turn.plan.goal)}</summary>
+              <div style="position:relative; display:flex; flex-direction:column; gap:0.45rem;">
+                <div class="row-between">
+                  <span class="badge badge--neutral">Files: ${escapeHtml(turn.plan.files_involved.join(", ") || "none")}</span>
+                  <button type="button" class="copy-btn-inline" data-copy-text="${escapeHtml(
+                    `Goal: ${turn.plan.goal}\nRisk: ${turn.plan.estimated_risk}\nFiles: ${turn.plan.files_involved.join(", ")}\n` +
+                    turn.plan.steps.map((s) => `Step #${s.id} [${s.action_class} / ${s.route_tool}] on ${s.target_path}: ${s.instruction}`).join("\n")
+                  )}" data-copy-label="Cloud Plan">Copy Plan</button>
+                </div>
+                ${turn.plan.steps
+                  .map(
+                    (s) => `
+                    <div class="row-between" style="padding:0.4rem 0.65rem; border:1px solid var(--wiki-border); border-radius:var(--wiki-radius-sm);">
+                      <div class="row-inline">
+                        <span class="badge">#${s.id}</span>
+                        <strong>${escapeHtml(s.title)}</strong>
+                        ${
+                          s.target_path && s.target_path.trim().length > 0 && s.target_path !== "."
+                            ? `<span class="mono muted">${escapeHtml(s.target_path)}</span>`
+                            : ""
+                        }
+                      </div>
+                      <div class="row-inline">
+                        <span class="badge badge--neutral">${escapeHtml(s.action_class)}</span>
+                        <span class="badge">${escapeHtml(s.route_tool)}</span>
+                      </div>
+                    </div>`
+                  )
+                  .join("")}
+              </div>
+            </details>`
+          : ""
+      }
+
+      ${
+        turn.step_logs.length > 0
+          ? `<details class="turn-details" ${openLogsByDefault ? "open" : ""}>
+              <summary>Local Execution &amp; Routing (${turn.step_logs.length} step${turn.step_logs.length === 1 ? "" : "s"} — zero raw dumps sent to cloud)</summary>
+              <div class="queue-grid">
+                ${turn.step_logs
+                  .map(
+                    (log) => `
+                    <div class="action-card">
+                      <button type="button" class="copy-btn-corner" data-copy-text="${escapeHtml(
+                        `Step #${log.step_id} (${log.title})\nModel: ${log.model} (${log.tier})\n${log.summary}`
+                      )}" data-copy-label="Step #${log.step_id} Log">Copy</button>
+                      <div class="row-between">
+                        <div class="row-inline">
+                          <span class="badge">Step #${log.step_id}</span>
+                          <strong>${escapeHtml(log.title)}</strong>
+                          <span class="mono muted">${escapeHtml(log.target_path)}</span>
+                        </div>
+                        <div class="row-inline">
+                          <span class="badge">${escapeHtml(log.tier)}</span>
+                          <span class="badge badge--neutral">Model: ${escapeHtml(log.model)}</span>
+                          <span class="badge badge--neutral">${escapeHtml(log.route_tool)} (${escapeHtml(log.action_class)})</span>
+                          ${
+                            isActiveRound && planStepIds.has(log.step_id)
+                              ? `<button type="button" class="btn btn--sm retry-step-btn" data-task-id="${escapeHtml(task.task_id)}" data-step-id="${log.step_id}" ${state.runningPipeline ? "disabled" : ""}>Retry Step</button>`
+                              : ""
+                          }
+                        </div>
+                      </div>
+                      ${
+                        log.warning_chip
+                          ? `<div class="warning-row">
+                              <span class="chip-warning">${escapeHtml(log.warning_chip)}</span>
+                              ${
+                                isActiveRound
+                                  ? `<button type="button" class="btn-user-authored" data-project="${escapeHtml(task.project_dir)}" data-target="${escapeHtml(log.target_path)}">Mark as user-authored</button>`
+                                  : ""
+                              }
+                            </div>`
+                          : ""
+                      }
+                      ${
+                        log.memory_delivery_chip
+                          ? `<div class="memory-delivery-row">
+                              <span class="chip-memory">${escapeHtml(log.memory_delivery_chip)}</span>
+                            </div>`
+                          : ""
+                      }
+                      <div class="diff-view">${escapeHtml(log.summary)}</div>
+                    </div>`
+                  )
+                  .join("")}
+              </div>
+            </details>`
+          : ""
+      }
+
+      ${
+        turn.action_cards.length > 0
+          ? isActiveRound
+            ? `<div class="queue-grid">
+                ${turn.action_cards
+                  .map((card) => renderActionCardMarkup(task, card, planStepIds, true))
+                  .join("")}
+              </div>`
+            : `<details class="turn-details">
+                <summary>Action Audit Cards (${turn.action_cards.length})</summary>
+                <div class="queue-grid">
+                  ${turn.action_cards
+                    .map((card) => renderActionCardMarkup(task, card, planStepIds, false))
+                    .join("")}
+                </div>
+              </details>`
+          : ""
+      }
+
+      ${
+        (() => {
+          const pendingWriteCards = turn.action_cards.filter(
+            (c) => c.status === "pending_approval" && c.action_class !== "request"
+          );
+          if (!isActiveRound || pendingWriteCards.length === 0) return "";
+          const pendingPaths = pendingWriteCards
+            .map((c) => c.target_path || c.title)
+            .join(", ");
+          return `<div style="border: 1px solid var(--status-warn); background: rgba(245, 158, 11, 0.12); border-radius: var(--wiki-radius-sm); padding: 0.55rem 0.75rem; font-size: 0.84rem;">
+              <strong>Not yet written to disk:</strong> <code>${escapeHtml(pendingPaths)}</code> — click <strong>Approve &amp; Execute</strong> on the action card above to apply (or toggle Cruise Control ON for unattended writes on granted projects).
+            </div>`;
+        })()
+      }
+
+      ${
+        turn.verification
+          ? `<div style="display:flex; flex-direction:column; gap:0.55rem;">
+              ${
+                hasResponse
+                  ? `<div class="assistant-response-body" style="position:relative;">
+                      <button type="button" class="copy-btn-corner" data-copy-text="${escapeHtml(turn.verification.response ?? "")}" data-copy-label="Kodiak Response">Copy</button>
+                      <div style="font-weight:700; font-size:0.8rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.35rem; color:var(--status-ok);">Kodiak Response</div>
+                      <div>${escapeHtml(turn.verification.response ?? "")}</div>
+                    </div>`
+                  : ""
+              }
+              <div style="padding:0.55rem 0.75rem; border:1px solid var(--wiki-border); border-radius:var(--wiki-radius-sm); background:var(--wiki-surface); display:flex; flex-direction:column; gap:0.45rem;">
+                <div class="row-between" style="flex-wrap:wrap; gap:0.45rem;">
+                  <div class="row-inline" style="gap:0.45rem;">
+                    <span class="${verdictBadgeClass(turn.verification.verdict)}">
+                      Verdict: ${escapeHtml(turn.verification.verdict.toUpperCase())}
+                    </span>
+                    ${
+                      isActiveRound && task.local_grade_verify
+                        ? `<span class="badge badge--warn">LOCAL-GRADE VERIFICATION</span>`
+                        : ""
+                    }
+                  </div>
+                  ${
+                    isActiveRound
+                      ? `<button type="button" class="btn btn--sm rerun-stage-btn" data-task-id="${escapeHtml(task.task_id)}" data-stage="verify" ${state.runningPipeline ? "disabled" : ""}>Re-verify</button>`
+                      : ""
+                  }
+                </div>
+                <p style="margin:0; font-size:0.86rem;">${escapeHtml(turn.verification.rationale)}</p>
+                ${
+                  isActiveRound &&
+                  (turn.verification.verdict.toLowerCase() === "fail" ||
+                    turn.verification.verdict.toLowerCase() === "concerns")
+                    ? `<div class="step-retry-bar">
+                        <input type="text" id="verify-fix-guidance" class="form-input" placeholder="Optional guidance for the fix round..." style="flex:1 1 260px;" />
+                        <button type="button" id="verify-fix-btn" class="btn btn--sm btn--primary" data-task-id="${escapeHtml(task.task_id)}" ${state.runningPipeline ? "disabled" : ""}>
+                          Fix &amp; Re-verify
+                        </button>
+                      </div>`
+                    : ""
+                }
+              </div>
+            </div>`
+          : ""
+      }
+    </div>
+  `;
+}
+
 function renderTaskResults(task: TaskRecord): string {
   const isQuota =
     task.stage_error_kind === "quota_exhausted" ||
     (task.stage_error ? /quota|rate[- ]?limit|usage limit|429/i.test(task.stage_error) : false);
+  const currentRound = task.current_round ?? 1;
+  const maxAutoRepair = state.config?.max_auto_repair_rounds ?? 2;
+  const repairAttempts = task.auto_repair_attempts ?? 0;
+  const planStepIds = new Set((task.plan?.steps ?? []).map((s) => s.id));
+  const rounds = task.rounds ?? [];
+
+  const archivedTurns: ConversationTurnData[] = rounds.map((r) => ({
+    round_number: r.round_number,
+    timestamp: r.timestamp,
+    trigger: r.trigger,
+    user_text: r.round_number === 1 ? task.prompt : r.user_note ?? null,
+    plan: r.plan,
+    step_logs: r.step_logs,
+    action_cards: r.action_cards,
+    verification: r.verification,
+    failed_stage: r.failed_stage,
+    stage_error: r.stage_error,
+  }));
+
+  const activeUserNote =
+    currentRound === 1
+      ? task.prompt
+      : task.followup_notes && task.followup_notes.length > 0
+      ? task.followup_notes[task.followup_notes.length - 1]
+      : null;
+
+  const activeTurn: ConversationTurnData = {
+    round_number: currentRound,
+    timestamp: task.timestamp,
+    trigger:
+      currentRound === 1
+        ? "initial"
+        : task.discovery_completed && !task.plan
+        ? "discovery_followup"
+        : task.followup_notes && task.followup_notes.length > 0
+        ? "user_followup"
+        : "replan",
+    user_text: activeUserNote,
+    plan: task.plan,
+    step_logs: task.step_logs,
+    action_cards: task.action_cards,
+    verification: task.verification,
+    failed_stage: task.failed_stage,
+    stage_error: task.stage_error,
+  };
 
   return `
-    <div class="row-between" style="margin-bottom:0.75rem; padding:0.4rem 0.75rem; border:1px solid var(--wiki-border); border-radius:var(--wiki-radius-sm); background:var(--wiki-surface);">
-      <div class="row-inline">
-        <span class="badge badge--ok">Task Run Diagnostics</span>
+    <div class="round-toolbar">
+      <div class="row-inline" style="flex-wrap:wrap; gap:0.45rem;">
+        <span class="badge badge--ok">Conversation Thread</span>
+        <span class="badge badge--accent">Round ${currentRound}</span>
+        ${
+          task.awaiting_plan_approval
+            ? `<span class="badge badge--warn">Awaiting Plan Review</span>`
+            : ""
+        }
+        ${
+          repairAttempts > 0
+            ? `<span class="badge badge--warn">Auto-repair ${repairAttempts}/${maxAutoRepair}</span>`
+            : ""
+        }
+        ${
+          task.paused_at_step_id != null
+            ? `<span class="badge badge--warn">Paused at Step #${task.paused_at_step_id}</span>`
+            : ""
+        }
         <span class="mono muted" style="font-size:0.8rem;">ID: ${escapeHtml(task.task_id)}</span>
       </div>
-      <button type="button" class="btn btn--sm btn-view-run-log" data-task-id="${escapeHtml(task.task_id)}" title="View diagnostic run log">
-        View Run Log
-      </button>
+      <div class="row-inline" style="flex-wrap:wrap; gap:0.4rem;">
+        <button type="button" class="btn btn--sm rerun-stage-btn" data-task-id="${escapeHtml(task.task_id)}" data-stage="interpret" ${state.runningPipeline ? "disabled" : ""} title="Re-run Stage 1 (Interpret) with prior round context">
+          Re-plan
+        </button>
+        ${
+          task.plan
+            ? `<button type="button" class="btn btn--sm rerun-stage-btn" data-task-id="${escapeHtml(task.task_id)}" data-stage="execute" ${state.runningPipeline ? "disabled" : ""} title="Re-run Stage 2 (Execute) using the current plan">
+                Re-execute
+              </button>
+              <button type="button" class="btn btn--sm rerun-stage-btn" data-task-id="${escapeHtml(task.task_id)}" data-stage="verify" ${state.runningPipeline ? "disabled" : ""} title="Re-run Stage 3 (Verify) over current summaries, diffs, and execution outputs">
+                Re-verify
+              </button>`
+            : ""
+        }
+        <button type="button" class="btn btn--sm btn-view-run-log" data-task-id="${escapeHtml(task.task_id)}" title="View diagnostic run log">
+          View Run Log
+        </button>
+      </div>
     </div>
 
-    ${task.deferred ? renderDeferredCard(task) : ""}
-    ${renderResolvedChoiceCards(task)}
-    ${
-      task.failed_stage && isQuota && !task.deferred
-        ? renderChoiceCard(task)
-        : task.failed_stage && !task.deferred
-        ? `<div class="stage-alert">
-            <div>
-              <strong>Stage '${escapeHtml(task.failed_stage)}' failed:</strong>
-              <span>${escapeHtml(task.stage_error ?? "Unknown error")}</span>
-            </div>
-            <div class="row-inline" style="gap:0.5rem;">
-              ${
-                (task.stage_error ?? "").includes("Cloud Lumo Bridge")
-                  ? `<button type="button" id="stage-reauth-lumo-btn" class="btn btn--sm">Re-auth Lumo</button>`
-                  : ""
-              }
-              <button
-                type="button"
-                id="retry-stage-btn"
-                data-task-id="${escapeHtml(task.task_id)}"
-                class="btn btn--primary btn--sm"
-                ${state.runningPipeline ? "disabled" : ""}
-              >
-                ↻ Retry Stage '${escapeHtml(task.failed_stage)}' Only
-              </button>
-            </div>
-          </div>`
-        : ""
-    }
+    <div class="chat-thread">
+      ${archivedTurns
+        .map((t) => renderConversationTurn(task, t, false, false, planStepIds))
+        .join("")}
+      ${renderConversationTurn(task, activeTurn, true, isQuota, planStepIds)}
+    </div>
 
-    <!-- Stage 1: Cloud Interpret Plan -->
-    ${
-      task.plan
-        ? `<section class="panel-card">
-            <button type="button" class="copy-btn-corner" data-copy-text="${escapeHtml(
-              `Goal: ${task.plan.goal}\nRisk: ${task.plan.estimated_risk}\nFiles: ${task.plan.files_involved.join(", ")}\n` +
-              task.plan.steps.map((s) => `Step #${s.id} [${s.action_class} / ${s.route_tool}] on ${s.target_path}: ${s.instruction}`).join("\n")
-            )}" data-copy-label="Cloud Plan">Copy</button>
-            <div class="panel-header">
-              <div class="row-inline">
-                <h2 class="panel-title">2. Plan (${escapeHtml(task.cloud_model)})</h2>
-                ${
-                  task.local_grade_plan
-                    ? `<span class="badge badge--warn" title="Planned via local model during cloud unavailability">LOCAL-GRADE PLANNING (${renderCharterChip(5, "Local first")})</span>`
-                    : ""
-                }
-                ${
-                  task.provider_interpret && !task.local_grade_plan && task.provider_interpret !== task.cloud_model
-                    ? `<span class="badge badge--neutral">Provider: ${escapeHtml(task.provider_interpret)}</span>`
-                    : ""
-                }
-              </div>
-              <div class="row-inline">
-                ${
-                  task.plan.memories_used && task.plan.memories_used.length > 0
-                    ? `<span class="badge" title="Memories used by cloud plan">Memories: ${escapeHtml(
-                        task.plan.memories_used.map((m) => "@" + m).join(", ")
-                      )}</span>`
-                    : ""
-                }
-                <span class="${riskBadgeClass(task.plan.estimated_risk)}">Risk: ${escapeHtml(
-                  task.plan.estimated_risk
-                )}</span>
-                <span class="badge badge--neutral">Files: ${escapeHtml(
-                  task.plan.files_involved.join(", ") || "none"
-                )}</span>
-              </div>
-            </div>
-            <p style="margin:0;"><strong>Goal:</strong> ${escapeHtml(task.plan.goal)}</p>
-            <div class="queue-grid">
-              ${task.plan.steps
-                .map(
-                  (s) => `
-                  <div class="row-between" style="padding:0.45rem 0.75rem; border:1px solid var(--wiki-border); border-radius:var(--wiki-radius-sm);">
-                    <div class="row-inline">
-                      <span class="badge">#${s.id}</span>
-                      <strong>${escapeHtml(s.title)}</strong>
-                      ${
-                        s.target_path && s.target_path.trim().length > 0 && s.target_path !== "."
-                          ? `<span class="mono muted">${escapeHtml(s.target_path)}</span>`
-                          : ""
-                      }
-                      ${
-                        s.question
-                          ? `<span class="muted" style="font-size:0.8rem;">— <em>${escapeHtml(s.question)}</em></span>`
-                          : ""
-                      }
-                    </div>
-                    <div class="row-inline">
-                      ${
-                        s.memories_used && s.memories_used.length > 0
-                          ? `<span class="badge" title="Step cited memory">@${escapeHtml(s.memories_used.join(", @"))}</span>`
-                          : ""
-                      }
-                      <span class="badge badge--neutral">Action: ${escapeHtml(s.action_class)}</span>
-                      <span class="badge">Route: ${escapeHtml(s.route_tool)}</span>
-                      <button type="button" class="copy-btn-inline" data-copy-text="${escapeHtml(
-                        `Step #${s.id}: ${s.title}\nAction: ${s.action_class}\nRoute: ${s.route_tool}${s.target_path ? `\nTarget: ${s.target_path}` : ""}${s.question ? `\nQuestion: ${s.question}` : ""}\nInstruction: ${s.instruction}`
-                      )}" data-copy-label="Plan Step #${s.id}">Copy</button>
-                    </div>
-                  </div>`
-                )
-                .join("")}
-            </div>
-          </section>`
-        : ""
-    }
-
-    <!-- Stage 2: Local Model Routing & Step Execution Logs -->
-    ${
-      task.step_logs.length > 0
-        ? `<section class="panel-card">
-            <div class="panel-header">
-              <h2 class="panel-title">3. Local Model Routing & Execution Log</h2>
-              <span class="muted">Zero raw file dumps sent to cloud (§1 Hard Rule)</span>
-            </div>
-            <div class="queue-grid">
-              ${task.step_logs
-                .map(
-                  (log) => `
-                  <div class="action-card">
-                    <button type="button" class="copy-btn-corner" data-copy-text="${escapeHtml(
-                      `Step #${log.step_id} (${log.title})\nModel: ${log.model} (${log.tier})\n${log.summary}`
-                    )}" data-copy-label="Step #${log.step_id} Log">Copy</button>
-                    <div class="row-between">
-                      <div class="row-inline">
-                        <span class="badge">Step #${log.step_id}</span>
-                        <strong>${escapeHtml(log.title)}</strong>
-                        <span class="mono muted">${escapeHtml(log.target_path)}</span>
-                      </div>
-                      <div class="row-inline">
-                        <span class="badge">${escapeHtml(log.tier)}</span>
-                        <span class="badge badge--neutral">Model: ${escapeHtml(log.model)}</span>
-                        <span class="badge badge--neutral">${escapeHtml(log.route_tool)} (${escapeHtml(
-                          log.action_class
-                        )})</span>
-                      </div>
-                    </div>
-                    ${
-                      log.warning_chip
-                        ? `<div class="warning-row">
-                            <span class="chip-warning">${escapeHtml(log.warning_chip)}</span>
-                            <button type="button" class="btn-user-authored" data-project="${escapeHtml(
-                              task.project_dir
-                            )}" data-target="${escapeHtml(log.target_path)}">Mark as user-authored</button>
-                          </div>`
-                        : ""
-                    }
-                    ${
-                      log.memory_delivery_chip
-                        ? `<div class="memory-delivery-row">
-                            <span class="chip-memory">${escapeHtml(log.memory_delivery_chip)}</span>
-                          </div>`
-                        : ""
-                    }
-                    <div class="diff-view">${escapeHtml(log.summary)}</div>
-                  </div>`
-                )
-                .join("")}
-            </div>
-          </section>`
-        : ""
-    }
-
-    <!-- Approval Queue & Grant / Deny Cards -->
-    ${
-      task.action_cards.length > 0
-        ? `<section class="panel-card">
-            <div class="panel-header">
-              <h2 class="panel-title">4. Approval Queue & Action Audit Cards</h2>
-              <span class="muted">Journal: <code>${escapeHtml(task.journal_path)}</code></span>
-            </div>
-            <div class="queue-grid">
-              ${task.action_cards
-                .map(
-                  (card) => `
-                  <article class="${cardBorderClass(card.status, card.action_class)}">
-                    <button type="button" class="copy-btn-corner" data-copy-text="${escapeHtml(
-                      card.diff_or_command.startsWith("---") || card.diff_or_command.includes("\n+++")
-                        ? card.diff_or_command
-                        : `\`\`\`\n${card.diff_or_command}\n\`\`\``
-                    )}" data-copy-label="Diff / Command">Copy</button>
-                    <div class="row-between">
-                      <div class="row-inline">
-                        <span class="badge">Step #${card.step_id}</span>
-                        <strong>${escapeHtml(card.title)}</strong>
-                        <span class="badge badge--neutral">${escapeHtml(card.action_class)}</span>
-                        ${card.request_kind ? `<span class="badge badge--accent">${escapeHtml(card.request_kind.toUpperCase())}</span>` : ""}
-                        ${
-                          card.target_path && card.target_path.trim().length > 0 && card.target_path !== "."
-                            ? `<span class="mono">${escapeHtml(card.target_path)}</span>`
-                            : ""
-                        }
-                      </div>
-                      ${cardStatusBadge(card)}
-                    </div>
-                    ${
-                      card.warning_chip
-                        ? `<div class="warning-row">
-                            <span class="chip-warning">${escapeHtml(card.warning_chip)}</span>
-                            ${
-                              card.warning_chip.includes("PIPELINE-GENERATED")
-                                ? `<button type="button" class="btn-user-authored" data-project="${escapeHtml(
-                                    card.directory
-                                  )}" data-target="${escapeHtml(card.target_path)}">Mark as user-authored</button>`
-                                : ""
-                            }
-                          </div>`
-                        : ""
-                    }
-                    ${
-                      card.memory_delivery_chip
-                        ? `<div class="memory-delivery-row">
-                            <span class="chip-memory">${escapeHtml(card.memory_delivery_chip)}</span>
-                          </div>`
-                        : ""
-                    }
-                    ${
-                      card.inconsistency_note
-                        ? `<div class="inconsistency-box">
-                            <strong>Safety Warning:</strong> ${escapeHtml(card.inconsistency_note)}
-                          </div>`
-                        : ""
-                    }
-
-                    ${
-                      card.question
-                        ? `<div class="request-field request-field--question" style="font-size:0.95rem; margin-block:0.35rem; color:var(--wiki-text);"><strong>Question:</strong> ${escapeHtml(card.question)}</div>`
-                        : ""
-                    }
-                    ${
-                      card.answer_format
-                        ? `<div class="request-field muted" style="font-size:0.8rem; margin-block-end:0.35rem;"><strong>Format:</strong> <code>${escapeHtml(card.answer_format)}</code></div>`
-                        : ""
-                    }
-                    ${
-                      card.justification
-                        ? `<div class="request-field"><strong>Justification:</strong> ${escapeHtml(card.justification)}</div>`
-                        : ""
-                    }
-                    ${
-                      card.consequences_of_decline
-                        ? `<div class="request-field"><strong>Consequences if declined:</strong> ${escapeHtml(card.consequences_of_decline)}</div>`
-                        : ""
-                    }
-                    ${
-                      card.user_provided_info
-                        ? `<div class="request-field request-field--provided"><strong>Provided Info:</strong> ${escapeHtml(card.user_provided_info)}</div>`
-                        : ""
-                    }
-
-                    <p class="muted" style="margin:0; font-size:0.8rem;">
-                      ${escapeHtml(card.decision_reason)}
-                    </p>
-
-                    ${
-                      card.diff_or_command && card.diff_or_command.trim().length > 0
-                        ? `<div class="diff-view">${renderDiffLines(card.diff_or_command)}</div>`
-                        : ""
-                    }
-
-                    ${
-                      card.execution_output
-                        ? `<div class="diff-view"><strong>Execution Output:</strong>\n${escapeHtml(
-                            card.execution_output
-                          )}</div>`
-                        : ""
-                    }
-
-                    ${
-                      card.status === "pending_approval" && !state.readOnlyHistorical
-                        ? card.action_class === "request" && card.request_kind === "information"
-                          ? `<div class="request-info-input-area" style="margin-block-start:0.5rem; display:flex; flex-direction:column; gap:0.4rem;">
-                              ${
-                                card.suggested_default
-                                  ? `<div class="row-between" style="background:var(--wiki-bg-card); padding:0.4rem 0.6rem; border:1px solid var(--wiki-border); border-radius:var(--wiki-radius-sm); font-size:0.82rem;">
-                                      <span><strong>Suggested:</strong> <code>${escapeHtml(card.suggested_default)}</code></span>
-                                      <button type="button" class="btn btn--sm use-suggestion-btn" data-card-id="${escapeHtml(card.card_id)}" data-suggestion="${escapeHtml(card.suggested_default)}">
-                                        Use suggestion
-                                      </button>
-                                    </div>`
-                                  : ""
-                              }
-                              <textarea
-                                class="form-input request-info-textarea"
-                                data-card-id="${escapeHtml(card.card_id)}"
-                                placeholder="Enter requested information here..."
-                                rows="2"
-                                style="width:100%; font-family:var(--wiki-font-mono); font-size:0.82rem;"
-                              ></textarea>
-                              <div class="row-between">
-                                <span class="muted" style="font-size:0.8rem;">Stays local; only concise excerpt sent to verify.</span>
-                                <div class="row-inline">
-                                  <button
-                                    type="button"
-                                    class="btn btn--ok provide-info-btn"
-                                    data-task-id="${escapeHtml(task.task_id)}"
-                                    data-card-id="${escapeHtml(card.card_id)}"
-                                  >
-                                    Provide Information
-                                  </button>
-                                  <button
-                                    type="button"
-                                    class="btn btn--bad skip-info-btn"
-                                    data-task-id="${escapeHtml(task.task_id)}"
-                                    data-card-id="${escapeHtml(card.card_id)}"
-                                  >
-                                    ↷ Skip
-                                  </button>
-                                </div>
-                              </div>
-                            </div>`
-                          : card.action_class === "request" && card.request_kind === "capability"
-                          ? `<div class="row-between" style="margin-block-start:0.5rem;">
-                              <span class="muted" style="font-size:0.8rem;">Grants task-scoped access to external path. config.toml remains untouched.</span>
-                              <div class="row-inline">
-                                <button
-                                  type="button"
-                                  class="btn btn--ok approve-card-btn"
-                                  data-task-id="${escapeHtml(task.task_id)}"
-                                  data-card-id="${escapeHtml(card.card_id)}"
-                                >
-                                  Grant (Task-Scoped)
-                                </button>
-                                <button
-                                  type="button"
-                                  class="btn btn--bad reject-card-btn"
-                                  data-task-id="${escapeHtml(task.task_id)}"
-                                  data-card-id="${escapeHtml(card.card_id)}"
-                                >
-                                  Decline
-                                </button>
-                              </div>
-                            </div>`
-                          : `<div class="row-between" style="margin-block-start:0.25rem;">
-                              <div class="row-inline" style="flex:1 1 320px;">
-                                <input
-                                  type="text"
-                                  class="form-input reject-reason-input"
-                                  data-card-id="${escapeHtml(card.card_id)}"
-                                  placeholder="Reason for rejection (logged to journal.jsonl)..."
-                                  style="flex:1;"
-                                />
-                              </div>
-                              <div class="row-inline">
-                                <button
-                                  type="button"
-                                  class="btn btn--ok approve-card-btn"
-                                  data-task-id="${escapeHtml(task.task_id)}"
-                                  data-card-id="${escapeHtml(card.card_id)}"
-                                >
-                                  Approve & Execute
-                                </button>
-                                <button
-                                  type="button"
-                                  class="btn btn--bad reject-card-btn"
-                                  data-task-id="${escapeHtml(task.task_id)}"
-                                  data-card-id="${escapeHtml(card.card_id)}"
-                                >
-                                  Reject
-                                </button>
-                              </div>
-                            </div>`
-                        : ""
-                    }
-                  </article>`
-                )
-                .join("")}
-            </div>
-          </section>`
-        : ""
-    }
-
-    <!-- Stage 3: Verification Verdict -->
-    ${
-      task.verification
-        ? `<section class="panel-card">
-            <button type="button" class="copy-btn-corner" data-copy-text="${escapeHtml(
-              `Verdict: ${task.verification.verdict.toUpperCase()}\n\n${task.verification.rationale}`
-            )}" data-copy-label="Verification Verdict">Copy</button>
-            <div class="panel-header">
-              <div class="row-inline">
-                <h2 class="panel-title">5. Verification Verdict (${escapeHtml(task.cloud_model)})</h2>
-                ${
-                  task.local_grade_verify
-                    ? `<span class="badge badge--warn" title="Verified via local model during cloud unavailability">LOCAL-GRADE VERIFICATION (${renderCharterChip(5, "Local first")})</span>`
-                    : ""
-                }
-                ${
-                  task.provider_verify && !task.local_grade_verify && task.provider_verify !== task.cloud_model
-                    ? `<span class="badge badge--neutral">Provider: ${escapeHtml(task.provider_verify)}</span>`
-                    : ""
-                }
-              </div>
-              <span class="${verdictBadgeClass(task.verification.verdict)}">
-                Verdict: ${escapeHtml(task.verification.verdict.toUpperCase())}
-              </span>
-            </div>
-            <p style="margin:0;">${escapeHtml(task.verification.rationale)}</p>
-          </section>`
-        : ""
-    }
+    <!-- Conversational Reply Composer -->
+    <section class="panel-card">
+      <div class="panel-header">
+        <h2 class="panel-title">Reply / Continue Conversation (Round ${currentRound + 1})</h2>
+        <span class="muted">Ctrl+Enter to send a follow-up instruction, correction, or refinement in this same task.</span>
+      </div>
+      <div class="form-field" style="margin-bottom:0.55rem;">
+        <textarea
+          id="followup-prompt-input"
+          class="form-textarea"
+          rows="2"
+          placeholder="e.g., Use root mkdocs.yml instead, or ask a follow-up question about the summary..."
+          ${state.runningPipeline ? "disabled" : ""}
+        >${escapeHtml(state.followupText)}</textarea>
+      </div>
+      <div class="row-between">
+        <span class="muted" style="font-size:0.8rem;">Journal: <code>${escapeHtml(task.journal_path)}</code> • Preserves prior summaries, diffs, answers, and grants.</span>
+        <button
+          type="button"
+          id="continue-round-btn"
+          class="btn btn--primary"
+          data-task-id="${escapeHtml(task.task_id)}"
+          ${state.runningPipeline ? "disabled" : ""}
+        >
+          ${state.runningPipeline ? "Running Round..." : "Send Follow-Up"}
+        </button>
+      </div>
+    </section>
   `;
 }
 
@@ -4773,6 +5145,38 @@ function renderSettingsTab(): string {
           <input type="checkbox" id="cfg-dry-run" ${cfg.dry_run ? "checked" : ""} />
           <span><strong>Dry-Run Mode:</strong> Run Interpret → Plan → Local Drafting, but suppress all file writes and shell execution</span>
         </label>
+
+        <label class="row-inline" style="cursor:pointer;">
+          <input type="checkbox" id="cfg-auto-repair-enabled" ${cfg.auto_repair_enabled ? "checked" : ""} />
+          <span><strong>Auto-Repair Loop:</strong> Automatically re-plan and re-run when Stage 3 Verify returns FAIL or auto-executed commands fail</span>
+        </label>
+
+        <label class="row-inline" style="cursor:pointer;">
+          <input type="checkbox" id="cfg-discovery-pass-enabled" ${cfg.discovery_pass_enabled ?? true ? "checked" : ""} />
+          <span><strong>Two-Phase Discovery Pass:</strong> Allow Stage 1 to gather read-only local summaries before drafting complex multi-file edits</span>
+        </label>
+
+        <label class="row-inline" style="cursor:pointer;">
+          <input type="checkbox" id="cfg-pause-on-request" ${cfg.pause_on_request ?? true ? "checked" : ""} />
+          <span><strong>Pause on REQUEST Cards:</strong> Pause Stage 2 at information/capability requests and resume downstream steps once answered or granted</span>
+        </label>
+
+        <label class="row-inline" style="cursor:pointer;">
+          <input type="checkbox" id="cfg-pause-after-plan" ${cfg.pause_after_plan ?? true ? "checked" : ""} />
+          <span><strong>Pause for Plan Review:</strong> Stop after Stage 1 so you can approve, uncheck steps, or revise the plan before local Ollama executes</span>
+        </label>
+
+        <div class="form-field" style="max-width:260px; margin-top:0.25rem;">
+          <label class="form-label" for="cfg-max-auto-repair-rounds">Max Auto-Repair Rounds (0-5)</label>
+          <input
+            type="number"
+            id="cfg-max-auto-repair-rounds"
+            class="form-input"
+            min="0"
+            max="5"
+            value="${cfg.max_auto_repair_rounds ?? 2}"
+          />
+        </div>
       </div>
 
       <!-- Custom CSS Editor -->
@@ -4972,7 +5376,7 @@ function renderAboutTab(): string {
         <div style="flex:1; min-width:240px;">
           <div class="row-inline" style="gap:0.75rem; align-items:baseline;">
             <h1 style="margin:0; font-size:1.8rem; font-weight:700; color:var(--md-default-fg-color);">Kodiak</h1>
-            <span class="badge badge--ok" style="font-size:0.85rem;">v1.1.9</span>
+            <span class="badge badge--ok" style="font-size:0.85rem;">v1.2.0</span>
           </div>
           <p style="margin:0.35rem 0 0.5rem 0; font-size:1.05rem; font-weight:500; color:var(--md-default-fg-color);">
             The bear who runs the job site — local-first AI task delegation
@@ -5091,7 +5495,7 @@ function renderAboutTab(): string {
             <span><strong>Brand Asset:</strong> Morninglion Industries</span>
           </div>
           <div class="row-inline muted">
-            <span>Kodiak Task Delegation System (v1.1.9)</span>
+            <span>Kodiak Task Delegation System (v1.2.0)</span>
           </div>
         </div>
         <div style="text-align:center; padding-top:1.5rem; border-top:1px solid var(--wiki-border); margin-top:1.25rem;">
@@ -5307,7 +5711,14 @@ function renderQueueDrawer(): string {
               <span class="badge ${hook.success ? 'badge--ok' : 'badge--bad'}">${hook.success ? 'Tests Passed' : 'Tests Failed'}</span>
               <strong style="font-size:0.8rem;">${escapeHtml(hook.command)}</strong>
             </div>
-            <span class="mono" style="font-size:0.72rem; color:var(--md-default-fg-color--light);">${escapeHtml(hook.project_dir.split('/').pop() || hook.project_dir)}</span>
+            <div class="row-inline" style="gap:0.4rem; align-items:center;">
+              <span class="mono" style="font-size:0.72rem; color:var(--md-default-fg-color--light);">${escapeHtml(hook.project_dir.split('/').pop() || hook.project_dir)}</span>
+              ${
+                !hook.success && state.lastBatchApprovedTaskIds.length > 0
+                  ? `<button type="button" class="btn btn--sm btn--primary inbox-fix-test-btn" data-task-id="${escapeHtml(state.lastBatchApprovedTaskIds[0])}" data-hook-cmd="${escapeHtml(hook.command)}" data-hook-summary="${escapeHtml(hook.digested_summary || hook.raw_output.slice(0, 1200))}">Fix Test Errors</button>`
+                  : ""
+              }
+            </div>
           </div>
           ${hook.digested_summary ? `
             <div class="inbox-digest-box">
@@ -5510,6 +5921,13 @@ function renderApp(): void {
     <div class="app-body">
       ${renderHeader()}
       ${renderHealthStrip()}
+      ${
+        state.tab === "workbench"
+          ? `<div class="stage-progress-dock">
+               <div class="stage-progress" id="stage-progress" aria-label="Pipeline stage progress">${renderStageProgress()}</div>
+             </div>`
+          : ""
+      }
       <main class="main-content ${isFullBleed ? "is-fullbleed" : ""}">
         ${tabHtml}
       </main>
@@ -6123,9 +6541,13 @@ function bindEvents(): void {
     document.getElementById("run-pipeline-btn")?.click();
   });
 
-  // Ticker scroll lock + hover pause
+  // Ticker scroll lock + collapse + hover pause
   document.getElementById("ticker-lock-btn")?.addEventListener("click", () => {
     state.tickerLocked = !state.tickerLocked;
+    renderApp();
+  });
+  document.getElementById("ticker-collapse-btn")?.addEventListener("click", () => {
+    state.tickerCollapsed = !state.tickerCollapsed;
     renderApp();
   });
   const tickerEl = document.getElementById("ticker-body");
@@ -6361,11 +6783,47 @@ function bindEvents(): void {
     state.liveDraft = null;
     state.readOnlyHistorical = false;
     state.promptText = "";
+    state.followupText = "";
+    state.expandedRounds = {};
+    state.planReviseText = "";
+    state.uncheckedPlanSteps = {};
     state.uiBannerError = null;
     state.stages = { interpret: "idle", execute: "idle", verify: "idle", done: "idle" };
     renderApp();
     const promptInput = document.getElementById("task-prompt-input") as HTMLTextAreaElement | null;
     promptInput?.focus();
+  });
+
+  document.getElementById("wb-pause-after-plan-toggle")?.addEventListener("change", async (ev) => {
+    if (!state.config) return;
+    const checked = (ev.currentTarget as HTMLInputElement).checked;
+    state.config.pause_after_plan = checked;
+    try {
+      state.config = await invoke<AppConfig>("update_config", { newConfig: state.config });
+      state.uiBannerInfo = checked
+        ? "Plan Review Gate enabled — tasks will pause after Stage 1 for your approval."
+        : "Plan Review Gate disabled — tasks will execute automatically after planning.";
+      renderApp();
+    } catch (err) {
+      state.uiBannerError = String(err);
+      renderApp();
+    }
+  });
+
+  document.getElementById("wb-auto-repair-toggle")?.addEventListener("change", async (ev) => {
+    if (!state.config) return;
+    const checked = (ev.currentTarget as HTMLInputElement).checked;
+    state.config.auto_repair_enabled = checked;
+    try {
+      state.config = await invoke<AppConfig>("update_config", { newConfig: state.config });
+      state.uiBannerInfo = checked
+        ? `Auto-repair loop enabled (max ${state.config.max_auto_repair_rounds ?? 2} rounds).`
+        : "Auto-repair loop disabled.";
+      renderApp();
+    } catch (err) {
+      state.uiBannerError = String(err);
+      renderApp();
+    }
   });
 
   document.getElementById("wb-dismiss-error-btn")?.addEventListener("click", () => {
@@ -6419,6 +6877,7 @@ function bindEvents(): void {
   // Stop / Cancel active task on demand
   const handleStopActiveTask = async () => {
     try {
+      await invoke("cancel_active_iteration").catch(() => {});
       const activeItem = state.queueItems.find(
         (i) => i.status === "interpreting" || i.status === "local_working" || i.status === "verifying" || i.status === "queued"
       );
@@ -6582,6 +7041,324 @@ function bindEvents(): void {
         state.uiBannerError = String(err);
         renderApp();
       }
+    });
+  });
+
+  // Helper for running iterative actions (including from historical tasks)
+  const runIterativeAction = async (
+    taskId: string,
+    startStage: StageName,
+    fn: () => Promise<TaskRecord>
+  ) => {
+    const target = state.history.find((h) => h.task_id === taskId) ?? state.currentTask;
+    if (target) {
+      state.currentTask = target;
+      if (state.config && state.config.whitelist.some((w) => w.path === target.project_dir)) {
+        state.config.active_project = target.project_dir;
+      }
+    }
+    state.readOnlyHistorical = false;
+    state.tab = "workbench";
+    const seeded = stagesFromTask(state.currentTask);
+    const idx = STAGE_ORDER.indexOf(startStage);
+    STAGE_ORDER.forEach((s, i) => {
+      if (i >= idx) seeded[s] = "idle";
+    });
+    state.stages = seeded;
+    resetLiveRun(true);
+    state.runningPipeline = true;
+    state.uiBannerError = null;
+    state.uiBannerInfo = null;
+    renderApp();
+    try {
+      const updated = await fn();
+      state.currentTask = updated;
+      state.liveDraft = updated.failed_stage === "execute" ? state.liveDraft : null;
+      await refreshAllState();
+    } catch (err) {
+      state.uiBannerError = String(err);
+    } finally {
+      state.runningPipeline = false;
+      renderApp();
+    }
+  };
+
+  // Re-plan / Re-execute / Re-verify from any stage
+  document.querySelectorAll<HTMLElement>(".rerun-stage-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const taskId = btn.getAttribute("data-task-id");
+      const stage = btn.getAttribute("data-stage") as "interpret" | "execute" | "verify" | null;
+      if (!taskId || !stage) return;
+      await runIterativeAction(taskId, stage, () =>
+        invoke<TaskRecord>("rerun_task_from_stage", {
+          taskId,
+          stage,
+          userNote: null,
+        })
+      );
+    });
+  });
+
+  // Resume paused task / Re-plan with provided info
+  document.getElementById("resume-paused-btn")?.addEventListener("click", async (ev) => {
+    const taskId = (ev.currentTarget as HTMLElement).getAttribute("data-task-id");
+    if (!taskId) return;
+    await runIterativeAction(taskId, "execute", () =>
+      invoke<TaskRecord>("resume_paused_task", { taskId, replanWithInfo: false })
+    );
+  });
+
+  document.getElementById("replan-paused-btn")?.addEventListener("click", async (ev) => {
+    const taskId = (ev.currentTarget as HTMLElement).getAttribute("data-task-id");
+    if (!taskId) return;
+    await runIterativeAction(taskId, "interpret", () =>
+      invoke<TaskRecord>("resume_paused_task", { taskId, replanWithInfo: true })
+    );
+  });
+
+  // Provide information request AND immediately resume/re-plan
+  document.querySelectorAll<HTMLElement>(".provide-resume-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const taskId = btn.getAttribute("data-task-id");
+      const cardId = btn.getAttribute("data-card-id");
+      if (!taskId || !cardId) return;
+      const textarea = document.querySelector<HTMLTextAreaElement>(
+        `.request-info-textarea[data-card-id="${cardId}"]`
+      );
+      const userInfo = textarea?.value?.trim() ?? "";
+      if (!userInfo) {
+        state.uiBannerError = "Please enter information before providing and resuming.";
+        renderApp();
+        return;
+      }
+      await runIterativeAction(taskId, "execute", async () => {
+        await invoke<TaskRecord>("provide_request_info", { taskId, cardId, userInfo });
+        return invoke<TaskRecord>("resume_paused_task", { taskId, replanWithInfo: false });
+      });
+    });
+  });
+
+  // Grant capability request AND immediately resume
+  document.querySelectorAll<HTMLElement>(".grant-resume-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const taskId = btn.getAttribute("data-task-id");
+      const cardId = btn.getAttribute("data-card-id");
+      if (!taskId || !cardId) return;
+      await runIterativeAction(taskId, "execute", async () => {
+        await invoke<TaskRecord>("approve_card", { taskId, cardId });
+        return invoke<TaskRecord>("resume_paused_task", { taskId, replanWithInfo: false });
+      });
+    });
+  });
+
+  // Per-step Retry (no feedback)
+  document.querySelectorAll<HTMLElement>(".retry-step-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const taskId = btn.getAttribute("data-task-id");
+      const stepIdStr = btn.getAttribute("data-step-id");
+      if (!taskId || !stepIdStr) return;
+      const stepId = Number(stepIdStr);
+      await runIterativeAction(taskId, "execute", () =>
+        invoke<TaskRecord>("retry_task_step", {
+          taskId,
+          stepId,
+          feedback: null,
+          reverify: false,
+        })
+      );
+    });
+  });
+
+  // Per-step Revise with Feedback
+  document.querySelectorAll<HTMLElement>(".revise-step-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const taskId = btn.getAttribute("data-task-id");
+      const stepIdStr = btn.getAttribute("data-step-id");
+      const cardId = btn.getAttribute("data-card-id");
+      if (!taskId || !stepIdStr) return;
+      const stepId = Number(stepIdStr);
+      const cardInput = cardId
+        ? document.querySelector<HTMLInputElement>(`.step-feedback-input[data-card-id="${cardId}"]`)
+        : null;
+      const stepInput = document.querySelector<HTMLInputElement>(
+        `.step-feedback-input[data-step-id="${stepId}"]`
+      );
+      const feedback = (cardInput?.value || stepInput?.value || "").trim();
+      if (!feedback) {
+        state.uiBannerError = "Enter revision feedback in the input field before clicking Revise with Feedback.";
+        renderApp();
+        return;
+      }
+      await runIterativeAction(taskId, "execute", () =>
+        invoke<TaskRecord>("retry_task_step", {
+          taskId,
+          stepId,
+          feedback,
+          reverify: false,
+        })
+      );
+    });
+  });
+
+  // Fix shell/command errors from card output in next round
+  document.querySelectorAll<HTMLElement>(".fix-card-errors-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const taskId = btn.getAttribute("data-task-id");
+      const cardId = btn.getAttribute("data-card-id");
+      if (!taskId || !cardId) return;
+      const card = state.currentTask?.action_cards.find((c) => c.card_id === cardId);
+      const excerpt = (card?.execution_output ?? "").slice(0, 1400);
+      const followupPrompt = `Fix the errors reported in Step #${card?.step_id ?? "?"} (${card?.shell_command ?? card?.title ?? "command"}):\n${excerpt}`;
+      await runIterativeAction(taskId, "interpret", () =>
+        invoke<TaskRecord>("continue_task_round", {
+          taskId,
+          followupPrompt,
+          autoRepairOverride: null,
+        })
+      );
+    });
+  });
+
+  // Verification Fix & Re-verify
+  document.getElementById("verify-fix-btn")?.addEventListener("click", async (ev) => {
+    const taskId = (ev.currentTarget as HTMLElement).getAttribute("data-task-id");
+    if (!taskId) return;
+    const guidance = (document.getElementById("verify-fix-guidance") as HTMLInputElement)?.value.trim() ?? "";
+    const ver = state.currentTask?.verification;
+    const followupPrompt =
+      `Address verification ${ver?.verdict?.toUpperCase() ?? "issues"}: ${ver?.rationale ?? "Fix reported issues."}` +
+      (guidance ? `\nUser guidance: ${guidance}` : "");
+    await runIterativeAction(taskId, "interpret", () =>
+      invoke<TaskRecord>("continue_task_round", {
+        taskId,
+        followupPrompt,
+        autoRepairOverride: null,
+      })
+    );
+  });
+
+  // Plan Review Gate actions
+  document.querySelectorAll<HTMLInputElement>(".plan-step-checkbox").forEach((chk) => {
+    chk.addEventListener("change", () => {
+      const stepId = Number(chk.getAttribute("data-step-id"));
+      if (!Number.isFinite(stepId)) return;
+      state.uncheckedPlanSteps[stepId] = !chk.checked;
+    });
+  });
+
+  document.getElementById("plan-revise-input")?.addEventListener("input", (ev) => {
+    state.planReviseText = (ev.target as HTMLInputElement).value;
+  });
+
+  document.getElementById("approve-plan-btn")?.addEventListener("click", async (ev) => {
+    const taskId = (ev.currentTarget as HTMLElement).getAttribute("data-task-id");
+    if (!taskId) return;
+    const enabledStepIds = Array.from(
+      document.querySelectorAll<HTMLInputElement>(".plan-step-checkbox")
+    )
+      .filter((chk) => chk.checked)
+      .map((chk) => Number(chk.getAttribute("data-step-id")))
+      .filter((n) => Number.isFinite(n));
+    if (enabledStepIds.length === 0) {
+      state.uiBannerError = "Select at least one step before executing the plan.";
+      renderApp();
+      return;
+    }
+    state.uncheckedPlanSteps = {};
+    state.planReviseText = "";
+    await runIterativeAction(taskId, "execute", () =>
+      invoke<TaskRecord>("approve_plan_and_execute", {
+        taskId,
+        enabledStepIds,
+      })
+    );
+  });
+
+  document.getElementById("revise-plan-btn")?.addEventListener("click", async (ev) => {
+    const taskId = (ev.currentTarget as HTMLElement).getAttribute("data-task-id");
+    if (!taskId) return;
+    const feedback = state.planReviseText.trim();
+    if (!feedback) {
+      state.uiBannerError = "Enter feedback describing how to revise the plan.";
+      renderApp();
+      return;
+    }
+    state.planReviseText = "";
+    state.uncheckedPlanSteps = {};
+    await runIterativeAction(taskId, "interpret", () =>
+      invoke<TaskRecord>("revise_pending_plan", { taskId, feedback })
+    );
+  });
+
+  document.getElementById("discard-plan-btn")?.addEventListener("click", async (ev) => {
+    const taskId = (ev.currentTarget as HTMLElement).getAttribute("data-task-id");
+    if (!taskId) return;
+    try {
+      const updated = await invoke<TaskRecord>("discard_pending_plan", { taskId });
+      state.currentTask = updated;
+      state.uncheckedPlanSteps = {};
+      state.planReviseText = "";
+      await refreshAllState();
+    } catch (err) {
+      state.uiBannerError = String(err);
+      renderApp();
+    }
+  });
+
+  // Follow-up round prompt sync & submit
+  document.getElementById("followup-prompt-input")?.addEventListener("input", (ev) => {
+    state.followupText = (ev.target as HTMLTextAreaElement).value;
+  });
+
+  document.getElementById("followup-prompt-input")?.addEventListener("keydown", (ev) => {
+    if ((ev.ctrlKey || ev.metaKey) && ev.key === "Enter") {
+      ev.preventDefault();
+      document.getElementById("continue-round-btn")?.click();
+    }
+  });
+
+  document.getElementById("continue-round-btn")?.addEventListener("click", async (ev) => {
+    const taskId = (ev.currentTarget as HTMLElement).getAttribute("data-task-id");
+    if (!taskId) return;
+    const followupPrompt = state.followupText.trim();
+    if (!followupPrompt) {
+      state.uiBannerError = "Enter a follow-up instruction before running the next round.";
+      renderApp();
+      return;
+    }
+    state.followupText = "";
+    await runIterativeAction(taskId, "interpret", () =>
+      invoke<TaskRecord>("continue_task_round", {
+        taskId,
+        followupPrompt,
+        autoRepairOverride: null,
+      })
+    );
+  });
+
+  // Copy initial prompt back into the prompt box
+  document.querySelectorAll<HTMLElement>(".copy-prompt-to-input-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const p = btn.getAttribute("data-prompt") ?? "";
+      state.promptText = p;
+      state.readOnlyHistorical = false;
+      renderApp();
+      const input = document.getElementById("task-prompt-input") as HTMLTextAreaElement | null;
+      if (input) {
+        input.value = p;
+        input.focus();
+      }
+    });
+  });
+
+  // Expand / collapse previous round snapshots
+  document.querySelectorAll<HTMLElement>(".round-toggle-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const num = Number(btn.getAttribute("data-round-num"));
+      if (!Number.isFinite(num)) return;
+      const wasExpanded = btn.getAttribute("data-expanded") === "1";
+      state.expandedRounds[num] = !wasExpanded;
+      renderApp();
     });
   });
 
@@ -7004,6 +7781,17 @@ function bindEvents(): void {
     const timeoutVal = Number((document.getElementById("cfg-timeout") as HTMLInputElement)?.value);
     const wikiDir = (document.getElementById("cfg-wiki-dir") as HTMLInputElement)?.value.trim();
     const dryRun = (document.getElementById("cfg-dry-run") as HTMLInputElement)?.checked ?? false;
+    const autoRepairEnabled =
+      (document.getElementById("cfg-auto-repair-enabled") as HTMLInputElement)?.checked ?? false;
+    const discoveryPassEnabled =
+      (document.getElementById("cfg-discovery-pass-enabled") as HTMLInputElement)?.checked ?? true;
+    const pauseOnRequest =
+      (document.getElementById("cfg-pause-on-request") as HTMLInputElement)?.checked ?? true;
+    const pauseAfterPlan =
+      (document.getElementById("cfg-pause-after-plan") as HTMLInputElement)?.checked ?? true;
+    const maxAutoRepairVal = Number(
+      (document.getElementById("cfg-max-auto-repair-rounds") as HTMLInputElement)?.value
+    );
     const memoryAutoSanitize =
       (document.getElementById("cfg-memory-auto-sanitize") as HTMLInputElement)?.checked ?? true;
     const runLogLevel = (document.getElementById("cfg-run-log-level") as HTMLSelectElement)?.value;
@@ -7022,6 +7810,12 @@ function bindEvents(): void {
     state.config.command_timeout_secs = timeoutVal > 0 ? timeoutVal : 60;
     state.config.wiki_dir = wikiDir || "./ProjectsWiki";
     state.config.dry_run = dryRun;
+    state.config.auto_repair_enabled = autoRepairEnabled;
+    state.config.discovery_pass_enabled = discoveryPassEnabled;
+    state.config.pause_on_request = pauseOnRequest;
+    state.config.pause_after_plan = pauseAfterPlan;
+    state.config.max_auto_repair_rounds =
+      Number.isFinite(maxAutoRepairVal) ? Math.max(0, Math.min(5, Math.floor(maxAutoRepairVal))) : 2;
     state.config.memory_auto_sanitize = memoryAutoSanitize;
     state.config.run_log_level = runLogLevel || "info";
     state.config.run_log_max_mb = runLogMaxMb > 0 ? runLogMaxMb : 50;
@@ -7986,6 +8780,7 @@ function bindEvents(): void {
         targets,
         runTestHook: state.inboxRunTestHook,
       });
+      state.lastBatchApprovedTaskIds = Array.from(new Set(targets.map((t) => t.task_id)));
       state.lastBatchApprovalResult = res;
       state.selectedInboxCardIds = [];
       state.uiBannerInfo = `Batch approved ${res.approved_count} card(s) across ${res.affected_projects.length} project(s).`;
@@ -8043,6 +8838,41 @@ function bindEvents(): void {
         state.readOnlyHistorical = false;
         state.tab = "workbench";
         state.queueDrawerOpen = false;
+        renderApp();
+      }
+    });
+  });
+
+  document.querySelectorAll<HTMLElement>(".inbox-fix-test-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const taskId = btn.getAttribute("data-task-id");
+      const cmd = btn.getAttribute("data-hook-cmd") ?? "test hook";
+      const summary = btn.getAttribute("data-hook-summary") ?? "Tests failed";
+      if (!taskId) return;
+      const found = state.history.find((t) => t.task_id === taskId);
+      if (found) {
+        state.currentTask = found;
+      }
+      state.queueDrawerOpen = false;
+      state.readOnlyHistorical = false;
+      state.tab = "workbench";
+      const followupPrompt = `Post-approval test hook (${cmd}) failed. Fix the errors below:\n${summary}`;
+      state.stages = { interpret: "active", execute: "idle", verify: "idle", done: "idle" };
+      resetLiveRun(true);
+      state.runningPipeline = true;
+      renderApp();
+      try {
+        const updated = await invoke<TaskRecord>("continue_task_round", {
+          taskId,
+          followupPrompt,
+          autoRepairOverride: null,
+        });
+        state.currentTask = updated;
+        await refreshAllState();
+      } catch (err) {
+        state.uiBannerError = String(err);
+      } finally {
+        state.runningPipeline = false;
         renderApp();
       }
     });

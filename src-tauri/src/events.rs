@@ -47,6 +47,14 @@ pub enum PipelineEvent {
         success: bool,
         error: Option<String>,
     },
+    /// Emitted when a task transitions to a new iterative round (discovery, auto-repair, follow-up, retry).
+    RoundChanged {
+        task_id: String,
+        round_number: usize,
+        trigger: String,
+        detail: Option<String>,
+        timestamp: String,
+    },
 }
 
 pub fn emit_pipeline_event(app: Option<&AppHandle>, event: PipelineEvent) {
@@ -104,6 +112,25 @@ pub fn emit_ticker_log(
             stage: stage.to_string(),
             level: level.to_string(),
             message: msg,
+            timestamp: Utc::now().to_rfc3339(),
+        },
+    );
+}
+
+pub fn emit_round_changed(
+    app: Option<&AppHandle>,
+    task_id: &str,
+    round_number: usize,
+    trigger: &str,
+    detail: Option<String>,
+) {
+    emit_pipeline_event(
+        app,
+        PipelineEvent::RoundChanged {
+            task_id: task_id.to_string(),
+            round_number,
+            trigger: trigger.to_string(),
+            detail,
             timestamp: Utc::now().to_rfc3339(),
         },
     );

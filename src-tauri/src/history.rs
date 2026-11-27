@@ -75,14 +75,26 @@ impl Default for PlanStep {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+fn default_estimated_risk() -> String {
+    "low".to_string()
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TaskPlan {
+    #[serde(default, alias = "summary", alias = "task_goal")]
     pub goal: String,
+    #[serde(default = "default_estimated_risk", alias = "risk", alias = "risk_level")]
     pub estimated_risk: String,
+    #[serde(default, alias = "files_included", alias = "files", alias = "target_files")]
     pub files_involved: Vec<String>,
     #[serde(default)]
     pub memories_used: Vec<String>,
+    #[serde(default)]
     pub steps: Vec<PlanStep>,
+    #[serde(default)]
+    pub phase: Option<String>,
+    #[serde(default)]
+    pub needs_planning_followup: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -202,6 +214,8 @@ pub struct VerificationResult {
     /// "pass" | "concerns" | "fail"
     pub verdict: String,
     pub rationale: String,
+    #[serde(default)]
+    pub response: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -216,6 +230,25 @@ pub struct ChoiceCard {
     pub chosen_option: Option<String>,
     pub chosen_at: Option<String>,
     pub chosen_provider: Option<String>,
+}
+
+fn default_round_one() -> usize {
+    1
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskRoundSnapshot {
+    pub round_number: usize,
+    pub timestamp: String,
+    pub trigger: String,
+    #[serde(default)]
+    pub user_note: Option<String>,
+    pub plan: Option<TaskPlan>,
+    pub step_logs: Vec<StepExecutionLog>,
+    pub action_cards: Vec<ActionCard>,
+    pub verification: Option<VerificationResult>,
+    pub failed_stage: Option<String>,
+    pub stage_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -266,6 +299,95 @@ pub struct TaskRecord {
     pub provider_interpret: Option<String>,
     #[serde(default)]
     pub provider_verify: Option<String>,
+    #[serde(default = "default_round_one")]
+    pub current_round: usize,
+    #[serde(default)]
+    pub rounds: Vec<TaskRoundSnapshot>,
+    #[serde(default)]
+    pub paused_at_step_id: Option<usize>,
+    #[serde(default)]
+    pub pause_reason: Option<String>,
+    #[serde(default)]
+    pub auto_repair_attempts: usize,
+    #[serde(default)]
+    pub discovery_completed: bool,
+    #[serde(default)]
+    pub followup_notes: Vec<String>,
+    #[serde(default)]
+    pub awaiting_plan_approval: bool,
+}
+
+impl Default for TaskRecord {
+    fn default() -> Self {
+        Self {
+            task_id: String::new(),
+            timestamp: String::new(),
+            title: String::new(),
+            starred: false,
+            prompt: String::new(),
+            project_dir: String::new(),
+            cloud_model: String::new(),
+            cruise_control: false,
+            dry_run: false,
+            posture_summary: String::new(),
+            auto_executed_count: 0,
+            queued_count: 0,
+            denied_count: 0,
+            plan: None,
+            step_logs: Vec::new(),
+            action_cards: Vec::new(),
+            verification: None,
+            failed_stage: None,
+            stage_error: None,
+            journal_path: String::new(),
+            task_scoped_grants: Vec::new(),
+            task_provided_info: Vec::new(),
+            stage_error_kind: None,
+            choice_cards: Vec::new(),
+            deferred: false,
+            deferred_stage: None,
+            defer_reason: None,
+            local_grade_plan: false,
+            local_grade_verify: false,
+            provider_interpret: None,
+            provider_verify: None,
+            current_round: 1,
+            rounds: Vec::new(),
+            paused_at_step_id: None,
+            pause_reason: None,
+            auto_repair_attempts: 0,
+            discovery_completed: false,
+            followup_notes: Vec::new(),
+            awaiting_plan_approval: false,
+        }
+    }
+}
+
+impl TaskRecord {
+    /// Archives the active round snapshot when meaningful progress exists and advances `current_round`.
+    pub fn archive_current_round(&mut self, trigger: &str, user_note: Option<String>) {
+        if self.plan.is_none()
+            && self.step_logs.is_empty()
+            && self.action_cards.is_empty()
+            && self.verification.is_none()
+        {
+            return;
+        }
+        let round_num = self.current_round.max(1);
+        self.rounds.push(TaskRoundSnapshot {
+            round_number: round_num,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            trigger: trigger.to_string(),
+            user_note,
+            plan: self.plan.clone(),
+            step_logs: self.step_logs.clone(),
+            action_cards: self.action_cards.clone(),
+            verification: self.verification.clone(),
+            failed_stage: self.failed_stage.clone(),
+            stage_error: self.stage_error.clone(),
+        });
+        self.current_round = round_num + 1;
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

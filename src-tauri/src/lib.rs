@@ -18,7 +18,7 @@ use enforcer::{
     check_command_deny_list, check_path_deny_list, find_governing_whitelist, log_decision,
     resolve_canonical_target, ActionClass, JournalEntry,
 };
-use events::{emit_stage_changed, emit_ticker_log};
+use events::{emit_round_changed, emit_stage_changed, emit_ticker_log};
 use history::{
     delete_task_from_history, load_history, toggle_star_in_history, upsert_task_record,
     ChoiceCard, TaskPlan, TaskRecord, VerificationResult,
@@ -26,20 +26,24 @@ use history::{
 use memory::{delete_memory_entry, load_all_memories, save_memory_entry, MemoryEntry};
 use prompts::DIGEST_LOG_PROMPT_PREFIX;
 use pipeline::{
-    ai_build_wiki_project_service, build_posture_summary, call_ollama_generate, check_system_health,
-    classify_cloud_error_from_str, complete_wiki_setup_service, create_initial_task_record,
-    create_project_or_folder_service, detect_projects_in_dir_service, fetch_provider_models,
-    get_detailed_wiki_status, get_project_creation_context_service, get_wiki_setup_info_service,
-    list_wiki_projects_service, ping_alt_provider, probe_cloud_health, rebuild_wiki_assets_service,
-    rescan_projects_service, CreateProjectOrFolderRequest, CreateProjectOrFolderResult,
-    CreateTargetKind, ProjectCreationContext, RescanResult,
-    resolve_active_project_root, restart_wiki_service, run_execute_stage_with_events,
-    run_interpret_stage, run_interpret_stage_with_provider, run_shell_command_bounded,
-    run_verify_stage, run_verify_stage_with_provider, save_and_return_record,
-    start_lumo_bridge_service, start_wiki_service, stop_wiki_service, sync_wiki_catalog_service,
-    check_lumo_auth_status, complete_lumo_browser_auth, launch_lumo_auth_browser,
-    CloudErrorKind, HealthStatus, LumoAuthStatus, ProviderTestResult, StageProvider, WikiSetupInfo,
-    WikiSetupPayload, WikiStatusDetails,
+    ai_build_wiki_project_service, build_iterative_interpret_context,
+    build_local_prior_round_context, build_posture_summary,
+    call_ollama_generate, check_lumo_auth_status, check_system_health,
+    classify_cloud_error_from_str, complete_lumo_browser_auth, complete_wiki_setup_service,
+    create_initial_task_record, create_project_or_folder_service, detect_projects_in_dir_service,
+    detect_shell_output_failure, fetch_provider_models, filter_plan_steps_by_ids,
+    get_detailed_wiki_status,
+    get_project_creation_context_service, get_wiki_setup_info_service, launch_lumo_auth_browser,
+    list_wiki_projects_service, ping_alt_provider, plan_is_readonly_discovery, probe_cloud_health,
+    rebuild_wiki_assets_service, rescan_projects_service, resolve_active_project_root,
+    restart_wiki_service, run_execute_stage_advanced, run_execute_stage_with_events,
+    run_interpret_stage, run_interpret_stage_with_context, run_interpret_stage_with_provider,
+    run_shell_command_bounded, run_single_step_with_events, run_verify_stage,
+    run_verify_stage_with_provider, save_and_return_record, start_lumo_bridge_service,
+    start_wiki_service, stop_wiki_service, sync_wiki_catalog_service, CloudErrorKind,
+    CreateProjectOrFolderRequest, CreateProjectOrFolderResult, CreateTargetKind,
+    ExecuteStageOptions, HealthStatus, LumoAuthStatus, ProjectCreationContext, ProviderTestResult,
+    RescanResult, StageProvider, WikiSetupInfo, WikiSetupPayload, WikiStatusDetails,
 };
 use chrono::Utc;
 use std::path::{Path, PathBuf};
@@ -55,6 +59,8 @@ pub struct AppState {
     pub cruise_control: AtomicBool,
     /// Multi-task queue manager and VRAM serialization mutex (§2.1 Slice 2)
     pub queue: Arc<queue::QueueManager>,
+    /// Cooperative cancellation flag for direct iterative runs
+    pub active_cancel: AtomicBool,
 }
 
 impl Default for AppState {
@@ -63,8 +69,15 @@ impl Default for AppState {
             config: Mutex::new(AppConfig::default()),
             cruise_control: AtomicBool::new(false),
             queue: Arc::new(queue::QueueManager::new()),
+            active_cancel: AtomicBool::new(false),
         }
     }
+}
+
+#[tauri::command]
+fn cancel_active_iteration(state: State<'_, AppState>) -> Result<(), String> {
+    state.active_cancel.store(true, Ordering::SeqCst);
+    Ok(())
 }
 
 #[tauri::command]
@@ -292,64 +305,117 @@ async fn create_project_or_folder(
     Ok(res)
 }
 
-#[tauri::command]
-async fn run_task_pipeline(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    prompt: String,
-) -> Result<TaskRecord, String> {
-    let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
-    let cruise = state.cruise_control.load(Ordering::SeqCst);
-    let project_root = resolve_active_project_root(&cfg)?;
+fn classify_cascade_attempt_code(err: &str) -> &'static str {
+    let lower = err.to_ascii_lowercase();
+    if err.contains("429") || lower.contains("quota") || lower.contains("rate limit") {
+        "429"
+    } else if err.contains("500") {
+        "500"
+    } else if err.contains("502") {
+        "502"
+    } else if err.contains("503") {
+        "503"
+    } else if err.contains("Plan rejected:") || err.contains("invalid plan JSON") {
+        "invalid_plan"
+    } else {
+        "error"
+    }
+}
 
-    let mut record = create_initial_task_record(&cfg, &prompt, &project_root, cruise);
-    upsert_task_record(&record)?;
+fn is_task_cancelled(state: &AppState, queue_id: Option<&str>) -> bool {
+    state.active_cancel.load(Ordering::SeqCst)
+        || queue_id.is_some_and(|qid| {
+            state
+                .queue
+                .get_items()
+                .iter()
+                .any(|i| i.queue_id == qid && i.status == queue::QueueItemStatus::Cancelled)
+        })
+}
 
-    // Stage 1: Cloud Interpret
+/// Builds the primary prompt sent to Interpret and Verify for the current round.
+/// On Round 2+, promotes the latest user follow-up request above the initial Round 1 prompt
+/// so models treat the follow-up instruction as the primary objective rather than re-doing Round 1.
+pub fn build_effective_round_prompt(record: &TaskRecord) -> String {
+    if let Some(latest_followup) = record
+        .followup_notes
+        .last()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
+        format!(
+            "Current Follow-Up Request (PRIMARY OBJECTIVE FOR THIS ROUND):\n{latest_followup}\n\nOriginal Initial Task Prompt (Round 1 Background):\n{}",
+            record.prompt.trim()
+        )
+    } else {
+        record.prompt.clone()
+    }
+}
+
+async fn execute_interpret_with_cascade(
+    app: Option<&AppHandle>,
+    cfg: &AppConfig,
+    project_root: &Path,
+    record: &mut TaskRecord,
+    prior_context: Option<&str>,
+) -> Result<TaskPlan, String> {
     emit_stage_changed(
-        Some(&app),
+        app,
         &record.task_id,
         "interpret",
         "active",
-        Some(format!("Cloud interpret via {}", cfg.cloud_model)),
+        Some(format!(
+            "Cloud interpret via {} (Round {})",
+            cfg.cloud_model,
+            record.current_round.max(1)
+        )),
     );
     emit_ticker_log(
-        Some(&app),
+        app,
         &record.task_id,
         "interpret",
         "info",
         format!(
-            "Stage 1 (interpret) → cloud/{} parsing task plan...",
+            "Stage 1 (interpret, round {}) -> cloud/{} parsing task plan...",
+            record.current_round.max(1),
             cfg.cloud_model
         ),
     );
 
+    let effective_prompt = build_effective_round_prompt(record);
+
     let interpret_res: Result<TaskPlan, String> = if cfg.cascade.enabled && cfg.cascade.consent {
-        let cascade_providers = pipeline::build_cascade_provider_list(&cfg);
+        let cascade_providers = pipeline::build_cascade_provider_list(cfg);
         let mut final_res = Err("No providers available in cascade".to_string());
         for (pname, sprovider) in cascade_providers {
-            match run_interpret_stage_with_provider(&cfg, &project_root, &prompt, &sprovider).await {
+            match run_interpret_stage_with_context(
+                cfg,
+                project_root,
+                &effective_prompt,
+                &sprovider,
+                prior_context,
+            )
+            .await
+            {
                 Ok(plan) => {
                     record.provider_interpret = Some(pname.clone());
-                    append_journal_note(&record.task_id, "stage_provider", &format!("stage=interpret, provider={pname}"));
+                    append_journal_note(
+                        &record.task_id,
+                        "stage_provider",
+                        &format!("stage=interpret, provider={pname}"),
+                    );
                     final_res = Ok(plan);
                     break;
                 }
                 Err(e) => {
-                    let err_code = if e.contains("429") {
-                        "429"
-                    } else if e.contains("500") {
-                        "500"
-                    } else if e.contains("502") {
-                        "502"
-                    } else if e.contains("503") {
-                        "503"
-                    } else {
-                        "429"
-                    };
-                    append_journal_note(&record.task_id, "cascade_attempt", &format!("stage=interpret provider={pname} error={err_code}"));
+                    let err_code = classify_cascade_attempt_code(&e);
+                    append_journal_note(
+                        &record.task_id,
+                        "cascade_attempt",
+                        &format!("stage=interpret provider={pname} error={err_code}"),
+                    );
                     emit_ticker_log(
-                        Some(&app),
+                        app,
                         &record.task_id,
                         "interpret",
                         "warn",
@@ -361,7 +427,14 @@ async fn run_task_pipeline(
         }
         final_res
     } else {
-        run_interpret_stage(&cfg, &project_root, &prompt).await
+        run_interpret_stage_with_context(
+            cfg,
+            project_root,
+            &effective_prompt,
+            &StageProvider::DefaultCloud,
+            prior_context,
+        )
+        .await
     };
 
     match interpret_res {
@@ -370,7 +443,7 @@ async fn run_task_pipeline(
                 record.title = plan.goal.trim().to_string();
             }
             emit_ticker_log(
-                Some(&app),
+                app,
                 &record.task_id,
                 "interpret",
                 "ok",
@@ -382,16 +455,18 @@ async fn run_task_pipeline(
                 ),
             );
             emit_stage_changed(
-                Some(&app),
+                app,
                 &record.task_id,
                 "interpret",
                 "completed",
                 Some(plan.goal.clone()),
             );
-            record.plan = Some(plan);
+            record.plan = Some(plan.clone());
             record.failed_stage = None;
             record.stage_error = None;
-            upsert_task_record(&record)?;
+            record.stage_error_kind = None;
+            upsert_task_record(record)?;
+            Ok(plan)
         }
         Err(err) => {
             let err_kind = classify_cloud_error_from_str(&err);
@@ -408,7 +483,7 @@ async fn run_task_pipeline(
                     chosen_provider: None,
                 });
                 emit_ticker_log(
-                    Some(&app),
+                    app,
                     &record.task_id,
                     "interpret",
                     "warn",
@@ -417,7 +492,7 @@ async fn run_task_pipeline(
             } else {
                 record.stage_error_kind = Some(format!("{:?}", err_kind).to_ascii_lowercase());
                 emit_ticker_log(
-                    Some(&app),
+                    app,
                     &record.task_id,
                     "interpret",
                     "bad",
@@ -425,149 +500,83 @@ async fn run_task_pipeline(
                 );
             }
             emit_stage_changed(
-                Some(&app),
+                app,
                 &record.task_id,
                 "interpret",
                 "failed",
                 Some(err.clone()),
             );
             record.failed_stage = Some("interpret".to_string());
-            record.stage_error = Some(err);
-            return save_and_return_record(record);
+            record.stage_error = Some(err.clone());
+            Err(err)
         }
     }
+}
 
-    // Stage 2: Local Execute + Enforcer
-    let plan_ref = record.plan.clone().unwrap();
+async fn execute_verify_with_cascade(
+    app: Option<&AppHandle>,
+    cfg: &AppConfig,
+    record: &mut TaskRecord,
+) -> Result<VerificationResult, String> {
+    let plan_ref = record
+        .plan
+        .clone()
+        .ok_or_else(|| "Cannot verify without an interpreted TaskPlan".to_string())?;
+
     emit_stage_changed(
-        Some(&app),
-        &record.task_id,
-        "execute",
-        "active",
-        Some(format!("Executing {} local step(s)", plan_ref.steps.len())),
-    );
-    emit_ticker_log(
-        Some(&app),
-        &record.task_id,
-        "execute",
-        "info",
-        format!(
-            "Stage 2 (execute) → running {} planned step(s) locally on Ollama...",
-            plan_ref.steps.len()
-        ),
-    );
-
-    let exec_res = {
-        // Enforce strict VRAM serialization for local model inference (§2.1 Slice 2)
-        let _vram_guard = state.queue.vram_lock.lock().await;
-        run_execute_stage_with_events(
-            Some(&app),
-            &cfg,
-            &project_root,
-            &record.task_id,
-            &plan_ref,
-            cruise,
-        )
-        .await
-    };
-
-    match exec_res {
-        Ok((step_logs, action_cards)) => {
-            let (posture, auto_c, queued_c, denied_c) =
-                build_posture_summary(&cfg, cruise, &action_cards);
-            record.posture_summary = posture;
-            record.auto_executed_count = auto_c;
-            record.queued_count = queued_c;
-            record.denied_count = denied_c;
-            record.step_logs = step_logs;
-            record.action_cards = action_cards;
-            record.failed_stage = None;
-            record.stage_error = None;
-            upsert_task_record(&record)?;
-            emit_ticker_log(
-                Some(&app),
-                &record.task_id,
-                "execute",
-                "ok",
-                format!(
-                    "Stage 2 complete — auto-executed={}, queued_for_approval={}, blocked={}",
-                    auto_c, queued_c, denied_c
-                ),
-            );
-            emit_stage_changed(
-                Some(&app),
-                &record.task_id,
-                "execute",
-                "completed",
-                None,
-            );
-        }
-        Err(err) => {
-            emit_ticker_log(
-                Some(&app),
-                &record.task_id,
-                "execute",
-                "bad",
-                format!("Stage 2 (execute) failed: {err}"),
-            );
-            emit_stage_changed(
-                Some(&app),
-                &record.task_id,
-                "execute",
-                "failed",
-                Some(err.clone()),
-            );
-            record.failed_stage = Some("execute".to_string());
-            record.stage_error = Some(err);
-            return save_and_return_record(record);
-        }
-    }
-
-    // Stage 3: Cloud Verify
-    emit_stage_changed(
-        Some(&app),
+        app,
         &record.task_id,
         "verify",
         "active",
         Some("Verifying condensed diffs against plan".to_string()),
     );
     emit_ticker_log(
-        Some(&app),
+        app,
         &record.task_id,
         "verify",
         "info",
         format!(
-            "Stage 3 (verify) → cloud/{} reviewing condensed summaries & diffs...",
+            "Stage 3 (verify, round {}) -> cloud/{} reviewing condensed summaries & diffs...",
+            record.current_round.max(1),
             cfg.cloud_model
         ),
     );
 
+    let effective_prompt = build_effective_round_prompt(record);
+
     let verify_res: Result<VerificationResult, String> = if cfg.cascade.enabled && cfg.cascade.consent {
-        let cascade_providers = pipeline::build_cascade_provider_list(&cfg);
+        let cascade_providers = pipeline::build_cascade_provider_list(cfg);
         let mut final_res = Err("No providers available in cascade".to_string());
         for (pname, sprovider) in cascade_providers {
-            match run_verify_stage_with_provider(&cfg, &record.prompt, &plan_ref, &record.step_logs, &record.action_cards, &sprovider).await {
+            match run_verify_stage_with_provider(
+                cfg,
+                &effective_prompt,
+                &plan_ref,
+                &record.step_logs,
+                &record.action_cards,
+                &sprovider,
+            )
+            .await
+            {
                 Ok(ver) => {
                     record.provider_verify = Some(pname.clone());
-                    append_journal_note(&record.task_id, "stage_provider", &format!("stage=verify, provider={pname}"));
+                    append_journal_note(
+                        &record.task_id,
+                        "stage_provider",
+                        &format!("stage=verify, provider={pname}"),
+                    );
                     final_res = Ok(ver);
                     break;
                 }
                 Err(e) => {
-                    let err_code = if e.contains("429") {
-                        "429"
-                    } else if e.contains("500") {
-                        "500"
-                    } else if e.contains("502") {
-                        "502"
-                    } else if e.contains("503") {
-                        "503"
-                    } else {
-                        "429"
-                    };
-                    append_journal_note(&record.task_id, "cascade_attempt", &format!("stage=verify provider={pname} error={err_code}"));
+                    let err_code = classify_cascade_attempt_code(&e);
+                    append_journal_note(
+                        &record.task_id,
+                        "cascade_attempt",
+                        &format!("stage=verify provider={pname} error={err_code}"),
+                    );
                     emit_ticker_log(
-                        Some(&app),
+                        app,
                         &record.task_id,
                         "verify",
                         "warn",
@@ -580,8 +589,8 @@ async fn run_task_pipeline(
         final_res
     } else {
         run_verify_stage(
-            &cfg,
-            &record.prompt,
+            cfg,
+            &effective_prompt,
             &plan_ref,
             &record.step_logs,
             &record.action_cards,
@@ -592,7 +601,7 @@ async fn run_task_pipeline(
     match verify_res {
         Ok(ver) => {
             emit_ticker_log(
-                Some(&app),
+                app,
                 &record.task_id,
                 "verify",
                 "ok",
@@ -603,22 +612,24 @@ async fn run_task_pipeline(
                 ),
             );
             emit_stage_changed(
-                Some(&app),
+                app,
                 &record.task_id,
                 "verify",
                 "completed",
                 Some(ver.verdict.clone()),
             );
             emit_stage_changed(
-                Some(&app),
+                app,
                 &record.task_id,
                 "done",
                 "completed",
                 Some(ver.verdict.clone()),
             );
-            record.verification = Some(ver);
+            record.verification = Some(ver.clone());
             record.failed_stage = None;
             record.stage_error = None;
+            record.stage_error_kind = None;
+            Ok(ver)
         }
         Err(err) => {
             let err_kind = classify_cloud_error_from_str(&err);
@@ -635,7 +646,7 @@ async fn run_task_pipeline(
                     chosen_provider: None,
                 });
                 emit_ticker_log(
-                    Some(&app),
+                    app,
                     &record.task_id,
                     "verify",
                     "warn",
@@ -644,7 +655,7 @@ async fn run_task_pipeline(
             } else {
                 record.stage_error_kind = Some(format!("{:?}", err_kind).to_ascii_lowercase());
                 emit_ticker_log(
-                    Some(&app),
+                    app,
                     &record.task_id,
                     "verify",
                     "bad",
@@ -652,18 +663,433 @@ async fn run_task_pipeline(
                 );
             }
             emit_stage_changed(
-                Some(&app),
+                app,
                 &record.task_id,
                 "verify",
                 "failed",
                 Some(err.clone()),
             );
             record.failed_stage = Some("verify".to_string());
-            record.stage_error = Some(err);
+            record.stage_error = Some(err.clone());
+            Err(err)
         }
+    }
+}
+
+async fn run_iterative_pipeline_core(
+    app: &AppHandle,
+    state: &AppState,
+    cfg: &AppConfig,
+    cruise: bool,
+    mut record: TaskRecord,
+    start_stage: &str,
+    mut prior_context: Option<String>,
+    mut resume_after_step_id: Option<usize>,
+    allow_auto_repair: bool,
+    mut skip_plan_gate: bool,
+    queue_id: Option<&str>,
+) -> Result<TaskRecord, String> {
+    let project_root = PathBuf::from(&record.project_dir);
+    let mut current_stage = start_stage.to_string();
+
+    loop {
+        if is_task_cancelled(state, queue_id) {
+            emit_ticker_log(
+                Some(app),
+                &record.task_id,
+                &current_stage,
+                "warn",
+                "Task stopped by user.",
+            );
+            emit_stage_changed(
+                Some(app),
+                &record.task_id,
+                "done",
+                "failed",
+                Some("Cancelled by user".to_string()),
+            );
+            return save_and_return_record(record);
+        }
+
+        // Stage 1: Interpret
+        if current_stage == "interpret" || record.plan.is_none() {
+            if let Some(qid) = queue_id {
+                state
+                    .queue
+                    .update_status(qid, queue::QueueItemStatus::Interpreting, None);
+                queue::emit_queue_updated(Some(app), &state.queue.get_items());
+            }
+
+            if execute_interpret_with_cascade(
+                Some(app),
+                cfg,
+                &project_root,
+                &mut record,
+                prior_context.as_deref(),
+            )
+            .await
+            .is_err()
+            {
+                return save_and_return_record(record);
+            }
+
+            if cfg.pause_after_plan && !skip_plan_gate {
+                record.awaiting_plan_approval = true;
+                upsert_task_record(&record)?;
+                emit_ticker_log(
+                    Some(app),
+                    &record.task_id,
+                    "interpret",
+                    "warn",
+                    "Plan ready for review — approve to execute locally, uncheck steps, or revise the plan.",
+                );
+                emit_stage_changed(
+                    Some(app),
+                    &record.task_id,
+                    "interpret",
+                    "completed",
+                    Some("Awaiting plan approval".to_string()),
+                );
+                if let Some(qid) = queue_id {
+                    state
+                        .queue
+                        .update_status(qid, queue::QueueItemStatus::WaitingApproval, None);
+                    queue::emit_queue_updated(Some(app), &state.queue.get_items());
+                }
+                return save_and_return_record(record);
+            }
+            current_stage = "execute".to_string();
+        }
+
+        if is_task_cancelled(state, queue_id) {
+            emit_ticker_log(
+                Some(app),
+                &record.task_id,
+                "execute",
+                "warn",
+                "Task stopped by user.",
+            );
+            emit_stage_changed(
+                Some(app),
+                &record.task_id,
+                "done",
+                "failed",
+                Some("Cancelled by user".to_string()),
+            );
+            return save_and_return_record(record);
+        }
+
+        // Stage 2: Execute
+        if current_stage == "execute" {
+            record.awaiting_plan_approval = false;
+            if let Some(qid) = queue_id {
+                state
+                    .queue
+                    .update_status(qid, queue::QueueItemStatus::LocalWorking, None);
+                queue::emit_queue_updated(Some(app), &state.queue.get_items());
+            }
+
+            let plan_ref = record
+                .plan
+                .clone()
+                .ok_or_else(|| "Missing plan before execute stage".to_string())?;
+            emit_stage_changed(
+                Some(app),
+                &record.task_id,
+                "execute",
+                "active",
+                Some(format!("Executing {} local step(s)", plan_ref.steps.len())),
+            );
+            emit_ticker_log(
+                Some(app),
+                &record.task_id,
+                "execute",
+                "info",
+                format!(
+                    "Stage 2 (execute, round {}) -> running {} planned step(s) locally on Ollama...",
+                    record.current_round.max(1),
+                    plan_ref.steps.len()
+                ),
+            );
+
+            let exec_opts = ExecuteStageOptions {
+                start_after_step_id: resume_after_step_id,
+                pause_on_request: cfg.pause_on_request,
+                prior_step_logs: if resume_after_step_id.is_some() {
+                    record.step_logs.clone()
+                } else {
+                    Vec::new()
+                },
+                prior_action_cards: if resume_after_step_id.is_some() {
+                    record.action_cards.clone()
+                } else {
+                    Vec::new()
+                },
+                task_scoped_grants: record.task_scoped_grants.clone(),
+                task_provided_info: record.task_provided_info.clone(),
+                step_feedback: None,
+                prior_round_context: build_local_prior_round_context(&record),
+            };
+
+            let exec_res = {
+                let _vram_guard = state.queue.vram_lock.lock().await;
+                run_execute_stage_advanced(
+                    Some(app),
+                    cfg,
+                    &project_root,
+                    &record.task_id,
+                    &plan_ref,
+                    cruise,
+                    exec_opts,
+                )
+                .await
+            };
+
+            match exec_res {
+                Ok(outcome) => {
+                    let (posture, auto_c, queued_c, denied_c) =
+                        build_posture_summary(cfg, cruise, &outcome.action_cards);
+                    record.posture_summary = posture;
+                    record.auto_executed_count = auto_c;
+                    record.queued_count = queued_c;
+                    record.denied_count = denied_c;
+                    record.step_logs = outcome.step_logs;
+                    record.action_cards = outcome.action_cards;
+                    record.paused_at_step_id = outcome.paused_at_step_id;
+                    record.pause_reason = outcome.pause_reason.clone();
+                    record.failed_stage = None;
+                    record.stage_error = None;
+                    upsert_task_record(&record)?;
+
+                    if let Some(qid) = queue_id {
+                        state.queue.update_card_counts(qid, queued_c, auto_c, denied_c);
+                    }
+
+                    if let Some(paused_sid) = record.paused_at_step_id {
+                        emit_ticker_log(
+                            Some(app),
+                            &record.task_id,
+                            "execute",
+                            "warn",
+                            format!(
+                                "Execution paused at REQUEST step #{} — answer or grant to resume.",
+                                paused_sid
+                            ),
+                        );
+                        emit_stage_changed(
+                            Some(app),
+                            &record.task_id,
+                            "execute",
+                            "active",
+                            record.pause_reason.clone(),
+                        );
+                        if let Some(qid) = queue_id {
+                            state.queue.update_status(
+                                qid,
+                                queue::QueueItemStatus::WaitingApproval,
+                                None,
+                            );
+                            queue::emit_queue_updated(Some(app), &state.queue.get_items());
+                        }
+                        return save_and_return_record(record);
+                    }
+
+                    emit_ticker_log(
+                        Some(app),
+                        &record.task_id,
+                        "execute",
+                        "ok",
+                        format!(
+                            "Stage 2 complete — auto-executed={}, queued_for_approval={}, blocked={}",
+                            auto_c, queued_c, denied_c
+                        ),
+                    );
+                    emit_stage_changed(Some(app), &record.task_id, "execute", "completed", None);
+
+                    // Two-phase discovery follow-up pass
+                    if cfg.discovery_pass_enabled
+                        && !record.discovery_completed
+                        && plan_is_readonly_discovery(&plan_ref)
+                    {
+                        record.archive_current_round(
+                            "discovery_followup",
+                            Some("Local discovery summaries gathered".to_string()),
+                        );
+                        record.discovery_completed = true;
+                        emit_round_changed(
+                            Some(app),
+                            &record.task_id,
+                            record.current_round,
+                            "discovery_followup",
+                            Some("Planning implementation from local discovery summaries".to_string()),
+                        );
+                        emit_ticker_log(
+                            Some(app),
+                            &record.task_id,
+                            "interpret",
+                            "info",
+                            format!(
+                                "Discovery pass complete -> entering Round {} implementation planning...",
+                                record.current_round
+                            ),
+                        );
+                        prior_context = Some(build_iterative_interpret_context(
+                            &record,
+                            Some("Discovery pass complete. Produce the concrete implementation plan grounded in these local summaries. Do not set needs_planning_followup again."),
+                        ));
+                        record.plan = None;
+                        record.step_logs.clear();
+                        record.action_cards.clear();
+                        record.verification = None;
+                        record.paused_at_step_id = None;
+                        record.pause_reason = None;
+                        resume_after_step_id = None;
+                        skip_plan_gate = false;
+                        current_stage = "interpret".to_string();
+                        continue;
+                    }
+                }
+                Err(err) => {
+                    emit_ticker_log(
+                        Some(app),
+                        &record.task_id,
+                        "execute",
+                        "bad",
+                        format!("Stage 2 (execute) failed: {err}"),
+                    );
+                    emit_stage_changed(
+                        Some(app),
+                        &record.task_id,
+                        "execute",
+                        "failed",
+                        Some(err.clone()),
+                    );
+                    record.failed_stage = Some("execute".to_string());
+                    record.stage_error = Some(err);
+                    return save_and_return_record(record);
+                }
+            }
+            current_stage = "verify".to_string();
+        }
+
+        if is_task_cancelled(state, queue_id) {
+            emit_ticker_log(
+                Some(app),
+                &record.task_id,
+                &current_stage,
+                "warn",
+                "Task stopped by user.",
+            );
+            emit_stage_changed(
+                Some(app),
+                &record.task_id,
+                "done",
+                "failed",
+                Some("Cancelled by user".to_string()),
+            );
+            return save_and_return_record(record);
+        }
+
+        // Stage 3: Verify
+        if let Some(qid) = queue_id {
+            state
+                .queue
+                .update_status(qid, queue::QueueItemStatus::Verifying, None);
+            queue::emit_queue_updated(Some(app), &state.queue.get_items());
+        }
+
+        let ver = match execute_verify_with_cascade(Some(app), cfg, &mut record).await {
+            Ok(v) => v,
+            Err(_) => return save_and_return_record(record),
+        };
+
+        // Bounded auto-repair loop on Verify FAIL or failed auto-executed shell commands
+        let has_shell_error = record.action_cards.iter().any(|c| {
+            c.status == "auto_executed_grant"
+                && c.action_class == ActionClass::Execute
+                && c.execution_output
+                    .as_deref()
+                    .is_some_and(detect_shell_output_failure)
+        });
+        let cap = cfg.max_auto_repair_rounds.min(5);
+        if allow_auto_repair
+            && cfg.auto_repair_enabled
+            && record.auto_repair_attempts < cap
+            && !is_task_cancelled(state, queue_id)
+            && (ver.verdict.eq_ignore_ascii_case("fail") || has_shell_error)
+        {
+            record.auto_repair_attempts += 1;
+            let attempt = record.auto_repair_attempts;
+            let repair_note = format!("Auto-repair attempt {attempt}/{cap}");
+            record.archive_current_round("auto_repair", Some(repair_note.clone()));
+            emit_round_changed(
+                Some(app),
+                &record.task_id,
+                record.current_round,
+                "auto_repair",
+                Some(repair_note.clone()),
+            );
+            emit_ticker_log(
+                Some(app),
+                &record.task_id,
+                "verify",
+                "warn",
+                format!(
+                    "Auto-repair round {attempt}/{cap}: feeding critique and error digests back to planner..."
+                ),
+            );
+            let guidance = format!(
+                "Auto-repair attempt {attempt}/{cap}: resolve all verification failures and command errors listed above."
+            );
+            prior_context = Some(build_iterative_interpret_context(&record, Some(&guidance)));
+            record.plan = None;
+            record.step_logs.clear();
+            record.action_cards.clear();
+            record.verification = None;
+            record.failed_stage = None;
+            record.stage_error = None;
+            record.paused_at_step_id = None;
+            record.pause_reason = None;
+            resume_after_step_id = None;
+            skip_plan_gate = true;
+            current_stage = "interpret".to_string();
+            continue;
+        }
+
+        break;
     }
 
     save_and_return_record(record)
+}
+
+#[tauri::command]
+async fn run_task_pipeline(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    prompt: String,
+) -> Result<TaskRecord, String> {
+    state.active_cancel.store(false, Ordering::SeqCst);
+    let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
+    let cruise = state.cruise_control.load(Ordering::SeqCst);
+    let project_root = resolve_active_project_root(&cfg)?;
+
+    let record = create_initial_task_record(&cfg, &prompt, &project_root, cruise);
+    upsert_task_record(&record)?;
+
+    run_iterative_pipeline_core(
+        &app,
+        &state,
+        &cfg,
+        cruise,
+        record,
+        "interpret",
+        None,
+        None,
+        true,
+        false,
+        None,
+    )
+    .await
 }
 
 /// Retries ONLY the failed stage (`interpret`, `execute`, or `verify`) (§7 & Slice 2 §2.1).
@@ -673,6 +1099,7 @@ async fn retry_task_stage(
     state: State<'_, AppState>,
     task_id: String,
 ) -> Result<TaskRecord, String> {
+    state.active_cancel.store(false, Ordering::SeqCst);
     let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
     let cruise = state.cruise_control.load(Ordering::SeqCst);
 
@@ -682,7 +1109,6 @@ async fn retry_task_stage(
         .find(|r| r.task_id == task_id)
         .ok_or_else(|| format!("Task {task_id} not found"))?;
 
-    let project_root = Path::new(&record.project_dir).to_path_buf();
     let stage = record
         .failed_stage
         .clone()
@@ -700,235 +1126,633 @@ async fn retry_task_stage(
         format!("Retrying stage '{stage}' only..."),
     );
 
-    if stage == "interpret" || record.plan.is_none() {
-        emit_stage_changed(
-            Some(&app),
-            &record.task_id,
-            "interpret",
-            "active",
-            Some("Retrying interpret stage".to_string()),
-        );
-        match run_interpret_stage(&cfg, &project_root, &record.prompt).await {
-            Ok(plan) => {
-                if !plan.goal.trim().is_empty() {
-                    record.title = plan.goal.trim().to_string();
-                }
-                emit_ticker_log(
-                    Some(&app),
-                    &record.task_id,
-                    "interpret",
-                    "ok",
-                    format!("Stage 1 retry succeeded — goal: \"{}\"", plan.goal),
-                );
-                emit_stage_changed(
-                    Some(&app),
-                    &record.task_id,
-                    "interpret",
-                    "completed",
-                    Some(plan.goal.clone()),
-                );
-                record.plan = Some(plan);
-                record.failed_stage = None;
-                record.stage_error = None;
-                upsert_task_record(&record)?;
-            }
-            Err(err) => {
-                emit_ticker_log(
-                    Some(&app),
-                    &record.task_id,
-                    "interpret",
-                    "bad",
-                    format!("Stage 1 retry failed: {err}"),
-                );
-                emit_stage_changed(
-                    Some(&app),
-                    &record.task_id,
-                    "interpret",
-                    "failed",
-                    Some(err.clone()),
-                );
-                record.failed_stage = Some("interpret".to_string());
-                record.stage_error = Some(err);
-                return save_and_return_record(record);
-            }
-        }
+    let start_stage = if stage == "interpret" || record.plan.is_none() {
+        "interpret"
+    } else if stage == "execute" || record.step_logs.is_empty() {
+        "execute"
+    } else {
+        "verify"
+    };
+    record.failed_stage = None;
+    record.stage_error = None;
+    record.stage_error_kind = None;
+
+    let prior_ctx = if start_stage == "interpret" && !record.rounds.is_empty() {
+        Some(build_iterative_interpret_context(
+            &record,
+            record.followup_notes.last().map(String::as_str),
+        ))
+    } else {
+        None
+    };
+
+    let skip_gate = start_stage != "interpret";
+    run_iterative_pipeline_core(
+        &app,
+        &state,
+        &cfg,
+        cruise,
+        record,
+        start_stage,
+        prior_ctx,
+        None,
+        true,
+        skip_gate,
+        None,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn rerun_task_from_stage(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    task_id: String,
+    stage: String,
+    user_note: Option<String>,
+) -> Result<TaskRecord, String> {
+    if stage != "interpret" && stage != "execute" && stage != "verify" {
+        return Err(format!("Unsupported stage '{stage}' for re-run"));
+    }
+    state.active_cancel.store(false, Ordering::SeqCst);
+    let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
+    let cruise = state.cruise_control.load(Ordering::SeqCst);
+
+    let all = load_history()?;
+    let mut record = all
+        .into_iter()
+        .find(|r| r.task_id == task_id)
+        .ok_or_else(|| format!("Task {task_id} not found"))?;
+
+    if record.stage_error_kind.as_deref() == Some("quota_exhausted")
+        && record.failed_stage.as_deref() == Some(stage.as_str())
+        && user_note.as_deref().unwrap_or("").trim().is_empty()
+    {
+        return Err("Retry suppressed: cloud quota is exhausted. Please select Defer, Local, or Alternate Provider on the Choice Card.".to_string());
     }
 
-    if stage == "interpret" || stage == "execute" || record.step_logs.is_empty() {
-        let plan_ref = record.plan.clone().unwrap();
-        emit_stage_changed(
-            Some(&app),
-            &record.task_id,
-            "execute",
-            "active",
-            Some("Retrying execute stage".to_string()),
-        );
-        match run_execute_stage_with_events(
+    let clean_note = user_note
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    let prior_ctx = if stage == "interpret" {
+        Some(build_iterative_interpret_context(&record, clean_note.as_deref()))
+    } else {
+        None
+    };
+
+    record.archive_current_round(&format!("re{stage}"), clean_note.clone());
+    record.auto_repair_attempts = 0;
+    record.paused_at_step_id = None;
+    record.pause_reason = None;
+    record.awaiting_plan_approval = false;
+    record.failed_stage = None;
+    record.stage_error = None;
+    record.stage_error_kind = None;
+
+    emit_round_changed(
+        Some(&app),
+        &record.task_id,
+        record.current_round,
+        &format!("re{stage}"),
+        clean_note.clone(),
+    );
+
+    match stage.as_str() {
+        "interpret" => {
+            record.discovery_completed = false;
+            record.plan = None;
+            record.step_logs.clear();
+            record.action_cards.clear();
+            record.verification = None;
+            record.auto_executed_count = 0;
+            record.queued_count = 0;
+            record.denied_count = 0;
+            run_iterative_pipeline_core(
+                &app,
+                &state,
+                &cfg,
+                cruise,
+                record,
+                "interpret",
+                prior_ctx,
+                None,
+                true,
+                false,
+                None,
+            )
+            .await
+        }
+        "execute" => {
+            if record.plan.is_none() {
+                return Err("Cannot re-execute: task has no interpreted plan yet.".to_string());
+            }
+            record.step_logs.clear();
+            record.action_cards.clear();
+            record.verification = None;
+            record.auto_executed_count = 0;
+            record.queued_count = 0;
+            record.denied_count = 0;
+            run_iterative_pipeline_core(
+                &app,
+                &state,
+                &cfg,
+                cruise,
+                record,
+                "execute",
+                None,
+                None,
+                true,
+                true,
+                None,
+            )
+            .await
+        }
+        _ => {
+            if record.plan.is_none() {
+                return Err("Cannot re-verify: task has no interpreted plan yet.".to_string());
+            }
+            record.verification = None;
+            run_iterative_pipeline_core(
+                &app,
+                &state,
+                &cfg,
+                cruise,
+                record,
+                "verify",
+                None,
+                None,
+                false,
+                true,
+                None,
+            )
+            .await
+        }
+    }
+}
+
+#[tauri::command]
+async fn continue_task_round(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    task_id: String,
+    followup_prompt: String,
+    auto_repair_override: Option<bool>,
+) -> Result<TaskRecord, String> {
+    let clean_followup = followup_prompt.trim().to_string();
+    if clean_followup.is_empty() {
+        return Err("Follow-up prompt cannot be empty.".to_string());
+    }
+    state.active_cancel.store(false, Ordering::SeqCst);
+    let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
+    let cruise = state.cruise_control.load(Ordering::SeqCst);
+
+    let all = load_history()?;
+    let mut record = all
+        .into_iter()
+        .find(|r| r.task_id == task_id)
+        .ok_or_else(|| format!("Task {task_id} not found"))?;
+
+    let prior_ctx = build_iterative_interpret_context(&record, Some(&clean_followup));
+    record.archive_current_round("user_followup", Some(clean_followup.clone()));
+    record.followup_notes.push(clean_followup.clone());
+    record.auto_repair_attempts = 0;
+    record.discovery_completed = false;
+    record.paused_at_step_id = None;
+    record.pause_reason = None;
+    record.awaiting_plan_approval = false;
+    record.failed_stage = None;
+    record.stage_error = None;
+    record.stage_error_kind = None;
+    record.plan = None;
+    record.step_logs.clear();
+    record.action_cards.clear();
+    record.verification = None;
+    record.auto_executed_count = 0;
+    record.queued_count = 0;
+    record.denied_count = 0;
+
+    emit_round_changed(
+        Some(&app),
+        &record.task_id,
+        record.current_round,
+        "user_followup",
+        Some(clean_followup),
+    );
+
+    run_iterative_pipeline_core(
+        &app,
+        &state,
+        &cfg,
+        cruise,
+        record,
+        "interpret",
+        Some(prior_ctx),
+        None,
+        auto_repair_override.unwrap_or(true),
+        false,
+        None,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn retry_task_step(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    task_id: String,
+    step_id: usize,
+    feedback: Option<String>,
+    reverify: Option<bool>,
+) -> Result<TaskRecord, String> {
+    state.active_cancel.store(false, Ordering::SeqCst);
+    let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
+    let cruise = state.cruise_control.load(Ordering::SeqCst);
+
+    let all = load_history()?;
+    let mut record = all
+        .into_iter()
+        .find(|r| r.task_id == task_id)
+        .ok_or_else(|| format!("Task {task_id} not found"))?;
+
+    let plan_ref = record
+        .plan
+        .clone()
+        .ok_or_else(|| "Cannot retry step: task has no interpreted plan.".to_string())?;
+    if !plan_ref.steps.iter().any(|s| s.id == step_id) {
+        return Err(format!("Step #{step_id} not found in task plan"));
+    }
+
+    let clean_fb = feedback
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    record.archive_current_round("step_retry", clean_fb.clone());
+    emit_round_changed(
+        Some(&app),
+        &record.task_id,
+        record.current_round,
+        "step_retry",
+        Some(format!("Retrying step #{step_id}")),
+    );
+    emit_stage_changed(
+        Some(&app),
+        &record.task_id,
+        "execute",
+        "active",
+        Some(format!("Retrying step #{step_id}")),
+    );
+    emit_ticker_log(
+        Some(&app),
+        &record.task_id,
+        "execute",
+        "info",
+        format!("Retrying step #{step_id} locally..."),
+    );
+
+    let prior_context_logs: Vec<_> = record
+        .step_logs
+        .iter()
+        .filter(|l| l.step_id < step_id)
+        .cloned()
+        .collect();
+    let project_root = PathBuf::from(&record.project_dir);
+
+    let prior_round_ctx = build_local_prior_round_context(&record);
+    let (new_log, new_card_opt) = {
+        let _vram_guard = state.queue.vram_lock.lock().await;
+        run_single_step_with_events(
             Some(&app),
             &cfg,
             &project_root,
             &record.task_id,
             &plan_ref,
+            step_id,
             cruise,
+            prior_context_logs,
+            record.task_scoped_grants.clone(),
+            record.task_provided_info.clone(),
+            clean_fb,
+            prior_round_ctx,
         )
-        .await
-        {
-            Ok((step_logs, action_cards)) => {
-                let (posture, auto_c, queued_c, denied_c) =
-                    build_posture_summary(&cfg, cruise, &action_cards);
-                record.posture_summary = posture;
-                record.auto_executed_count = auto_c;
-                record.queued_count = queued_c;
-                record.denied_count = denied_c;
-                record.step_logs = step_logs;
-                record.action_cards = action_cards;
-                record.failed_stage = None;
-                record.stage_error = None;
-                upsert_task_record(&record)?;
-                emit_ticker_log(
-                    Some(&app),
-                    &record.task_id,
-                    "execute",
-                    "ok",
-                    "Stage 2 retry succeeded",
-                );
-                emit_stage_changed(
-                    Some(&app),
-                    &record.task_id,
-                    "execute",
-                    "completed",
-                    None,
-                );
-            }
-            Err(err) => {
-                emit_ticker_log(
-                    Some(&app),
-                    &record.task_id,
-                    "execute",
-                    "bad",
-                    format!("Stage 2 retry failed: {err}"),
-                );
-                emit_stage_changed(
-                    Some(&app),
-                    &record.task_id,
-                    "execute",
-                    "failed",
-                    Some(err.clone()),
-                );
-                record.failed_stage = Some("execute".to_string());
-                record.stage_error = Some(err);
-                return save_and_return_record(record);
-            }
-        }
-    }
-
-    let plan_ref = record.plan.clone().unwrap();
-    emit_stage_changed(
-        Some(&app),
-        &record.task_id,
-        "verify",
-        "active",
-        Some("Retrying verify stage".to_string()),
-    );
-    let verify_res: Result<VerificationResult, String> = if cfg.cascade.enabled && cfg.cascade.consent {
-        let cascade_providers = pipeline::build_cascade_provider_list(&cfg);
-        let mut final_res = Err("No providers available in cascade".to_string());
-        for (pname, sprovider) in cascade_providers {
-            match run_verify_stage_with_provider(&cfg, &record.prompt, &plan_ref, &record.step_logs, &record.action_cards, &sprovider).await {
-                Ok(ver) => {
-                    record.provider_verify = Some(pname.clone());
-                    append_journal_note(&record.task_id, "stage_provider", &format!("stage=verify, provider={pname}"));
-                    final_res = Ok(ver);
-                    break;
-                }
-                Err(e) => {
-                    let err_code = if e.contains("429") {
-                        "429"
-                    } else if e.contains("500") {
-                        "500"
-                    } else if e.contains("502") {
-                        "502"
-                    } else if e.contains("503") {
-                        "503"
-                    } else {
-                        "429"
-                    };
-                    append_journal_note(&record.task_id, "cascade_attempt", &format!("stage=verify provider={pname} error={err_code}"));
-                    emit_ticker_log(
-                        Some(&app),
-                        &record.task_id,
-                        "verify",
-                        "warn",
-                        format!("cascade_attempt: stage=verify provider={pname} error={err_code}"),
-                    );
-                    final_res = Err(e);
-                }
-            }
-        }
-        final_res
-    } else {
-        run_verify_stage(
-            &cfg,
-            &record.prompt,
-            &plan_ref,
-            &record.step_logs,
-            &record.action_cards,
-        )
-        .await
+        .await?
     };
 
-    match verify_res {
-        Ok(ver) => {
-            emit_ticker_log(
-                Some(&app),
-                &record.task_id,
-                "verify",
-                "ok",
-                format!(
-                    "Stage 3 retry succeeded — verdict: {} ({})",
-                    ver.verdict.to_uppercase(),
-                    ver.rationale
-                ),
-            );
-            emit_stage_changed(
-                Some(&app),
-                &record.task_id,
-                "verify",
-                "completed",
-                Some(ver.verdict.clone()),
-            );
-            emit_stage_changed(
-                Some(&app),
-                &record.task_id,
-                "done",
-                "completed",
-                Some(ver.verdict.clone()),
-            );
-            record.verification = Some(ver);
-            record.failed_stage = None;
-            record.stage_error = None;
-        }
-        Err(err) => {
-            emit_ticker_log(
-                Some(&app),
-                &record.task_id,
-                "verify",
-                "bad",
-                format!("Stage 3 retry failed: {err}"),
-            );
-            emit_stage_changed(
-                Some(&app),
-                &record.task_id,
-                "verify",
-                "failed",
-                Some(err.clone()),
-            );
-            record.failed_stage = Some("verify".to_string());
-            record.stage_error = Some(err);
+    if let Some(pos) = record.step_logs.iter().position(|l| l.step_id == step_id) {
+        record.step_logs[pos] = new_log;
+    } else {
+        record.step_logs.push(new_log);
+        record.step_logs.sort_by_key(|l| l.step_id);
+    }
+
+    if let Some(new_card) = new_card_opt {
+        if let Some(pos) = record.action_cards.iter().position(|c| c.step_id == step_id) {
+            record.action_cards[pos] = new_card;
+        } else {
+            record.action_cards.push(new_card);
+            record.action_cards.sort_by_key(|c| c.step_id);
         }
     }
 
+    let (posture, auto_c, queued_c, denied_c) =
+        build_posture_summary(&cfg, cruise, &record.action_cards);
+    record.posture_summary = posture;
+    record.auto_executed_count = auto_c;
+    record.queued_count = queued_c;
+    record.denied_count = denied_c;
+    record.failed_stage = None;
+    record.stage_error = None;
+    emit_stage_changed(Some(&app), &record.task_id, "execute", "completed", None);
+
+    if reverify.unwrap_or(false) {
+        let _ = execute_verify_with_cascade(Some(&app), &cfg, &mut record).await;
+    } else {
+        record.verification = None;
+    }
+
+    state.queue.sync_from_task_record(
+        &record.task_id,
+        record.queued_count,
+        record.auto_executed_count,
+        record.denied_count,
+        record.queued_count == 0 && record.paused_at_step_id.is_none(),
+    );
+    queue::emit_queue_updated(Some(&app), &state.queue.get_items());
+
     save_and_return_record(record)
+}
+
+#[tauri::command]
+async fn resume_paused_task(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    task_id: String,
+    replan_with_info: Option<bool>,
+) -> Result<TaskRecord, String> {
+    state.active_cancel.store(false, Ordering::SeqCst);
+    let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
+    let cruise = state.cruise_control.load(Ordering::SeqCst);
+
+    let all = load_history()?;
+    let mut record = all
+        .into_iter()
+        .find(|r| r.task_id == task_id)
+        .ok_or_else(|| format!("Task {task_id} not found"))?;
+
+    let paused_sid = record.paused_at_step_id;
+    record.paused_at_step_id = None;
+    record.pause_reason = None;
+    record.failed_stage = None;
+    record.stage_error = None;
+    record.stage_error_kind = None;
+
+    let has_remaining = record.plan.as_ref().is_some_and(|p| {
+        paused_sid.is_some_and(|sid| p.steps.iter().any(|s| s.id > sid))
+    });
+
+    let updated = if replan_with_info.unwrap_or(false) || !has_remaining {
+        let prior_ctx = build_iterative_interpret_context(
+            &record,
+            Some("Incorporate the user-provided information and/or task-scoped grants to complete the task."),
+        );
+        record.archive_current_round(
+            "request_resume",
+            Some("Resuming with user response".to_string()),
+        );
+        record.plan = None;
+        record.step_logs.clear();
+        record.action_cards.clear();
+        record.verification = None;
+        emit_round_changed(
+            Some(&app),
+            &record.task_id,
+            record.current_round,
+            "request_resume",
+            Some("Re-planning with provided info/grants".to_string()),
+        );
+        run_iterative_pipeline_core(
+            &app,
+            &state,
+            &cfg,
+            cruise,
+            record,
+            "interpret",
+            Some(prior_ctx),
+            None,
+            true,
+            false,
+            None,
+        )
+        .await?
+    } else {
+        record.verification = None;
+        run_iterative_pipeline_core(
+            &app,
+            &state,
+            &cfg,
+            cruise,
+            record,
+            "execute",
+            None,
+            paused_sid,
+            true,
+            true,
+            None,
+        )
+        .await?
+    };
+
+    state.queue.sync_from_task_record(
+        &updated.task_id,
+        updated.queued_count,
+        updated.auto_executed_count,
+        updated.denied_count,
+        updated.queued_count == 0 && updated.paused_at_step_id.is_none() && !updated.awaiting_plan_approval,
+    );
+    queue::emit_queue_updated(Some(&app), &state.queue.get_items());
+
+    Ok(updated)
+}
+
+#[tauri::command]
+async fn approve_plan_and_execute(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    task_id: String,
+    enabled_step_ids: Option<Vec<usize>>,
+) -> Result<TaskRecord, String> {
+    state.active_cancel.store(false, Ordering::SeqCst);
+    let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
+    let cruise = state.cruise_control.load(Ordering::SeqCst);
+
+    let all = load_history()?;
+    let mut record = all
+        .into_iter()
+        .find(|r| r.task_id == task_id)
+        .ok_or_else(|| format!("Task {task_id} not found"))?;
+
+    let existing_plan = record
+        .plan
+        .clone()
+        .ok_or_else(|| "Cannot approve plan: task has no interpreted plan.".to_string())?;
+    let approved_plan = if let Some(ids) = enabled_step_ids {
+        filter_plan_steps_by_ids(&existing_plan, &ids)?
+    } else {
+        existing_plan
+    };
+    record.plan = Some(approved_plan.clone());
+    record.awaiting_plan_approval = false;
+    record.failed_stage = None;
+    record.stage_error = None;
+    record.stage_error_kind = None;
+    record.step_logs.clear();
+    record.action_cards.clear();
+    record.verification = None;
+
+    append_journal_note(
+        &record.task_id,
+        "plan_approved",
+        &format!("Approved {} step(s) for local execution", approved_plan.steps.len()),
+    );
+    emit_ticker_log(
+        Some(&app),
+        &record.task_id,
+        "execute",
+        "ok",
+        format!(
+            "Plan approved by user ({} step(s) enabled) — starting local execution...",
+            approved_plan.steps.len()
+        ),
+    );
+
+    let updated = run_iterative_pipeline_core(
+        &app,
+        &state,
+        &cfg,
+        cruise,
+        record,
+        "execute",
+        None,
+        None,
+        true,
+        true,
+        None,
+    )
+    .await?;
+
+    state.queue.sync_from_task_record(
+        &updated.task_id,
+        updated.queued_count,
+        updated.auto_executed_count,
+        updated.denied_count,
+        updated.queued_count == 0 && updated.paused_at_step_id.is_none() && !updated.awaiting_plan_approval,
+    );
+    queue::emit_queue_updated(Some(&app), &state.queue.get_items());
+    Ok(updated)
+}
+
+#[tauri::command]
+async fn revise_pending_plan(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    task_id: String,
+    feedback: String,
+) -> Result<TaskRecord, String> {
+    let clean_fb = feedback.trim().to_string();
+    if clean_fb.is_empty() {
+        return Err("Enter feedback describing how to revise the plan.".to_string());
+    }
+    state.active_cancel.store(false, Ordering::SeqCst);
+    let cfg = state.config.lock().map_err(|e| e.to_string())?.clone();
+    let cruise = state.cruise_control.load(Ordering::SeqCst);
+
+    let all = load_history()?;
+    let mut record = all
+        .into_iter()
+        .find(|r| r.task_id == task_id)
+        .ok_or_else(|| format!("Task {task_id} not found"))?;
+
+    let guidance = format!("Revise the proposed plan BEFORE execution based on user feedback:\n{clean_fb}");
+    let prior_ctx = build_iterative_interpret_context(&record, Some(&guidance));
+    record.archive_current_round("plan_revision", Some(clean_fb.clone()));
+    record.followup_notes.push(clean_fb.clone());
+    record.plan = None;
+    record.step_logs.clear();
+    record.action_cards.clear();
+    record.verification = None;
+    record.awaiting_plan_approval = false;
+    record.paused_at_step_id = None;
+    record.pause_reason = None;
+    record.failed_stage = None;
+    record.stage_error = None;
+    record.stage_error_kind = None;
+
+    emit_round_changed(
+        Some(&app),
+        &record.task_id,
+        record.current_round,
+        "plan_revision",
+        Some(clean_fb),
+    );
+
+    let updated = run_iterative_pipeline_core(
+        &app,
+        &state,
+        &cfg,
+        cruise,
+        record,
+        "interpret",
+        Some(prior_ctx),
+        None,
+        true,
+        false,
+        None,
+    )
+    .await?;
+
+    state.queue.sync_from_task_record(
+        &updated.task_id,
+        updated.queued_count,
+        updated.auto_executed_count,
+        updated.denied_count,
+        updated.queued_count == 0 && updated.paused_at_step_id.is_none() && !updated.awaiting_plan_approval,
+    );
+    queue::emit_queue_updated(Some(&app), &state.queue.get_items());
+    Ok(updated)
+}
+
+#[tauri::command]
+fn discard_pending_plan(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    task_id: String,
+) -> Result<TaskRecord, String> {
+    let all = load_history()?;
+    let mut record = all
+        .into_iter()
+        .find(|r| r.task_id == task_id)
+        .ok_or_else(|| format!("Task {task_id} not found"))?;
+
+    record.awaiting_plan_approval = false;
+    append_journal_note(&record.task_id, "plan_discarded", "User discarded proposed plan");
+    emit_ticker_log(
+        Some(&app),
+        &record.task_id,
+        "interpret",
+        "warn",
+        "Proposed plan discarded by user before execution.",
+    );
+
+    let saved = save_and_return_record(record)?;
+    state.queue.sync_from_task_record(
+        &saved.task_id,
+        saved.queued_count,
+        saved.auto_executed_count,
+        saved.denied_count,
+        true,
+    );
+    queue::emit_queue_updated(Some(&app), &state.queue.get_items());
+    Ok(saved)
 }
 
 pub async fn apply_card_approval(
@@ -2484,426 +3308,63 @@ async fn execute_queued_pipeline(app: AppHandle, queue_id: String) {
     let cruise = state.cruise_control.load(Ordering::SeqCst);
     let project_root = PathBuf::from(&queue_item.project_root);
 
-    let mut record = create_initial_task_record(&cfg, &queue_item.prompt, &project_root, cruise);
+    let record = create_initial_task_record(&cfg, &queue_item.prompt, &project_root, cruise);
     let task_id = record.task_id.clone();
     state.queue.set_task_id(&queue_id, &task_id);
     let _ = upsert_task_record(&record);
 
-    // Stage 1: Cloud Interpret
-    state.queue.update_status(
-        &queue_id,
-        queue::QueueItemStatus::Interpreting,
+    match run_iterative_pipeline_core(
+        &app,
+        &state,
+        &cfg,
+        cruise,
+        record,
+        "interpret",
         None,
-    );
-    queue::emit_queue_updated(Some(&app), &state.queue.get_items());
-
-    emit_stage_changed(
-        Some(&app),
-        &task_id,
-        "interpret",
-        "active",
-        Some(format!("Cloud interpret via {}", cfg.cloud_model)),
-    );
-    emit_ticker_log(
-        Some(&app),
-        &task_id,
-        "interpret",
-        "info",
-        format!(
-            "Stage 1 (interpret) → cloud/{} parsing task plan...",
-            cfg.cloud_model
-        ),
-    );
-
-    let interpret_res: Result<TaskPlan, String> = if cfg.cascade.enabled && cfg.cascade.consent {
-        let cascade_providers = pipeline::build_cascade_provider_list(&cfg);
-        let mut final_res = Err("No providers available in cascade".to_string());
-        for (pname, sprovider) in cascade_providers {
-            match run_interpret_stage_with_provider(&cfg, &project_root, &queue_item.prompt, &sprovider).await {
-                Ok(plan) => {
-                    record.provider_interpret = Some(pname.clone());
-                    append_journal_note(&record.task_id, "stage_provider", &format!("stage=interpret, provider={pname}"));
-                    final_res = Ok(plan);
-                    break;
-                }
-                Err(e) => {
-                    let err_code = if e.contains("429") {
-                        "429"
-                    } else if e.contains("500") {
-                        "500"
-                    } else if e.contains("502") {
-                        "502"
-                    } else if e.contains("503") {
-                        "503"
-                    } else {
-                        "429"
-                    };
-                    append_journal_note(&record.task_id, "cascade_attempt", &format!("stage=interpret provider={pname} error={err_code}"));
-                    emit_ticker_log(
-                        Some(&app),
-                        &record.task_id,
-                        "interpret",
-                        "warn",
-                        format!("cascade_attempt: stage=interpret provider={pname} error={err_code}"),
+        None,
+        true,
+        false,
+        Some(&queue_id),
+    )
+    .await
+    {
+        Ok(final_rec) => {
+            let is_cancelled = state
+                .queue
+                .get_item(&queue_id)
+                .is_some_and(|i| i.status == queue::QueueItemStatus::Cancelled);
+            if !is_cancelled {
+                if final_rec.queued_count > 0
+                    || final_rec.paused_at_step_id.is_some()
+                    || final_rec.awaiting_plan_approval
+                {
+                    state.queue.update_status(
+                        &queue_id,
+                        queue::QueueItemStatus::WaitingApproval,
+                        None,
                     );
-                    final_res = Err(e);
+                } else if final_rec.failed_stage.is_some() {
+                    state.queue.update_status(
+                        &queue_id,
+                        queue::QueueItemStatus::Failed,
+                        final_rec.stage_error,
+                    );
+                } else {
+                    state.queue.update_status(
+                        &queue_id,
+                        queue::QueueItemStatus::Completed,
+                        None,
+                    );
                 }
             }
-        }
-        final_res
-    } else {
-        run_interpret_stage(&cfg, &project_root, &queue_item.prompt).await
-    };
-
-    match interpret_res {
-        Ok(plan) => {
-            if !plan.goal.trim().is_empty() {
-                record.title = plan.goal.trim().to_string();
-            }
-            emit_ticker_log(
-                Some(&app),
-                &record.task_id,
-                "interpret",
-                "ok",
-                format!(
-                    "Stage 1 complete — goal: \"{}\" ({} steps, risk={})",
-                    plan.goal,
-                    plan.steps.len(),
-                    plan.estimated_risk
-                ),
-            );
-            emit_stage_changed(
-                Some(&app),
-                &record.task_id,
-                "interpret",
-                "completed",
-                Some(plan.goal.clone()),
-            );
-            record.plan = Some(plan);
-            let _ = upsert_task_record(&record);
         }
         Err(err) => {
-            let err_kind = classify_cloud_error_from_str(&err);
-            if err_kind == CloudErrorKind::QuotaExhausted {
-                record.stage_error_kind = Some("quota_exhausted".to_string());
-                record.choice_cards.push(ChoiceCard {
-                    card_id: format!("choice-interpret-{}", Utc::now().timestamp_millis()),
-                    stage: "interpret".to_string(),
-                    error_text: err.clone(),
-                    timestamp: Utc::now().to_rfc3339(),
-                    status: "pending".to_string(),
-                    chosen_option: None,
-                    chosen_at: None,
-                    chosen_provider: None,
-                });
-                emit_ticker_log(
-                    Some(&app),
-                    &record.task_id,
-                    "interpret",
-                    "warn",
-                    "Cloud quota exhausted — waiting for your decision".to_string(),
-                );
-            } else {
-                record.stage_error_kind = Some(format!("{:?}", err_kind).to_ascii_lowercase());
-                emit_ticker_log(
-                    Some(&app),
-                    &record.task_id,
-                    "interpret",
-                    "bad",
-                    format!("Stage 1 (interpret) failed: {err}"),
-                );
-            }
-            emit_stage_changed(
-                Some(&app),
-                &record.task_id,
-                "interpret",
-                "failed",
-                Some(err.clone()),
-            );
-            record.failed_stage = Some("interpret".to_string());
-            record.stage_error = Some(err.clone());
-            let _ = save_and_return_record(record);
             state.queue.update_status(
                 &queue_id,
                 queue::QueueItemStatus::Failed,
                 Some(err),
             );
-            queue::emit_queue_updated(Some(&app), &state.queue.get_items());
-            return;
         }
-    }
-
-    // Check if task was cancelled before starting Stage 2
-    if let Some(item) = state.queue.get_item(&queue_id) {
-        if item.status == queue::QueueItemStatus::Cancelled {
-            emit_ticker_log(Some(&app), &record.task_id, "execute", "warn", "Task stopped by user.");
-            emit_stage_changed(Some(&app), &record.task_id, "done", "failed", Some("Cancelled by user".to_string()));
-            return;
-        }
-    }
-
-    // Stage 2: Local Execute + Enforcer under VRAM serialization lock
-    state.queue.update_status(
-        &queue_id,
-        queue::QueueItemStatus::LocalWorking,
-        None,
-    );
-    queue::emit_queue_updated(Some(&app), &state.queue.get_items());
-
-    let plan_ref = record.plan.clone().unwrap();
-    emit_stage_changed(
-        Some(&app),
-        &record.task_id,
-        "execute",
-        "active",
-        Some(format!("Executing {} local step(s)", plan_ref.steps.len())),
-    );
-    emit_ticker_log(
-        Some(&app),
-        &record.task_id,
-        "execute",
-        "info",
-        format!(
-            "Stage 2 (execute) → running {} planned step(s) locally on Ollama under VRAM lock...",
-            plan_ref.steps.len()
-        ),
-    );
-
-    let exec_res = {
-        let _vram_guard = state.queue.vram_lock.lock().await;
-        run_execute_stage_with_events(
-            Some(&app),
-            &cfg,
-            &project_root,
-            &record.task_id,
-            &plan_ref,
-            cruise,
-        )
-        .await
-    };
-
-    match exec_res {
-        Ok((step_logs, action_cards)) => {
-            let (posture, auto_c, queued_c, denied_c) =
-                build_posture_summary(&cfg, cruise, &action_cards);
-            record.posture_summary = posture;
-            record.auto_executed_count = auto_c;
-            record.queued_count = queued_c;
-            record.denied_count = denied_c;
-            record.step_logs = step_logs;
-            record.action_cards = action_cards;
-            let _ = upsert_task_record(&record);
-            state.queue.update_card_counts(&queue_id, queued_c, auto_c, denied_c);
-            emit_ticker_log(
-                Some(&app),
-                &record.task_id,
-                "execute",
-                "ok",
-                format!(
-                    "Stage 2 complete — auto-executed={}, queued_for_approval={}, blocked={}",
-                    auto_c, queued_c, denied_c
-                ),
-            );
-            emit_stage_changed(
-                Some(&app),
-                &record.task_id,
-                "execute",
-                "completed",
-                None,
-            );
-        }
-        Err(err) => {
-            emit_ticker_log(
-                Some(&app),
-                &record.task_id,
-                "execute",
-                "bad",
-                format!("Stage 2 (execute) failed: {err}"),
-            );
-            emit_stage_changed(
-                Some(&app),
-                &record.task_id,
-                "execute",
-                "failed",
-                Some(err.clone()),
-            );
-            record.failed_stage = Some("execute".to_string());
-            record.stage_error = Some(err.clone());
-            let _ = save_and_return_record(record);
-            state.queue.update_status(
-                &queue_id,
-                queue::QueueItemStatus::Failed,
-                Some(err),
-            );
-            queue::emit_queue_updated(Some(&app), &state.queue.get_items());
-            return;
-        }
-    }
-
-    // Check if task was cancelled before starting Stage 3
-    if let Some(item) = state.queue.get_item(&queue_id) {
-        if item.status == queue::QueueItemStatus::Cancelled {
-            emit_ticker_log(Some(&app), &record.task_id, "verify", "warn", "Task stopped by user.");
-            emit_stage_changed(Some(&app), &record.task_id, "done", "failed", Some("Cancelled by user".to_string()));
-            return;
-        }
-    }
-
-    // Stage 3: Cloud Verify
-    state.queue.update_status(
-        &queue_id,
-        queue::QueueItemStatus::Verifying,
-        None,
-    );
-    queue::emit_queue_updated(Some(&app), &state.queue.get_items());
-
-    emit_stage_changed(
-        Some(&app),
-        &record.task_id,
-        "verify",
-        "active",
-        Some("Verifying condensed diffs against plan".to_string()),
-    );
-    emit_ticker_log(
-        Some(&app),
-        &record.task_id,
-        "verify",
-        "info",
-        format!(
-            "Stage 3 (verify) → cloud/{} reviewing condensed summaries & diffs...",
-            cfg.cloud_model
-        ),
-    );
-
-    let verify_res: Result<VerificationResult, String> = if cfg.cascade.enabled && cfg.cascade.consent {
-        let cascade_providers = pipeline::build_cascade_provider_list(&cfg);
-        let mut final_res = Err("No providers available in cascade".to_string());
-        for (pname, sprovider) in cascade_providers {
-            match run_verify_stage_with_provider(&cfg, &record.prompt, &plan_ref, &record.step_logs, &record.action_cards, &sprovider).await {
-                Ok(ver) => {
-                    record.provider_verify = Some(pname.clone());
-                    append_journal_note(&record.task_id, "stage_provider", &format!("stage=verify, provider={pname}"));
-                    final_res = Ok(ver);
-                    break;
-                }
-                Err(e) => {
-                    let err_code = if e.contains("429") { "429" } else if e.contains("500") { "500" } else if e.contains("502") { "502" } else if e.contains("503") { "503" } else { "429" };
-                    append_journal_note(&record.task_id, "cascade_attempt", &format!("stage=verify provider={pname} error={err_code}"));
-                    emit_ticker_log(
-                        Some(&app),
-                        &record.task_id,
-                        "verify",
-                        "warn",
-                        format!("cascade_attempt: stage=verify provider={pname} error={err_code}"),
-                    );
-                    final_res = Err(e);
-                }
-            }
-        }
-        final_res
-    } else {
-        run_verify_stage(
-            &cfg,
-            &record.prompt,
-            &plan_ref,
-            &record.step_logs,
-            &record.action_cards,
-        )
-        .await
-    };
-
-    match verify_res {
-        Ok(ver) => {
-            emit_ticker_log(
-                Some(&app),
-                &record.task_id,
-                "verify",
-                "ok",
-                format!(
-                    "Stage 3 complete — verdict: {} ({})",
-                    ver.verdict.to_uppercase(),
-                    ver.rationale
-                ),
-            );
-            emit_stage_changed(
-                Some(&app),
-                &record.task_id,
-                "verify",
-                "completed",
-                Some(ver.verdict.clone()),
-            );
-            emit_stage_changed(
-                Some(&app),
-                &record.task_id,
-                "done",
-                "completed",
-                Some(ver.verdict.clone()),
-            );
-            record.verification = Some(ver);
-        }
-        Err(err) => {
-            let err_kind = classify_cloud_error_from_str(&err);
-            if err_kind == CloudErrorKind::QuotaExhausted {
-                record.stage_error_kind = Some("quota_exhausted".to_string());
-                record.choice_cards.push(ChoiceCard {
-                    card_id: format!("choice-verify-{}", Utc::now().timestamp_millis()),
-                    stage: "verify".to_string(),
-                    error_text: err.clone(),
-                    timestamp: Utc::now().to_rfc3339(),
-                    status: "pending".to_string(),
-                    chosen_option: None,
-                    chosen_at: None,
-                    chosen_provider: None,
-                });
-                emit_ticker_log(
-                    Some(&app),
-                    &record.task_id,
-                    "verify",
-                    "warn",
-                    "Cloud quota exhausted — waiting for your decision".to_string(),
-                );
-            } else {
-                record.stage_error_kind = Some(format!("{:?}", err_kind).to_ascii_lowercase());
-                emit_ticker_log(
-                    Some(&app),
-                    &record.task_id,
-                    "verify",
-                    "bad",
-                    format!("Stage 3 (verify) failed: {err}"),
-                );
-            }
-            emit_stage_changed(
-                Some(&app),
-                &record.task_id,
-                "verify",
-                "failed",
-                Some(err.clone()),
-            );
-            record.failed_stage = Some("verify".to_string());
-            record.stage_error = Some(err);
-        }
-    }
-
-    let _ = save_and_return_record(record.clone());
-
-    if record.queued_count > 0 {
-        state.queue.update_status(
-            &queue_id,
-            queue::QueueItemStatus::WaitingApproval,
-            None,
-        );
-    } else if record.failed_stage.is_some() {
-        state.queue.update_status(
-            &queue_id,
-            queue::QueueItemStatus::Failed,
-            record.stage_error,
-        );
-    } else {
-        state.queue.update_status(
-            &queue_id,
-            queue::QueueItemStatus::Completed,
-            None,
-        );
     }
     queue::emit_queue_updated(Some(&app), &state.queue.get_items());
 }
@@ -2975,6 +3436,7 @@ pub fn run() {
         config: Mutex::new(initial_cfg),
         cruise_control: AtomicBool::new(false),
         queue: Arc::new(queue::QueueManager::new()),
+        active_cancel: AtomicBool::new(false),
     };
 
     tauri::Builder::default()
@@ -3013,6 +3475,14 @@ pub fn run() {
             create_project_or_folder,
             run_task_pipeline,
             retry_task_stage,
+            rerun_task_from_stage,
+            continue_task_round,
+            retry_task_step,
+            resume_paused_task,
+            approve_plan_and_execute,
+            revise_pending_plan,
+            discard_pending_plan,
+            cancel_active_iteration,
             approve_card,
             reject_card,
             get_task_history,
@@ -3104,6 +3574,7 @@ mod acceptance_tests {
                 memories_used: vec![],
                 ..Default::default()
             }],
+            ..Default::default()
         };
         let (logs_deny, cards_deny) =
             run_execute_stage(&cfg_auto, &proj, "task-deny", &plan_deny, true)
@@ -3135,6 +3606,7 @@ mod acceptance_tests {
                 memories_used: vec![],
                 ..Default::default()
             }],
+            ..Default::default()
         };
         let (_, cards_mkdir) =
             run_execute_stage(&cfg_build, &proj, "task-mkdir", &plan_mkdir, true)
@@ -3162,6 +3634,7 @@ mod acceptance_tests {
                 memories_used: vec![],
                 ..Default::default()
             }],
+            ..Default::default()
         };
         let (_, cards_mkdir_off) =
             run_execute_stage(&cfg_build, &proj, "task-mkdir-off", &plan_mkdir2, false)
@@ -3191,6 +3664,7 @@ mod acceptance_tests {
                 memories_used: vec![],
                 ..Default::default()
             }],
+            ..Default::default()
         };
         let (_, cards_dry) =
             run_execute_stage(&cfg_dry, &proj, "task-dry", &plan_dry, true)
@@ -3384,6 +3858,7 @@ mod acceptance_tests {
             memories_used: vec![],
             estimated_risk: "low".to_string(),
             steps: vec![],
+            ..Default::default()
         };
         let step_logs = vec![StepExecutionLog {
             step_id: 1,
@@ -3453,6 +3928,7 @@ mod acceptance_tests {
                 memories_used: vec![],
                 ..Default::default()
             }],
+            ..Default::default()
         };
         let step_logs = vec![StepExecutionLog {
             step_id: 1,
@@ -3495,6 +3971,683 @@ mod acceptance_tests {
             );
             assert!(matches!(res.verdict.as_str(), "pass" | "concerns" | "fail"));
         }
+    }
+
+    #[test]
+    fn test_config_iterative_defaults_backward_compat() {
+        let legacy_toml = r#"
+cloud_model = "lumo"
+fast_model = "llama3.2:3b"
+coder_model = "qwen2.5-coder:7b"
+"#;
+        let parsed: AppConfig = toml::from_str(legacy_toml).unwrap();
+        assert!(!parsed.auto_repair_enabled);
+        assert_eq!(parsed.max_auto_repair_rounds, 2);
+        assert!(parsed.discovery_pass_enabled);
+        assert!(parsed.pause_on_request);
+    }
+
+    #[test]
+    fn test_task_record_archive_round_and_legacy_deserialization() {
+        let legacy_json = r#"{
+            "task_id": "task-legacy-1",
+            "timestamp": "2026-11-07T11:44:05Z",
+            "prompt": "do a thing",
+            "project_dir": "/tmp/p",
+            "cloud_model": "lumo",
+            "cruise_control": false,
+            "dry_run": false,
+            "posture_summary": "Manual approval",
+            "auto_executed_count": 0,
+            "queued_count": 0,
+            "denied_count": 0,
+            "plan": {
+                "goal": "Make the thing",
+                "estimated_risk": "low",
+                "files_involved": [],
+                "steps": []
+            },
+            "step_logs": [],
+            "action_cards": [],
+            "verification": null,
+            "failed_stage": null,
+            "stage_error": null,
+            "journal_path": "/tmp/j"
+        }"#;
+        let mut rec: TaskRecord = serde_json::from_str(legacy_json).unwrap();
+        assert_eq!(rec.current_round, 1);
+        assert!(rec.rounds.is_empty());
+        assert!(rec.paused_at_step_id.is_none());
+
+        rec.archive_current_round("user_followup", Some("Add tests".to_string()));
+        assert_eq!(rec.current_round, 2);
+        assert_eq!(rec.rounds.len(), 1);
+        assert_eq!(rec.rounds[0].round_number, 1);
+        assert_eq!(rec.rounds[0].trigger, "user_followup");
+        assert_eq!(rec.rounds[0].user_note.as_deref(), Some("Add tests"));
+    }
+
+    #[test]
+    fn test_build_iterative_interpret_context_charter_s1_no_raw_content() {
+        let rec = TaskRecord {
+            task_id: "task-ctx-1".to_string(),
+            prompt: "Update parser".to_string(),
+            project_dir: "/tmp/p".to_string(),
+            plan: Some(TaskPlan {
+                goal: "Update parser logic".to_string(),
+                estimated_risk: "low".to_string(),
+                files_involved: vec!["src/lib.rs".to_string()],
+                steps: vec![PlanStep {
+                    id: 1,
+                    title: "Edit parser".to_string(),
+                    action_class: ActionClass::Overwrite,
+                    route_tool: "draft_code".to_string(),
+                    target_path: "src/lib.rs".to_string(),
+                    instruction: "Fix edge case".to_string(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            step_logs: vec![StepExecutionLog {
+                step_id: 1,
+                title: "Edit parser".to_string(),
+                route_tool: "draft_code".to_string(),
+                action_class: ActionClass::Overwrite,
+                target_path: "src/lib.rs".to_string(),
+                summary: "Condensed summary: updated parse_int()".to_string(),
+                status: "rejected".to_string(),
+                ..Default::default()
+            }],
+            action_cards: vec![ActionCard {
+                card_id: "c1".to_string(),
+                step_id: 1,
+                title: "Edit parser".to_string(),
+                action_class: ActionClass::Overwrite,
+                target_path: "src/lib.rs".to_string(),
+                diff_or_command: "--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1 +1 @@\n-old\n+new".to_string(),
+                proposed_content: Some("TOP_SECRET_RAW_FILE_CONTENT_12345".to_string()),
+                status: "rejected".to_string(),
+                decision_reason: "Handle empty string".to_string(),
+                ..Default::default()
+            }],
+            verification: Some(VerificationResult {
+                verdict: "fail".to_string(),
+                rationale: "Missing empty input guard".to_string(),
+                response: None,
+            }),
+            task_provided_info: vec!["Use saturating_add".to_string()],
+            task_scoped_grants: vec![WhitelistEntry {
+                path: "/tmp/shared_docs".to_string(),
+                level: GrantLevel::Read,
+            }],
+            ..Default::default()
+        };
+
+        let ctx = build_iterative_interpret_context(&rec, Some("Fix edge case"));
+        assert!(ctx.contains("Condensed summary: updated parse_int()"));
+        assert!(ctx.contains("--- a/src/lib.rs"));
+        assert!(ctx.contains("Handle empty string"));
+        assert!(ctx.contains("Missing empty input guard"));
+        assert!(ctx.contains("Use saturating_add"));
+        assert!(ctx.contains("Fix edge case"));
+        assert!(
+            !ctx.contains("TOP_SECRET_RAW_FILE_CONTENT_12345"),
+            "Charter S1 violation: proposed_content leaked into interpret context"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_stage_pauses_at_request_and_resumes_with_info_and_grant() {
+        let proj = env::temp_dir().join(format!("kodiak_pause_resume_{}", uuid::Uuid::new_v4()));
+        let _ = fs::remove_dir_all(&proj);
+        fs::create_dir_all(&proj).unwrap();
+
+        let mut cfg = AppConfig::default();
+        cfg.active_project = Some(proj.to_string_lossy().to_string());
+        cfg.whitelist = vec![WhitelistEntry {
+            path: proj.to_string_lossy().to_string(),
+            level: GrantLevel::Build,
+        }];
+
+        let plan = TaskPlan {
+            goal: "Pause for info then create directory".to_string(),
+            estimated_risk: "low".to_string(),
+            files_involved: vec!["resumed_dir".to_string()],
+            steps: vec![
+                PlanStep {
+                    id: 1,
+                    title: "Ask pin config".to_string(),
+                    action_class: ActionClass::Request,
+                    route_tool: "request".to_string(),
+                    target_path: String::new(),
+                    request_kind: Some("information".to_string()),
+                    question: Some("Which pin should be used?".to_string()),
+                    answer_format: Some("pin number".to_string()),
+                    ..Default::default()
+                },
+                PlanStep {
+                    id: 2,
+                    title: "Create resumed directory".to_string(),
+                    action_class: ActionClass::Mkdir,
+                    route_tool: "mkdir".to_string(),
+                    target_path: "resumed_dir".to_string(),
+                    instruction: "mkdir resumed_dir".to_string(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let outcome = run_execute_stage_advanced(
+            None,
+            &cfg,
+            &proj,
+            "task-pause-test",
+            &plan,
+            true,
+            ExecuteStageOptions {
+                pause_on_request: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(outcome.paused_at_step_id, Some(1));
+        assert_eq!(outcome.step_logs.len(), 1);
+        assert!(!proj.join("resumed_dir").exists(), "Step 2 must not execute before resume");
+
+        let resumed = run_execute_stage_advanced(
+            None,
+            &cfg,
+            &proj,
+            "task-pause-test",
+            &plan,
+            true,
+            ExecuteStageOptions {
+                start_after_step_id: Some(1),
+                pause_on_request: true,
+                prior_step_logs: outcome.step_logs,
+                prior_action_cards: outcome.action_cards,
+                task_scoped_grants: Vec::new(),
+                task_provided_info: vec!["pin 9".to_string()],
+                step_feedback: None,
+                prior_round_context: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        assert!(resumed.paused_at_step_id.is_none());
+        assert_eq!(resumed.step_logs.len(), 2);
+        assert!(proj.join("resumed_dir").is_dir(), "Step 2 must execute on resume");
+
+        let _ = fs::remove_dir_all(&proj);
+    }
+
+    #[test]
+    fn test_plan_is_readonly_discovery_detection() {
+        let discovery_plan = TaskPlan {
+            goal: "Inspect crate".to_string(),
+            estimated_risk: "low".to_string(),
+            files_involved: vec!["src/lib.rs".to_string()],
+            phase: Some("discovery".to_string()),
+            needs_planning_followup: true,
+            steps: vec![PlanStep {
+                id: 1,
+                title: "Summarize lib.rs".to_string(),
+                action_class: ActionClass::Read,
+                route_tool: "summarize_file".to_string(),
+                target_path: "src/lib.rs".to_string(),
+                instruction: "Inspect exports".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert!(plan_is_readonly_discovery(&discovery_plan));
+
+        let edit_plan = TaskPlan {
+            phase: Some("discovery".to_string()),
+            needs_planning_followup: true,
+            steps: vec![PlanStep {
+                id: 1,
+                title: "Edit lib.rs".to_string(),
+                action_class: ActionClass::Overwrite,
+                route_tool: "draft_code".to_string(),
+                target_path: "src/lib.rs".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert!(!plan_is_readonly_discovery(&edit_plan));
+
+        let normal_read_plan = TaskPlan {
+            phase: None,
+            needs_planning_followup: false,
+            steps: discovery_plan.steps.clone(),
+            ..Default::default()
+        };
+        assert!(!plan_is_readonly_discovery(&normal_read_plan));
+    }
+
+    #[test]
+    fn test_detect_shell_output_failure() {
+        assert!(detect_shell_output_failure("error[E0308]: mismatched types"));
+        assert!(detect_shell_output_failure("test my_test ... FAILED"));
+        assert!(detect_shell_output_failure("Command exited with status 1"));
+        assert!(!detect_shell_output_failure("test result: ok. 10 passed; 0 failed"));
+        assert!(!detect_shell_output_failure("Command exited with status 0"));
+        assert!(!detect_shell_output_failure(""));
+    }
+
+    #[test]
+    fn test_normalize_plan_steps_for_document_creation() {
+        use crate::pipeline::{normalize_plan_steps, validate_plan};
+
+        let mut plan = TaskPlan {
+            goal: "Create status.md summarizing project details and status".to_string(),
+            estimated_risk: "low".to_string(),
+            files_involved: vec!["status.md".to_string()],
+            steps: vec![
+                PlanStep {
+                    id: 1,
+                    title: "Create status.md".to_string(),
+                    action_class: ActionClass::Read,
+                    route_tool: "create_file".to_string(),
+                    target_path: "status.md".to_string(),
+                    instruction: "Write project status".to_string(),
+                    ..Default::default()
+                },
+                PlanStep {
+                    id: 2,
+                    title: "Update status document".to_string(),
+                    action_class: ActionClass::Overwrite,
+                    route_tool: "draft-doc".to_string(),
+                    target_path: "status.md".to_string(),
+                    instruction: "Append details".to_string(),
+                    ..Default::default()
+                },
+                PlanStep {
+                    id: 3,
+                    title: "Write release notes".to_string(),
+                    action_class: ActionClass::Create,
+                    route_tool: "write_file".to_string(),
+                    target_path: "NOTES.md".to_string(),
+                    instruction: "Draft notes".to_string(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        normalize_plan_steps(&mut plan);
+        assert_eq!(plan.steps[0].route_tool, "draft_code");
+        assert_eq!(plan.steps[0].action_class, ActionClass::Create);
+        assert_eq!(plan.steps[1].route_tool, "draft_code");
+        assert_eq!(plan.steps[1].action_class, ActionClass::Overwrite);
+        assert_eq!(plan.steps[2].route_tool, "draft_code");
+        assert_eq!(plan.steps[2].action_class, ActionClass::Create);
+        assert!(validate_plan(&plan, None).is_ok());
+
+        let invalid_tool_plan = TaskPlan {
+            goal: "Unsupported tool".to_string(),
+            steps: vec![PlanStep {
+                id: 1,
+                title: "Magic step".to_string(),
+                action_class: ActionClass::Execute,
+                route_tool: "magic_tool".to_string(),
+                target_path: "status.md".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let err = validate_plan(&invalid_tool_plan, None).unwrap_err();
+        assert!(err.contains("unsupported route_tool"), "Unexpected error: {err}");
+
+        let empty_draft_target = TaskPlan {
+            goal: "Empty target draft".to_string(),
+            steps: vec![PlanStep {
+                id: 1,
+                title: "Draft nowhere".to_string(),
+                action_class: ActionClass::Create,
+                route_tool: "draft_code".to_string(),
+                target_path: ".".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let target_err = validate_plan(&empty_draft_target, None).unwrap_err();
+        assert!(target_err.contains("missing or invalid target_path"), "Unexpected error: {target_err}");
+    }
+
+    #[test]
+    fn test_effective_round_prompt_promotes_latest_followup() {
+        let mut rec = TaskRecord {
+            task_id: "t-eff".to_string(),
+            title: "Project summary".to_string(),
+            prompt: "Summarize this project".to_string(),
+            project_dir: "/tmp/proj".to_string(),
+            timestamp: "2026-11-27T00:00:00Z".to_string(),
+            posture_summary: "manual".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(build_effective_round_prompt(&rec), "Summarize this project");
+
+        rec.followup_notes.push("   ".to_string());
+        assert_eq!(build_effective_round_prompt(&rec), "Summarize this project");
+
+        rec.followup_notes
+            .push("create a document status.md with project details and current status".to_string());
+        let eff = build_effective_round_prompt(&rec);
+        let follow_pos = eff.find("Current Follow-Up Request").unwrap();
+        let orig_pos = eff.find("Original Initial Task Prompt").unwrap();
+        assert!(follow_pos < orig_pos);
+        assert!(eff.contains("create a document status.md with project details and current status"));
+        assert!(eff.contains("Summarize this project"));
+    }
+
+    #[test]
+    fn test_iterative_and_local_prior_round_context_include_verification_response() {
+        use crate::history::{TaskRoundSnapshot, VerificationResult};
+
+        let round1 = TaskRoundSnapshot {
+            round_number: 1,
+            trigger: "initial".to_string(),
+            user_note: None,
+            timestamp: "2026-11-27T00:01:00Z".to_string(),
+            plan: Some(TaskPlan {
+                goal: "Summarize project".to_string(),
+                ..Default::default()
+            }),
+            step_logs: vec![StepExecutionLog {
+                step_id: 1,
+                title: "Summarize README".to_string(),
+                tier: "local".to_string(),
+                model: "llama3.2:3b".to_string(),
+                route_tool: "summarize_file".to_string(),
+                action_class: ActionClass::Read,
+                target_path: "README.md".to_string(),
+                summary: "Projects & Parts Wiki Python/MkDocs tooling".to_string(),
+                status: "completed".to_string(),
+                warning_chip: None,
+                memory_delivery_chip: None,
+            }],
+            action_cards: vec![ActionCard {
+                card_id: "c-1".to_string(),
+                step_id: 2,
+                title: "Git status".to_string(),
+                action_class: ActionClass::Read,
+                target_path: ".".to_string(),
+                directory: "/tmp/proj".to_string(),
+                grant_level: "AUTONOMOUS".to_string(),
+                diff_or_command: "git status -s".to_string(),
+                proposed_content: None,
+                shell_command: Some("git status -s".to_string()),
+                status: "auto_executed_grant".to_string(),
+                decision_reason: "Autonomous read".to_string(),
+                execution_output: Some("?? app/wiki_app.py\n?? mkdocs.yml".to_string()),
+                warning_chip: None,
+                request_kind: None,
+                justification: None,
+                consequences_of_decline: None,
+                user_provided_info: None,
+                removal_ratio: None,
+                inconsistency_note: None,
+                memory_delivery_chip: None,
+                question: None,
+                answer_format: None,
+                suggested_default: None,
+            }],
+            verification: Some(VerificationResult {
+                verdict: "pass".to_string(),
+                rationale: "Read-only inspection succeeded".to_string(),
+                response: Some("Status: uncommitted initial workspace with mkdocs.yml and app/wiki_app.py.".to_string()),
+            }),
+            failed_stage: None,
+            stage_error: None,
+        };
+
+        let failed_empty_round2 = TaskRoundSnapshot {
+            round_number: 2,
+            trigger: "user_followup".to_string(),
+            user_note: Some("create status.md".to_string()),
+            timestamp: "2026-11-27T00:02:00Z".to_string(),
+            plan: None,
+            step_logs: Vec::new(),
+            action_cards: Vec::new(),
+            verification: None,
+            failed_stage: Some("interpret".to_string()),
+            stage_error: Some("Plan rejected".to_string()),
+        };
+
+        let record = TaskRecord {
+            task_id: "t-prior".to_string(),
+            title: "Status doc".to_string(),
+            prompt: "Summarize project".to_string(),
+            project_dir: "/tmp/proj".to_string(),
+            timestamp: "2026-11-27T00:00:00Z".to_string(),
+            posture_summary: "autonomous".to_string(),
+            current_round: 3,
+            rounds: vec![round1, failed_empty_round2],
+            ..Default::default()
+        };
+
+        let interpret_ctx = build_iterative_interpret_context(&record, Some("create status.md"));
+        assert!(interpret_ctx.contains("Projects & Parts Wiki Python/MkDocs tooling"));
+        assert!(interpret_ctx.contains("Prior Synthesized Response:"));
+        assert!(interpret_ctx.contains("uncommitted initial workspace with mkdocs.yml"));
+
+        let local_ctx = build_local_prior_round_context(&record).expect("local prior context should exist");
+        assert!(local_ctx.contains("Projects & Parts Wiki Python/MkDocs tooling"));
+        assert!(local_ctx.contains("app/wiki_app.py"));
+        assert!(local_ctx.contains("Prior Synthesized Answer:"));
+    }
+
+    #[test]
+    fn test_list_project_relative_files_bfs_prioritizes_root_and_caps_large_subdirs() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "kodiak_bfs_files_test_{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(temp_dir.join("docs")).unwrap();
+        fs::create_dir_all(temp_dir.join("AAA_big")).unwrap();
+        fs::create_dir_all(temp_dir.join("mcp")).unwrap();
+        fs::create_dir_all(temp_dir.join("app")).unwrap();
+
+        for i in 0..80 {
+            fs::write(temp_dir.join("docs").join(format!("doc_{i:02}.md")), "doc").unwrap();
+        }
+        for i in 0..20 {
+            fs::write(temp_dir.join("AAA_big").join(format!("file_{i:02}.txt")), "txt").unwrap();
+        }
+        fs::write(temp_dir.join("README.md"), "# readme").unwrap();
+        fs::write(temp_dir.join("mkdocs.yml"), "site_name: test").unwrap();
+        fs::write(temp_dir.join("wiki_server.py"), "pass").unwrap();
+        fs::write(temp_dir.join("wiki_config.py"), "pass").unwrap();
+        fs::write(temp_dir.join("mcp").join("server.py"), "pass").unwrap();
+        fs::write(temp_dir.join("app").join("wiki_app.py"), "pass").unwrap();
+
+        let files = crate::pipeline::list_project_relative_files(&temp_dir, 60);
+        assert!(files.iter().any(|f| f == "README.md"));
+        assert!(files.iter().any(|f| f == "mkdocs.yml"));
+        assert!(files.iter().any(|f| f == "wiki_server.py"));
+        assert!(files.iter().any(|f| f == "wiki_config.py"));
+        assert!(files.iter().any(|f| f == "app/wiki_app.py"));
+        assert!(files.iter().any(|f| f == "mcp/server.py"));
+        assert!(
+            files.iter().any(|f| f == "docs (+72 more files)"),
+            "Expected docs subdir summary cap, got: {files:?}"
+        );
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_validate_plan_allows_root_search_and_summarize() {
+        use crate::pipeline::validate_plan;
+
+        let dot_search_plan = TaskPlan {
+            goal: "Search project for setup files".to_string(),
+            estimated_risk: "low".to_string(),
+            files_involved: vec![],
+            steps: vec![PlanStep {
+                id: 1,
+                title: "Search for requirements and setup files".to_string(),
+                action_class: ActionClass::Read,
+                route_tool: "search_and_summarize".to_string(),
+                target_path: ".".to_string(),
+                instruction: "Search for setup or requirements".to_string(),
+                search_pattern: Some("setup|requirements".to_string()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert!(validate_plan(&dot_search_plan, None).is_ok());
+
+        let empty_search_plan = TaskPlan {
+            goal: "Search project".to_string(),
+            estimated_risk: "low".to_string(),
+            steps: vec![PlanStep {
+                id: 1,
+                title: "Search for requirements and setup files".to_string(),
+                action_class: ActionClass::Read,
+                route_tool: "search_and_summarize".to_string(),
+                target_path: "".to_string(),
+                instruction: "Search".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert!(validate_plan(&empty_search_plan, None).is_ok());
+
+        let empty_summarize_plan = TaskPlan {
+            goal: "Summarize file".to_string(),
+            estimated_risk: "low".to_string(),
+            steps: vec![PlanStep {
+                id: 1,
+                title: "Summarize without target".to_string(),
+                action_class: ActionClass::Read,
+                route_tool: "summarize_file".to_string(),
+                target_path: "".to_string(),
+                instruction: "Summarize".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert!(validate_plan(&empty_summarize_plan, None).is_err());
+    }
+
+    #[test]
+    fn test_build_iterative_context_falls_back_to_archived_round() {
+        let mut rec = TaskRecord {
+            task_id: "task-arch-1".to_string(),
+            prompt: "Summarize project".to_string(),
+            project_dir: "/tmp/p".to_string(),
+            plan: Some(TaskPlan {
+                goal: "Discover project files".to_string(),
+                estimated_risk: "low".to_string(),
+                phase: Some("discovery".to_string()),
+                needs_planning_followup: true,
+                ..Default::default()
+            }),
+            step_logs: vec![StepExecutionLog {
+                step_id: 1,
+                title: "Summarize build_wiki.py".to_string(),
+                route_tool: "summarize_file".to_string(),
+                action_class: ActionClass::Read,
+                target_path: "build_wiki.py".to_string(),
+                summary: "Condensed Round 1 summary of build_wiki.py".to_string(),
+                status: "completed".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        rec.archive_current_round("discovery_followup", Some("Discovery complete".to_string()));
+        rec.plan = None;
+        rec.step_logs.clear();
+        rec.action_cards.clear();
+
+        let ctx = build_iterative_interpret_context(&rec, Some("Retry round 2"));
+        assert!(ctx.contains("Condensed Round 1 summary of build_wiki.py"));
+        assert!(ctx.contains("Retry round 2"));
+    }
+
+    #[test]
+    fn test_task_plan_deserializes_files_included_and_defaults() {
+        let raw = r#"{
+            "goal": "Summarize project",
+            "phase": "implementation",
+            "needs_planning_followup": false,
+            "files_included": ["README.md", "app/wiki_app.py"],
+            "steps": [
+                {
+                    "id": 1,
+                    "title": "Summarize README",
+                    "action_class": "read",
+                    "route_tool": "summarize_file",
+                    "target_path": "README.md",
+                    "instruction": "Summarize overview"
+                }
+            ]
+        }"#;
+        let parsed: TaskPlan = serde_json::from_str(raw).unwrap();
+        assert_eq!(parsed.goal, "Summarize project");
+        assert_eq!(parsed.estimated_risk, "low");
+        assert_eq!(parsed.files_involved, vec!["README.md", "app/wiki_app.py"]);
+        assert_eq!(parsed.steps.len(), 1);
+    }
+
+    #[test]
+    fn test_config_pause_after_plan_default() {
+        let legacy_toml = r#"
+cloud_model = "lumo"
+"#;
+        let parsed: AppConfig = toml::from_str(legacy_toml).unwrap();
+        assert!(parsed.pause_after_plan, "pause_after_plan must default to true");
+    }
+
+    #[test]
+    fn test_verification_result_deserializes_with_and_without_response() {
+        let legacy_json = r#"{"verdict":"pass","rationale":"Looks good."}"#;
+        let legacy: VerificationResult = serde_json::from_str(legacy_json).unwrap();
+        assert_eq!(legacy.verdict, "pass");
+        assert!(legacy.response.is_none());
+
+        let rich_json = r#"{"verdict":"pass","rationale":"Looks good.","response":"Summary: Rust + TS Tauri app."}"#;
+        let rich: VerificationResult = serde_json::from_str(rich_json).unwrap();
+        assert_eq!(rich.response.as_deref(), Some("Summary: Rust + TS Tauri app."));
+    }
+
+    #[test]
+    fn test_filter_plan_steps_by_ids() {
+        let plan = TaskPlan {
+            goal: "Summarize project".to_string(),
+            estimated_risk: "low".to_string(),
+            files_involved: vec!["README.md".to_string(), "mkdocs.yml".to_string()],
+            steps: vec![
+                PlanStep {
+                    id: 1,
+                    title: "Read README".to_string(),
+                    target_path: "README.md".to_string(),
+                    ..Default::default()
+                },
+                PlanStep {
+                    id: 2,
+                    title: "Read mkdocs".to_string(),
+                    target_path: "mkdocs.yml".to_string(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let filtered = filter_plan_steps_by_ids(&plan, &[2]).unwrap();
+        assert_eq!(filtered.steps.len(), 1);
+        assert_eq!(filtered.steps[0].id, 2);
+        assert_eq!(filtered.files_involved, vec!["mkdocs.yml".to_string()]);
+
+        let empty_err = filter_plan_steps_by_ids(&plan, &[]).unwrap_err();
+        assert!(empty_err.contains("Select at least one step"));
     }
 }
 
@@ -3807,6 +4960,7 @@ mod acceptance_tests {
                 }
             ],
             memories_used: vec![],
+            ..Default::default()
         };
 
         // Assert interpret output contains no grounding/read step on X
@@ -3895,6 +5049,7 @@ mod acceptance_tests {
                     ..Default::default()
                 }
             ],
+            ..Default::default()
         };
         let res = validate_plan(&bad_plan, None);
         assert!(res.is_err(), "Empty path summarize_file without memory must be rejected");
@@ -3921,6 +5076,7 @@ mod acceptance_tests {
                     ..Default::default()
                 }
             ],
+            ..Default::default()
         };
         let res2 = validate_plan(&good_plan, None);
         assert!(res2.is_ok(), "Empty path summarize_file WITH memory reference must be accepted");
@@ -3963,6 +5119,7 @@ mod acceptance_tests {
             files_involved: vec![],
             memories_used: vec!["frank-base-specs".to_string()],
             steps: vec![step.clone()],
+            ..Default::default()
         };
 
         // 1. Assert memory is resolved and full text is delivered in payload
@@ -4040,6 +5197,7 @@ mod acceptance_tests {
                     ..Default::default()
                 }
             ],
+            ..Default::default()
         };
 
         let (_logs, cards) = run_execute_stage(&cfg, &proj, "task-cap-1", &plan, true).await.unwrap();
@@ -4115,6 +5273,7 @@ mod acceptance_tests {
                     ..Default::default()
                 }
             ],
+            ..Default::default()
         };
 
         // 1. Provide path
@@ -4289,6 +5448,7 @@ mod acceptance_tests {
                     ..Default::default()
                 }
             ],
+            ..Default::default()
         };
 
         let (_logs, cards) = run_execute_stage(&cfg, &proj, "task-deny-req", &plan_path, true).await.unwrap();
@@ -4329,6 +5489,7 @@ mod acceptance_tests {
                     ..Default::default()
                 }
             ],
+            ..Default::default()
         };
 
         let (_logs_cmd, cards_cmd) = run_execute_stage(&cfg, &proj, "task-deny-cmd", &plan_cmd, true).await.unwrap();
@@ -4449,6 +5610,7 @@ mod acceptance_tests {
             files_involved: vec!["sketch.ino".to_string()],
             memories_used: vec![],
             steps: vec![],
+            ..Default::default()
         };
 
         let verify_msg = build_verify_user_message("Fix typo", &plan, &[], &[card], "No memories");
@@ -4501,6 +5663,7 @@ mod acceptance_tests {
             files_involved: vec![],
             memories_used: vec!["frank-base-specs".to_string()],
             steps: vec![step.clone()],
+            ..Default::default()
         };
 
         let (matched, payload) = resolve_step_memories(
@@ -4547,6 +5710,7 @@ mod acceptance_tests {
                     ..Default::default()
                 }
             ],
+            ..Default::default()
         };
 
         let res = validate_plan(&bad_plan, Some(&test_dir));
@@ -4585,6 +5749,7 @@ mod acceptance_tests {
                     ..Default::default()
                 }
             ],
+            ..Default::default()
         };
 
         let res_good = validate_plan(&good_plan, Some(&test_dir));
@@ -4619,6 +5784,7 @@ mod acceptance_tests {
                     ..Default::default()
                 }
             ],
+            ..Default::default()
         };
 
         let res = validate_plan(&plan, Some(&test_dir));
@@ -4715,6 +5881,7 @@ mod acceptance_tests {
             local_grade_verify: false,
             provider_interpret: None,
             provider_verify: None,
+            ..Default::default()
         };
         upsert_task_record(&rec).unwrap();
 
@@ -4811,6 +5978,7 @@ mod acceptance_tests {
             local_grade_verify: false,
             provider_interpret: None,
             provider_verify: None,
+            ..Default::default()
         };
         upsert_task_record(&rec).unwrap();
 
@@ -4914,6 +6082,7 @@ mod acceptance_tests {
             local_grade_verify: false,
             provider_interpret: None,
             provider_verify: None,
+            ..Default::default()
         };
         upsert_task_record(&rec).unwrap();
 
@@ -4988,6 +6157,7 @@ mod acceptance_tests {
             files_involved: vec!["disco.ino".to_string()],
             memories_used: vec![],
             steps: vec![],
+            ..Default::default()
         };
         let step_log = StepExecutionLog {
             step_id: 1,
@@ -5071,6 +6241,7 @@ mod acceptance_tests {
             local_grade_verify: false,
             provider_interpret: None,
             provider_verify: None,
+            ..Default::default()
         };
         upsert_task_record(&rec).unwrap();
 
@@ -5132,6 +6303,7 @@ mod acceptance_tests {
             local_grade_verify: false,
             provider_interpret: None,
             provider_verify: None,
+            ..Default::default()
         };
 
         save_history_to_path(&test_file, &[rec]).unwrap();
@@ -5216,6 +6388,7 @@ mod acceptance_tests {
             local_grade_verify: false,
             provider_interpret: None,
             provider_verify: None,
+            ..Default::default()
         };
         upsert_task_record(&rec).unwrap();
 
@@ -5298,6 +6471,7 @@ mod acceptance_tests {
                 suggested_default: Some("Arduino Nano, pins 9/10/11".to_string()),
                 ..Default::default()
             }],
+            ..Default::default()
         };
         assert!(validate_plan(&valid_plan, None).is_ok());
 
@@ -5319,6 +6493,7 @@ mod acceptance_tests {
                 answer_format: Some("free text".to_string()),
                 ..Default::default()
             }],
+            ..Default::default()
         };
         let err = validate_plan(&invalid_q_plan, None).unwrap_err();
         assert!(
@@ -5345,6 +6520,7 @@ mod acceptance_tests {
                 answer_format: None,
                 ..Default::default()
             }],
+            ..Default::default()
         };
         let err2 = validate_plan(&invalid_fmt_plan, None).unwrap_err();
         assert!(err2.contains("must provide an answer_format hint"));
@@ -5372,6 +6548,7 @@ mod acceptance_tests {
                 answer_format: Some("free text".to_string()),
                 ..Default::default()
             }],
+            ..Default::default()
         };
 
         let err = validate_plan(&dot_target_plan, None).unwrap_err();

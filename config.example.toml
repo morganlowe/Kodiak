@@ -21,6 +21,13 @@ local_total_timeout_secs = 600     # Hard total timeout for long code generation
 destructive_diff_threshold = 0.40  # Flag any modification replacing >= 40% of an existing file
 dry_run = false                    # Global dry-run mode (generates diffs/plans without applying)
 
+# --- Iterative Multi-Round Orchestration (v1.2.0) ---
+pause_after_plan = true            # Pause after Stage 1 so you can review, uncheck steps, or revise before execution
+pause_on_request = true            # Pause Stage 2 at REQUEST cards until user provides info or grants capability
+discovery_pass_enabled = true      # Enable two-phase read-only discovery before multi-file implementation edits
+auto_repair_enabled = false        # Opt-in bounded automatic repair rounds on Verify FAIL or shell test errors
+max_auto_repair_rounds = 2         # Maximum automatic repair rounds per task when auto_repair_enabled = true
+
 # --- Per-Run Diagnostic Logs (§3) ---
 run_log_level = "info"             # "debug", "info", "warn", or "error"
 run_log_max_mb = 50                # Maximum disk budget (MB) for ~/.local/share/kodiak/runs/

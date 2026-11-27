@@ -110,6 +110,14 @@ fn default_run_log_keep_runs() -> usize {
     20
 }
 
+fn default_max_auto_repair_rounds() -> usize {
+    2
+}
+
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppConfig {
@@ -152,6 +160,16 @@ pub struct AppConfig {
     pub custom_css: Option<String>,
     #[serde(default)]
     pub ui_collapsed: std::collections::HashMap<String, bool>,
+    #[serde(default)]
+    pub auto_repair_enabled: bool,
+    #[serde(default = "default_max_auto_repair_rounds")]
+    pub max_auto_repair_rounds: usize,
+    #[serde(default = "default_true")]
+    pub discovery_pass_enabled: bool,
+    #[serde(default = "default_true")]
+    pub pause_on_request: bool,
+    #[serde(default = "default_true")]
+    pub pause_after_plan: bool,
 }
 
 impl Default for AppConfig {
@@ -191,6 +209,11 @@ impl Default for AppConfig {
             run_log_level: "info".to_string(),
             run_log_max_mb: 50,
             run_log_keep_runs: 20,
+            auto_repair_enabled: false,
+            max_auto_repair_rounds: default_max_auto_repair_rounds(),
+            discovery_pass_enabled: true,
+            pause_on_request: true,
+            pause_after_plan: true,
         }
     }
 }

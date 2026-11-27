@@ -6,7 +6,7 @@
 
   **Autonomous Desktop Orchestrator & Local-First AI Development Partner for Linux & Windows**
 
-  [![Version: v1.1.9](https://img.shields.io/badge/Version-v1.1.9-success.svg)](https://github.com/morganlowe/Kodiak/releases)
+  [![Version: v1.2.0](https://img.shields.io/badge/Version-v1.2.0-success.svg)](https://github.com/morganlowe/Kodiak/releases)
   [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
   [![Platform: Linux | Windows | Arch | Debian](https://img.shields.io/badge/Platform-Linux_%7C_Windows_%7C_Arch_%7C_Debian-orange.svg)](#prebuilt-packages)
   [![Tech: Rust | Tauri v2 | TypeScript](https://img.shields.io/badge/Stack-Rust_%7C_Tauri_v2_%7C_TypeScript-red.svg)](#system-architecture)
@@ -88,6 +88,13 @@ Permissions are configured per whitelisted directory and never escalate without 
 
 > **Safety Gate:** At any grant level, the **Destructive Diff Interceptor** flags any patch that modifies or deletes **≥ 40%** of an existing file for mandatory manual review.
 
+### Iterative Multi-Round & Conversational Orchestration (v1.2.0)
+
+* **Plan Approval Gate (`pause_after_plan`, enabled by default):** Pauses after Stage 1 so you can inspect the interpreted plan, toggle per-step execution checkboxes, click **Approve & Execute Plan**, submit guidance via **Revise Plan**, or **Discard Plan**.
+* **Unified Conversational Thread:** Displays chronological `You` -> `Kodiak` turns with a bottom follow-up composer (`Ctrl+Enter` to send), Stage 3 synthesized `Kodiak Response` blocks, and an explicit **Not yet written to disk** banner whenever write cards await **Approve & Execute**.
+* **Per-Stage & Per-Step Recovery:** Re-run from any boundary (**Re-plan**, **Re-execute**, **Re-verify**), retry or revise individual steps (**Retry Step** / **Revise with Feedback**), pause cleanly on **REQUEST** steps (**Provide & Resume** / **Grant & Resume**), use two-phase discovery (`discovery_pass_enabled`), or enable bounded **Auto-Repair** (`auto_repair_enabled`).
+* **Docked Workbench Controls & BFS File Discovery:** Pins the 4-segment stage progress bar flush below the Health Strip so it stays visible while scrolling, and scans projects breadth-first with per-subdirectory capping so large `docs/` trees never hide root entrypoints or sibling source folders from Stage 1 (all under Charter § 1 metadata-only isolation).
+
 <details>
 <summary><strong>Standby Failover, Live Model Discovery & Memory Bank (Click to expand)</strong></summary>
 <br />
@@ -127,10 +134,10 @@ Kodiak provides a split `PKGBUILD` producing the desktop orchestrator (`/usr/bin
 
 ```bash
 # Install both Core Orchestrator and Projects Wiki
-sudo pacman -U kodiak-1.1.9-1-x86_64.pkg.tar.zst kodiak-projectswiki-1.1.9-1-any.pkg.tar.zst
+sudo pacman -U kodiak-1.2.0-1-x86_64.pkg.tar.zst kodiak-projectswiki-1.2.0-1-any.pkg.tar.zst
 
 # Or install Core Orchestrator only
-sudo pacman -U kodiak-1.1.9-1-x86_64.pkg.tar.zst
+sudo pacman -U kodiak-1.2.0-1-x86_64.pkg.tar.zst
 ```
 
 To build and install directly from source via `makepkg` / `make`:
@@ -150,8 +157,8 @@ make install
 Single standalone binary with zero dependencies — works on all modern Linux distributions:
 
 ```bash
-chmod +x Kodiak_1.1.9_amd64.AppImage
-./Kodiak_1.1.9_amd64.AppImage
+chmod +x Kodiak_1.2.0_amd64.AppImage
+./Kodiak_1.2.0_amd64.AppImage
 ```
 
 </details>
@@ -161,7 +168,7 @@ chmod +x Kodiak_1.1.9_amd64.AppImage
 <br />
 
 ```bash
-sudo dpkg -i dist/deb/kodiak_1.1.9-1_amd64.deb dist/deb/kodiak-projectswiki_1.1.9-1_all.deb
+sudo dpkg -i dist/deb/kodiak_1.2.0-1_amd64.deb dist/deb/kodiak-projectswiki_1.2.0-1_all.deb
 sudo apt-get install -f
 ```
 
@@ -173,10 +180,10 @@ sudo apt-get install -f
 
 Two Windows NSIS installers are published on [GitHub Releases](https://github.com/morganlowe/Kodiak/releases):
 
-* **Full Bundle (With ProjectsWiki):** **`Kodiak_1.1.9_x64-with-wiki-setup.exe`**
+* **Full Bundle (With ProjectsWiki):** **`Kodiak_1.2.0_x64-with-wiki-setup.exe`**
   * Packages both the **Kodiak** desktop orchestrator and the standalone **ProjectsWiki** engine (`kodiak-projectswiki.exe`).
   * Zero Python or pip setup required: includes an embedded MkDocs Material runtime, Sync API, and automated catalog generator.
-* **Core Orchestrator Only (Without ProjectsWiki):** **`Kodiak_1.1.9_x64-without-wiki-setup.exe`**
+* **Core Orchestrator Only (Without ProjectsWiki):** **`Kodiak_1.2.0_x64-without-wiki-setup.exe`**
   * Smaller installer containing only the **Kodiak** desktop orchestrator without bundled **ProjectsWiki** resources.
 
 **Windows Prerequisites:**
@@ -357,7 +364,7 @@ Kodiak generates default configuration files on first launch. Expand the section
 <br />
 
 ```toml
-# Kodiak v1.1.9 Core Orchestrator Configuration
+# Kodiak v1.2.0 Core Orchestrator Configuration
 
 [general]
 theme = "kodiak-dark"
@@ -367,6 +374,11 @@ run_log_level = "info"          # Options: "debug" | "info" | "warn" | "error"
 run_log_max_mb = 50             # Max disk usage for per-run diagnostic logs
 run_log_keep_runs = 20          # Recent run logs retained (journal.jsonl is never pruned)
 destructive_diff_threshold = 0.40
+pause_after_plan = true         # Pause after Stage 1 for step selection, approval, or revision
+pause_on_request = true         # Pause Stage 2 at REQUEST cards until answered/granted
+discovery_pass_enabled = true   # Two-phase read-only discovery before multi-file implementation
+auto_repair_enabled = false     # Bounded automatic repair loop on Verify FAIL or shell errors
+max_auto_repair_rounds = 2      # Max automatic repair iterations when auto_repair_enabled = true
 
 # Project Exclusions (managed via sidebar right-click or Settings -> Excluded Projects)
 exclusion_list = [

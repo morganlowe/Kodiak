@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-11-27
+
+### Added
+
+- **Iterative Multi-Round & Conversational Pipeline (`src-tauri/src/history.rs`, `src-tauri/src/pipeline.rs`, `src-tauri/src/lib.rs`, `src-tauri/src/config.rs`, `src-tauri/src/events.rs`)**:
+  - Replaced the single-shot pipeline with multi-round archival (`TaskRoundSnapshot`, `TaskRecord::archive_current_round`) and Tauri commands (`rerun_task_from_stage`, `continue_task_round`, `retry_task_step`, `resume_paused_task`, `cancel_active_iteration`) while preserving Charter Section 1 metadata-only cloud isolation.
+  - Added `PipelineEvent::RoundChanged`, `AppState.active_cancel`, Stage 2 `pause_on_request` pause/resume flow (`ExecuteStageOptions`, `run_execute_stage_advanced`, `run_single_step_with_events`), read-only two-phase discovery (`discovery_pass_enabled`), and opt-in bounded automatic repair (`auto_repair_enabled`, `max_auto_repair_rounds`).
+  - Added `VerificationResult.response` and Stage 3 synthesis instructions in `VERIFY_SYSTEM_PROMPT` to deliver direct, grounded user answers alongside pass/concerns/fail verdicts.
+- **Plan Approval Gate (`src-tauri/src/lib.rs`, `src/main.ts`)**:
+  - Enabled `pause_after_plan` by default (`AppConfig.pause_after_plan = true`) with backend commands `approve_plan_and_execute`, `revise_pending_plan`, and `discard_pending_plan`.
+  - Rendered an interactive Plan Review card with per-step selection checkboxes, revision input (`Revise Plan`), **Approve & Execute Plan**, and **Discard Plan** actions.
+- **Unified Conversational Thread UI & Docked Stage Progress Bar (`src/main.ts`, `src/theme.css`)**:
+  - Replaced flat output blocks with chronological `You` -> `Kodiak` conversation turns, bottom `Reply / Continue Conversation` composer (`Ctrl+Enter` shortcut), collapsible archived round details, inline Workbench toggles (`Pause for Plan Review`, `Auto-Repair`), collapsible **Live Event Ticker**, Settings controls, and Unified Inbox `Fix Test Errors` recovery action.
+  - Docked the 4-segment stage progress bar (`Interpret | Execute | Verify | Done`) flush below the Health Strip on the Workbench tab so scrolled content never covers or peeks above it.
+  - Added an explicit **Not yet written to disk** banner in active rounds when file/command Action Cards remain `pending_approval`.
+- **Follow-Up Objective Promotion, Tool Normalization & Breadth-First Discovery (`src-tauri/src/pipeline.rs`, `src-tauri/src/lib.rs`, `src-tauri/src/prompts.rs`)**:
+  - Added `build_effective_round_prompt` so Round 2+ follow-up instructions take primary placement over initial Round 1 prompts, and `build_local_prior_round_context` to seed archived step summaries, shell outputs, and prior answers into local Stage 2 execution.
+  - Added `normalize_plan_steps` to normalize common LLM tool aliases (such as `create_file`, `write_file`, `draft_doc`) onto `draft_code`, and updated `list_project_relative_files` to breadth-first traversal (all root files first, per-subdirectory cap of 8 files with `(+N more files)` indicator, limit raised to 80).
+- **Unit Tests (`src-tauri/src/lib.rs`)**:
+  - Added 15 Rust unit tests covering iterative config defaults, `TaskPlan` serde aliases, `TaskRecord` round archiving, `VerificationResult.response`, plan step filtering, Charter §1 context sanitization, Stage 2 `REQUEST` pause/resume, discovery detection, shell error detection, plan validation, tool normalization, follow-up prompt promotion, local prior-round context seeding, and BFS file discovery (85 tests passing, 0 failed, 3 ignored).
+
+### Changed
+
+- Updated package versions, UI labels, `README.md`, `config.example.toml`, and `docs/DECISIONS.md` to `v1.2.0` (`Kodiak_1.2.0_x64-with-wiki-setup.exe` and `Kodiak_1.2.0_x64-without-wiki-setup.exe`).
+- Updated `VERIFY_SYSTEM_PROMPT` with an explicit `CRITICAL APPROVAL-STATUS RULE` so Stage 3 never claims `pending_approval` or `dry_run` files were already written to disk.
+
+### Fixed
+
+- Fixed cascade attempt classification (`classify_cascade_attempt_code`) so interpreter plan rejections log as `invalid_plan` rather than `429`.
+- Fixed `TaskPlan` deserialization resilience for `files_included` / `files` / `target_files` aliases and missing `step.id` values, plus strict rejection of unsupported `route_tool` names in `validate_plan` (preventing silent fallthrough into `shell`).
+- Replaced unsafe byte-slice string truncation in `build_iterative_interpret_context` and `build_verify_user_message` with UTF-8 character-safe `truncate_chars`.
+- Fixed `validate_plan` to allow read-only `search_and_summarize` and `review_git_diff` steps on `.` or `""`.
+
 ## [1.1.9] — 2026-11-12
 
 ### Added
@@ -262,7 +295,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Split Arch `PKGBUILD` producing `kodiak` and `kodiak-projectswiki` packages with dependency hooks (`python-mkdocs-material`, `python-requests`, `python-toml`).
 - Debian/Ubuntu `.deb` binary packages with `apt` dependency resolution.
 
-[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.1.9...HEAD
+[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/morganlowe/Kodiak/compare/v1.1.9...v1.2.0
 [1.1.9]: https://github.com/morganlowe/Kodiak/compare/v1.1.8...v1.1.9
 [1.1.8]: https://github.com/morganlowe/Kodiak/compare/v1.1.7...v1.1.8
 [1.1.7]: https://github.com/morganlowe/Kodiak/compare/v1.1.6...v1.1.7

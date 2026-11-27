@@ -948,6 +948,26 @@ With multi-task queuing and unified diff reviews operational across repositories
   - **Packaging & Tooling**: Arch Linux / CachyOS (makepkg, pacman), Debian / Ubuntu (dpkg-deb), AppImageKit, NSIS.
   - **Inference & Hardware**: NVIDIA CUDA / nvidia-smi, Ollama.
 
+---
+
+## 27. Iterative Multi-Round Orchestration, Plan Approval Gate & Conversational Thread UI (v1.2.0)
+
+### 27.1 Multi-Round Lifecycle & Archive Snapshots
+- **Decision**: Replace Kodiak's one-shot pipeline execution with a multi-round iterative architecture backed by `TaskRoundSnapshot` history archives in `TaskRecord.rounds`, while strictly enforcing Charter Section 1 isolation (only sanitized metadata, condensed local summaries, unified diffs, and user guidance cross to cloud stages).
+- **Capabilities**:
+  - `rerun_task_from_stage`: Re-run from `interpret`, `execute`, or `verify` with optional user guidance.
+  - `continue_task_round`: Continue a task conversationally with follow-up instructions across rounds while preserving `task_scoped_grants`, `task_provided_info`, and archived round summaries.
+  - `retry_task_step`: Re-run or revise a single planned step with optional feedback and verification refresh.
+  - `resume_paused_task` & `pause_on_request`: Suspend Stage 2 cleanly when a `REQUEST` card requires user input or capability approval, then resume remaining steps or re-plan with user-provided facts.
+  - Two-phase discovery (`discovery_pass_enabled`) for multi-file edit/build requests, and opt-in bounded automatic repair (`auto_repair_enabled`, `max_auto_repair_rounds`).
+
+### 27.2 Plan Approval Gate (`pause_after_plan`, default `true`)
+- **Decision**: Pause after Stage 1 Interpret by default (`awaiting_plan_approval = true`) so the operator inspects planned steps, unchecks optional steps, approves execution (`approve_plan_and_execute`), revises the plan with feedback (`revise_pending_plan`), or discards (`discard_pending_plan`).
+- **Workbench UI**: Unified chronological conversational thread (`You` -> `Kodiak` turns), bottom reply composer (`Ctrl+Enter`), Stage 3 synthesized `Kodiak Response` blocks, docked stage progress bar pinned below the Health Strip, and explicit `Not yet written to disk` banners when write cards remain `pending_approval`.
+
+### 27.3 Follow-Up Prioritization, Tool Normalization & BFS File Discovery
+- **Decision**: Promote the latest `followup_notes` entry to the primary objective in Interpret and Verify (`build_effective_round_prompt`), seed archived local round summaries into Stage 2 (`build_local_prior_round_context`), normalize LLM document-creation `route_tool` aliases (e.g., `create_file`, `draft_doc`, `write_file`) onto `draft_code`, explicitly reject unknown `route_tool` names in `validate_plan`, and switch `list_project_relative_files` to breadth-first traversal with per-subdirectory capping (`PER_SUBDIR_CAP = 8`) so large directories (such as `docs/`) never hide root files or sibling modules.
+
 
 
 

@@ -2520,41 +2520,83 @@ pub fn read_numbered_lines(path: &Path, start_line: usize, end_line: usize) -> R
     Ok(out)
 }
 
-/// Collects a shallow list of relative file paths (names ONLY, never file contents!) inside the active project
-/// so the cloud interpreter knows what files exist without ever receiving raw file dumps (§1).
-fn list_project_relative_files(project_root: &Path, max_files: usize) -> Vec<String> {
+/// Collects a shallow breadth-first list of relative file paths (names ONLY, never file contents!)
+/// inside the active project so the cloud interpreter sees all root entrypoints/configs plus
+/// representative files across sibling subdirectories without huge folders (e.g. `docs/`) hiding them (§1).
+pub fn list_project_relative_files(project_root: &Path, max_files: usize) -> Vec<String> {
+    const PER_SUBDIR_CAP: usize = 8;
     let mut out = Vec::new();
-    fn walk(root: &Path, cur: &Path, out: &mut Vec<String>, max_files: usize, depth: usize) {
-        if depth > 3 || out.len() >= max_files {
-            return;
+    let mut queue = std::collections::VecDeque::new();
+    queue.push_back((project_root.to_path_buf(), 0usize));
+
+    while let Some((cur, depth)) = queue.pop_front() {
+        if out.len() >= max_files || depth > 3 {
+            continue;
         }
-        let Ok(entries) = fs::read_dir(cur) else {
-            return;
+        let Ok(entries) = fs::read_dir(&cur) else {
+            continue;
         };
-        let mut sorted: Vec<_> = entries.flatten().collect();
-        sorted.sort_by_key(|e| e.file_name());
-        for entry in sorted {
-            if out.len() >= max_files {
-                break;
-            }
+
+        let mut files = Vec::new();
+        let mut dirs = Vec::new();
+        for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
             if name.starts_with('.')
                 || matches!(
                     name.as_str(),
-                    "node_modules" | "target" | "dist" | "__pycache__" | "venv" | ".git"
+                    "node_modules"
+                        | "target"
+                        | "dist"
+                        | "build"
+                        | "site"
+                        | "__pycache__"
+                        | "venv"
+                        | ".venv"
+                        | ".git"
                 )
             {
                 continue;
             }
             let path = entry.path();
             if path.is_dir() {
-                walk(root, &path, out, max_files, depth + 1);
-            } else if let Ok(rel) = path.strip_prefix(root) {
+                dirs.push((name.to_ascii_lowercase(), path));
+            } else {
+                files.push((name.to_ascii_lowercase(), path));
+            }
+        }
+
+        files.sort_by(|a, b| a.0.cmp(&b.0));
+        dirs.sort_by(|a, b| a.0.cmp(&b.0));
+
+        let cap = if depth == 0 {
+            files.len()
+        } else {
+            PER_SUBDIR_CAP
+        };
+        let total_files = files.len();
+        let mut added_here = 0usize;
+        for (_, path) in files {
+            if out.len() >= max_files || added_here >= cap {
+                break;
+            }
+            if let Ok(rel) = path.strip_prefix(project_root) {
                 out.push(rel.to_string_lossy().to_string());
+                added_here += 1;
+            }
+        }
+        if depth > 0 && total_files > added_here && out.len() < max_files {
+            if let Ok(rel_dir) = cur.strip_prefix(project_root) {
+                let remaining = total_files - added_here;
+                out.push(format!("{} (+{} more files)", rel_dir.display(), remaining));
+            }
+        }
+
+        if depth < 3 {
+            for (_, dir_path) in dirs {
+                queue.push_back((dir_path, depth + 1));
             }
         }
     }
-    walk(project_root, project_root, &mut out, max_files, 0);
     out
 }
 
@@ -2683,20 +2725,101 @@ pub async fn run_shell_command_bounded(
     }
 }
 
+/// Normalizes common LLM tool-name variants onto Kodiak's canonical `route_tool` identifiers
+/// so document creation aliases (e.g. `create_file`, `draft_doc`, `write_file`) route cleanly to `draft_code`
+/// instead of failing validation or falling through to `shell`.
+pub fn normalize_plan_steps(plan: &mut TaskPlan) {
+    for step in &mut plan.steps {
+        let canonical = step
+            .route_tool
+            .trim()
+            .to_ascii_lowercase()
+            .replace(['-', ' '], "_");
+        let mapped = match canonical.as_str() {
+            "create_file"
+            | "write_file"
+            | "create_doc"
+            | "create_document"
+            | "write_doc"
+            | "write_document"
+            | "draft_doc"
+            | "draft_document"
+            | "draft_markdown"
+            | "draft_file"
+            | "edit_file"
+            | "modify_file"
+            | "update_file"
+            | "save_file"
+            | "create"
+            | "overwrite"
+            | "write" => "draft_code",
+            "read_file" | "inspect_file" | "summarize" | "read" => "summarize_file",
+            "search" | "search_files" | "grep" | "rg" | "find_files" => "search_and_summarize",
+            "git_diff" | "diff" => "review_git_diff",
+            "digest_log" | "analyze_log" | "parse_errors" => "digest_log_or_errors",
+            "create_dir" | "make_dir" | "create_directory" => "mkdir",
+            "run_command" | "run_shell" | "bash" | "sh" | "command" | "exec" | "execute" => {
+                "shell"
+            }
+            "ask" | "ask_user" | "request_info" | "request_capability" => "request",
+            other => other,
+        };
+        step.route_tool = mapped.to_string();
+
+        if step.route_tool == "draft_code" && step.action_class == ActionClass::Read {
+            step.action_class = ActionClass::Create;
+        } else if step.route_tool == "request" && step.action_class != ActionClass::Request {
+            step.action_class = ActionClass::Request;
+        }
+    }
+}
+
 /// Validates a structured TaskPlan produced by the interpreter (§1.3 Slice 2.3, §2 & §3 Slice 2.4).
 /// Ensures that:
-/// 1. Empty/dot target paths are rejected unless a valid memory reference is delivered.
-/// 2. File-reading tools targeting directories are rejected at parse time.
-/// 3. Non-existent targets are allowed only if a prior step in the plan creates them (deferred validation).
-/// 4. Drafting steps that require external facts (e.g., Framework 13 specs) have a preceding REQUEST step.
+/// 1. Only supported `route_tool` values are accepted (never fall through to `shell` on typos).
+/// 2. Empty/dot target paths are rejected unless a valid memory reference is delivered.
+/// 3. File-reading tools targeting directories are rejected at parse time.
+/// 4. Non-existent targets are allowed only if a prior step in the plan creates them (deferred validation).
+/// 5. Drafting steps that require external facts (e.g., Framework 13 specs) have a preceding REQUEST step.
 pub fn validate_plan(plan: &TaskPlan, project_root: Option<&Path>) -> Result<(), String> {
     for step in &plan.steps {
+        if !matches!(
+            step.route_tool.as_str(),
+            "summarize_file"
+                | "search_and_summarize"
+                | "draft_code"
+                | "review_git_diff"
+                | "digest_log_or_errors"
+                | "mkdir"
+                | "shell"
+                | "request"
+        ) {
+            return Err(format!(
+                "Plan rejected: Step #{} ('{}') uses unsupported route_tool '{}'. Use one of: summarize_file, search_and_summarize, draft_code, review_git_diff, digest_log_or_errors, mkdir, shell, request.",
+                step.id, step.title, step.route_tool
+            ));
+        }
+
         let norm_target = step.target_path.trim().trim_start_matches("./");
 
-        // 1. Empty/dot target check
-        if (step.route_tool == "summarize_file" || step.action_class == ActionClass::Read)
+        if matches!(step.route_tool.as_str(), "draft_code" | "mkdir")
             && (norm_target.is_empty() || norm_target == ".")
         {
+            return Err(format!(
+                "Plan rejected: Step #{} ('{}') specifies route_tool '{}' with missing or invalid target_path '{}'.",
+                step.id, step.title, step.route_tool, step.target_path
+            ));
+        }
+
+        // 1. Empty/dot target check (file-specific tools require a concrete file target unless referencing memory)
+        let needs_explicit_file_target = step.route_tool == "summarize_file"
+            || step.route_tool == "digest_log_or_errors"
+            || (step.action_class == ActionClass::Read
+                && !matches!(
+                    step.route_tool.as_str(),
+                    "search_and_summarize" | "review_git_diff" | "shell"
+                ));
+        if needs_explicit_file_target && (norm_target.is_empty() || norm_target == ".") {
             let has_memory_ref = !step.memories_used.is_empty()
                 || step.instruction.contains('@')
                 || step.title.contains('@')
@@ -2872,7 +2995,263 @@ pub async fn run_interpret_stage_with_provider(
     prompt: &str,
     provider: &StageProvider,
 ) -> Result<TaskPlan, String> {
-    let file_names = list_project_relative_files(project_root, 60);
+    run_interpret_stage_with_context(cfg, project_root, prompt, provider, None).await
+}
+
+/// UTF-8 safe truncation by character count.
+fn truncate_chars(s: &str, max_chars: usize, suffix: &str) -> String {
+    if s.chars().count() <= max_chars {
+        return s.to_string();
+    }
+    let mut out: String = s.chars().take(max_chars).collect();
+    out.push_str(suffix);
+    out
+}
+
+/// Charter-S1-safe iterative context builder: sends ONLY sanitized plan metadata,
+/// condensed step summaries, diffs/commands, rejection reasons, verification rationale,
+/// and user-provided answers/grants — NEVER `proposed_content` or raw file dumps.
+pub fn build_iterative_interpret_context(
+    record: &TaskRecord,
+    guidance: Option<&str>,
+) -> String {
+    let mut out = String::new();
+    out.push_str(&format!("Current Round: {}\n", record.current_round.max(1)));
+
+    let latest_archived = if record.plan.is_none()
+        && record.step_logs.is_empty()
+        && record.action_cards.is_empty()
+    {
+        record
+            .rounds
+            .iter()
+            .rev()
+            .find(|r| {
+                !r.step_logs.is_empty() || !r.action_cards.is_empty() || r.verification.is_some()
+            })
+            .or_else(|| record.rounds.last())
+    } else {
+        None
+    };
+
+    let effective_plan = record.plan.as_ref().or_else(|| latest_archived.and_then(|r| r.plan.as_ref()));
+    let effective_logs = if !record.step_logs.is_empty() {
+        &record.step_logs
+    } else if let Some(arch) = latest_archived {
+        &arch.step_logs
+    } else {
+        &record.step_logs
+    };
+    let effective_cards = if !record.action_cards.is_empty() {
+        &record.action_cards
+    } else if let Some(arch) = latest_archived {
+        &arch.action_cards
+    } else {
+        &record.action_cards
+    };
+    let effective_verification = record
+        .verification
+        .as_ref()
+        .or_else(|| latest_archived.and_then(|r| r.verification.as_ref()));
+
+    if let Some(plan) = effective_plan {
+        out.push_str(&format!("Prior Goal: {}\n", plan.goal));
+        if let Some(phase) = &plan.phase {
+            out.push_str(&format!("Prior Phase: {}\n", phase));
+        }
+        if !plan.steps.is_empty() {
+            out.push_str("Prior Steps:\n");
+            for s in &plan.steps {
+                out.push_str(&format!(
+                    "- Step #{} [{} / {}] `{}`: {}\n",
+                    s.id, s.action_class, s.route_tool, s.target_path, s.title
+                ));
+            }
+        }
+    }
+
+    if !effective_logs.is_empty() {
+        out.push_str("\nCondensed Step Summaries:\n");
+        for log in effective_logs {
+            let short = truncate_chars(&log.summary, 800, "...");
+            out.push_str(&format!(
+                "- Step #{} [{} | {}] `{}`: {}\n",
+                log.step_id, log.route_tool, log.status, log.target_path, short
+            ));
+        }
+    }
+
+    if !effective_cards.is_empty() {
+        out.push_str("\nAction Cards & Outcomes (diffs/commands only, no raw file dumps):\n");
+        for card in effective_cards {
+            let diff_short = truncate_chars(&card.diff_or_command, 2000, "\n... [diff truncated]");
+            out.push_str(&format!(
+                "- Card Step #{} [{} | `{}` | status={} | reason={}]\n",
+                card.step_id, card.action_class, card.target_path, card.status, card.decision_reason
+            ));
+            if !diff_short.trim().is_empty() {
+                out.push_str(&format!("  Diff/Command:\n  {}\n", diff_short.replace('\n', "\n  ")));
+            }
+            if let Some(exec_out) = &card.execution_output {
+                let exec_short = truncate_chars(exec_out, 1500, "\n... [output truncated]");
+                if !exec_short.trim().is_empty() {
+                    out.push_str(&format!("  Execution Output:\n  {}\n", exec_short.replace('\n', "\n  ")));
+                }
+            }
+        }
+    }
+
+    if let Some(ver) = effective_verification {
+        out.push_str(&format!(
+            "\nPrior Verification Verdict: {}\nRationale: {}\n",
+            ver.verdict.to_uppercase(),
+            ver.rationale
+        ));
+        if let Some(resp) = ver
+            .response
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            let resp_short = truncate_chars(resp, 2500, "\n... [response truncated]");
+            out.push_str(&format!("Prior Synthesized Response:\n{resp_short}\n"));
+        }
+    }
+
+    if !record.task_provided_info.is_empty() {
+        out.push_str("\nUser-Provided Information:\n");
+        for info in &record.task_provided_info {
+            out.push_str(&format!("- {info}\n"));
+        }
+    }
+
+    if !record.task_scoped_grants.is_empty() {
+        out.push_str("\nTask-Scoped Grants:\n");
+        for g in &record.task_scoped_grants {
+            out.push_str(&format!("- {} [{}]\n", g.path, g.level));
+        }
+    }
+
+    if let Some(g) = guidance.map(str::trim).filter(|s| !s.is_empty()) {
+        out.push_str(&format!("\nNext-Round Guidance / Follow-Up Request:\n{g}\n"));
+    }
+
+    out
+}
+
+/// Collects condensed step summaries, shell outputs, and prior synthesized verification answers
+/// from up to the last 3 archived rounds so local Stage 2 (`draft_code`, etc.) has full grounded
+/// context when executing follow-up rounds (e.g. creating `status.md` from Round 1 findings).
+pub fn build_local_prior_round_context(record: &TaskRecord) -> Option<String> {
+    if record.rounds.is_empty() {
+        return None;
+    }
+
+    let mut out = String::new();
+    let recent: Vec<_> = record.rounds.iter().rev().take(3).collect();
+    for snap in recent.into_iter().rev() {
+        let mut round_block = String::new();
+        for log in &snap.step_logs {
+            let s = log.summary.trim();
+            if !s.is_empty() {
+                let short = truncate_chars(s, 1200, "...");
+                round_block.push_str(&format!(
+                    "- Step #{} [{} | `{}`]: {}\n",
+                    log.step_id, log.route_tool, log.target_path, short
+                ));
+            }
+        }
+        for card in &snap.action_cards {
+            if let Some(exec_out) = card.execution_output.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+                let short = truncate_chars(exec_out, 1200, "...");
+                round_block.push_str(&format!(
+                    "- Output Step #{} [`{}`]: {}\n",
+                    card.step_id, card.target_path, short
+                ));
+            }
+        }
+        if let Some(ver) = &snap.verification {
+            if let Some(resp) = ver.response.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+                let short = truncate_chars(resp, 2500, "...");
+                round_block.push_str(&format!("- Prior Synthesized Answer:\n{short}\n"));
+            }
+        }
+        if !round_block.is_empty() {
+            out.push_str(&format!(
+                "### Archived Round {} ({}):\n{}\n",
+                snap.round_number, snap.trigger, round_block
+            ));
+        }
+    }
+
+    let trimmed = out.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(truncate_chars(
+            trimmed,
+            9000,
+            "\n... [prior round context truncated]",
+        ))
+    }
+}
+
+/// Returns true when the plan is explicitly marked for discovery follow-up and contains only read/request steps.
+pub fn plan_is_readonly_discovery(plan: &TaskPlan) -> bool {
+    if plan.steps.is_empty() {
+        return false;
+    }
+    let marked = plan.needs_planning_followup || plan.phase.as_deref() == Some("discovery");
+    if !marked {
+        return false;
+    }
+    plan.steps.iter().all(|s| {
+        let class_ok = matches!(s.action_class, ActionClass::Read | ActionClass::Request);
+        let tool_ok = matches!(
+            s.route_tool.as_str(),
+            "summarize_file"
+                | "search_and_summarize"
+                | "review_git_diff"
+                | "digest_log_or_errors"
+                | "request"
+        ) || (s.route_tool == "shell" && is_readonly_command(&s.instruction));
+        class_ok && tool_ok
+    })
+}
+
+/// Heuristic check for failed shell/build/test output on auto-executed commands.
+pub fn detect_shell_output_failure(output: &str) -> bool {
+    let trimmed = output.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    if trimmed.contains("Command exited with status")
+        && !trimmed.contains("status 0")
+        && !trimmed.contains("status: 0")
+    {
+        return true;
+    }
+    if trimmed.contains("error[E")
+        || trimmed.contains("\nerror:")
+        || trimmed.starts_with("error:")
+        || trimmed.contains("FAILED")
+        || trimmed.contains("AssertionError")
+        || trimmed.contains("panicked at")
+        || trimmed.contains("Traceback (most recent call last)")
+    {
+        return true;
+    }
+    false
+}
+
+pub async fn run_interpret_stage_with_context(
+    cfg: &AppConfig,
+    project_root: &Path,
+    prompt: &str,
+    provider: &StageProvider,
+    prior_context: Option<&str>,
+) -> Result<TaskPlan, String> {
+    let file_names = list_project_relative_files(project_root, 80);
     let file_list_summary = if file_names.is_empty() {
         "(empty directory)".to_string()
     } else {
@@ -2915,8 +3294,13 @@ pub async fn run_interpret_stage_with_provider(
         )
     };
 
+    let prior_section = match prior_context.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(ctx) => format!("\n\nPrior Round Context (sanitized summaries & diffs only):\n{ctx}"),
+        None => String::new(),
+    };
+
     let user_msg = format!(
-        "User Task Request:\n{prompt}\n\nProject relative file names (names only, no contents):\n{file_list_summary}\n\npipeline_generated_files (unverified past outputs — DO NOT use as grounding sources):\n{gen_files_summary}\n\n{memory_section}"
+        "User Task Request:\n{prompt}\n\nProject relative file names (names only, no contents):\n{file_list_summary}\n\npipeline_generated_files (unverified past outputs — DO NOT use as grounding sources):\n{gen_files_summary}\n\n{memory_section}{prior_section}"
     );
 
     let raw_reply = match provider {
@@ -2925,13 +3309,52 @@ pub async fn run_interpret_stage_with_provider(
         StageProvider::Alternate(alt) => call_alt_provider_chat(alt, "interpret", INTERPRET_SYSTEM_PROMPT, &user_msg).await?,
     };
     let json_slice = extract_json_object(&raw_reply);
-    let plan: TaskPlan = serde_json::from_str(json_slice).map_err(|e| {
+    let mut plan: TaskPlan = serde_json::from_str(json_slice).map_err(|e| {
         format!(
             "Interpreter returned invalid plan JSON ({e}). Raw response:\n{raw_reply}"
         )
     })?;
+    if plan.goal.trim().is_empty() && plan.steps.is_empty() {
+        return Err(format!(
+            "Interpreter returned an empty plan (missing goal and steps). Raw response:\n{raw_reply}"
+        ));
+    }
+    for (idx, step) in plan.steps.iter_mut().enumerate() {
+        if step.id == 0 {
+            step.id = idx + 1;
+        }
+    }
+    if plan.files_involved.is_empty() {
+        for step in &plan.steps {
+            let t = step.target_path.trim();
+            if !t.is_empty() && t != "." && t != "./" && !plan.files_involved.iter().any(|f| f == t) {
+                plan.files_involved.push(t.to_string());
+            }
+        }
+    }
+    normalize_plan_steps(&mut plan);
     validate_plan(&plan, Some(project_root))?;
     Ok(plan)
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ExecuteStageOptions {
+    pub start_after_step_id: Option<usize>,
+    pub pause_on_request: bool,
+    pub prior_step_logs: Vec<StepExecutionLog>,
+    pub prior_action_cards: Vec<ActionCard>,
+    pub task_scoped_grants: Vec<WhitelistEntry>,
+    pub task_provided_info: Vec<String>,
+    pub step_feedback: Option<(usize, String)>,
+    pub prior_round_context: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExecuteStageOutcome {
+    pub step_logs: Vec<StepExecutionLog>,
+    pub action_cards: Vec<ActionCard>,
+    pub paused_at_step_id: Option<usize>,
+    pub pause_reason: Option<String>,
 }
 
 /// Stage 2: Local Execution + Safety Enforcer across all planned steps.
@@ -2954,8 +3377,97 @@ pub async fn run_execute_stage_with_events(
     plan: &TaskPlan,
     cruise_control: bool,
 ) -> Result<(Vec<StepExecutionLog>, Vec<ActionCard>), String> {
-    let mut step_logs = Vec::new();
-    let mut action_cards = Vec::new();
+    let outcome = run_execute_stage_advanced(
+        app,
+        cfg,
+        project_root,
+        task_id,
+        plan,
+        cruise_control,
+        ExecuteStageOptions {
+            pause_on_request: false,
+            ..Default::default()
+        },
+    )
+    .await?;
+    Ok((outcome.step_logs, outcome.action_cards))
+}
+
+/// Executes a single step from `plan` with prior step summaries, grants, user info, and optional revision feedback.
+pub async fn run_single_step_with_events(
+    app: Option<&tauri::AppHandle>,
+    cfg: &AppConfig,
+    project_root: &Path,
+    task_id: &str,
+    plan: &TaskPlan,
+    step_id: usize,
+    cruise_control: bool,
+    prior_context_logs: Vec<StepExecutionLog>,
+    task_scoped_grants: Vec<WhitelistEntry>,
+    task_provided_info: Vec<String>,
+    feedback: Option<String>,
+    prior_round_context: Option<String>,
+) -> Result<(StepExecutionLog, Option<ActionCard>), String> {
+    let target_step = plan
+        .steps
+        .iter()
+        .find(|s| s.id == step_id)
+        .cloned()
+        .ok_or_else(|| format!("Step #{step_id} not found in plan"))?;
+    let single_plan = TaskPlan {
+        goal: plan.goal.clone(),
+        estimated_risk: plan.estimated_risk.clone(),
+        files_involved: plan.files_involved.clone(),
+        memories_used: plan.memories_used.clone(),
+        steps: vec![target_step],
+        phase: plan.phase.clone(),
+        needs_planning_followup: false,
+    };
+    let prior_count = prior_context_logs.len();
+    let outcome = run_execute_stage_advanced(
+        app,
+        cfg,
+        project_root,
+        task_id,
+        &single_plan,
+        cruise_control,
+        ExecuteStageOptions {
+            start_after_step_id: None,
+            pause_on_request: false,
+            prior_step_logs: prior_context_logs,
+            prior_action_cards: Vec::new(),
+            task_scoped_grants,
+            task_provided_info,
+            step_feedback: feedback.map(|fb| (step_id, fb)),
+            prior_round_context,
+        },
+    )
+    .await?;
+    let new_log = outcome
+        .step_logs
+        .into_iter()
+        .skip(prior_count)
+        .last()
+        .ok_or_else(|| format!("Step #{step_id} produced no execution log"))?;
+    let new_card = outcome.action_cards.into_iter().last();
+    Ok((new_log, new_card))
+}
+
+/// Stage 2 executor supporting pause-on-REQUEST, resume after step_id, task-scoped grants,
+/// user-provided info injection, and per-step revision feedback.
+pub async fn run_execute_stage_advanced(
+    app: Option<&tauri::AppHandle>,
+    cfg: &AppConfig,
+    project_root: &Path,
+    task_id: &str,
+    plan: &TaskPlan,
+    cruise_control: bool,
+    options: ExecuteStageOptions,
+) -> Result<ExecuteStageOutcome, String> {
+    let mut step_logs = options.prior_step_logs;
+    let mut action_cards = options.prior_action_cards;
+    let mut paused_at_step_id: Option<usize> = None;
+    let mut pause_reason: Option<String> = None;
     let mut accumulated_local_context = String::new();
     let pipeline_generated = get_pipeline_generated_files(project_root);
 
@@ -2967,16 +3479,68 @@ pub async fn run_execute_stage_with_events(
         accumulated_local_context.push_str(&format!("\n{local_mem_context}\n"));
     }
 
+    // Seed archived prior rounds context, current-round prior step summaries, and user-provided info
+    if let Some(prior_round_ctx) = options
+        .prior_round_context
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        accumulated_local_context.push_str(&format!(
+            "\n[Prior Rounds Gathered Context]:\n{prior_round_ctx}\n"
+        ));
+    }
+
+    // Seed prior step summaries and user-provided information for resumed/single-step runs
+    for prior in &step_logs {
+        if !prior.summary.trim().is_empty() {
+            accumulated_local_context.push_str(&format!(
+                "\n[Prior Step #{} ({})]:\n{}\n",
+                prior.step_id, prior.target_path, prior.summary
+            ));
+        }
+    }
+    for info in &options.task_provided_info {
+        if !info.trim().is_empty() {
+            accumulated_local_context.push_str(&format!(
+                "\n[User Provided Information]:\n{}\n",
+                info.trim()
+            ));
+        }
+    }
+
+    let mut effective_whitelist = cfg.whitelist.clone();
+    effective_whitelist.extend(options.task_scoped_grants.clone());
+
     for step in &plan.steps {
+        if options
+            .start_after_step_id
+            .is_some_and(|sid| step.id <= sid)
+        {
+            continue;
+        }
         if let Some(app_handle) = app {
             use tauri::Manager;
             if let Some(state) = app_handle.try_state::<crate::AppState>() {
-                if state.queue.get_items().iter().any(|i| i.task_id.as_deref() == Some(task_id) && i.status == crate::queue::QueueItemStatus::Cancelled) {
+                if state.active_cancel.load(std::sync::atomic::Ordering::SeqCst)
+                    || state.queue.get_items().iter().any(|i| {
+                        i.task_id.as_deref() == Some(task_id)
+                            && i.status == crate::queue::QueueItemStatus::Cancelled
+                    })
+                {
                     emit_ticker_log(app, task_id, "execute", "warn", "Task execution stopped by user.");
                     return Err("Task execution stopped by user.".to_string());
                 }
             }
         }
+        let effective_instruction = match &options.step_feedback {
+            Some((fb_id, fb)) if *fb_id == step.id && !fb.trim().is_empty() => format!(
+                "{}\n\nUser Revision Feedback (address this strictly):\n{}",
+                step.instruction,
+                fb.trim()
+            ),
+            _ => step.instruction.clone(),
+        };
         let norm_target = step.target_path.trim_start_matches("./");
         let is_read_tool = matches!(
             step.route_tool.as_str(),
@@ -3172,6 +3736,24 @@ pub async fn run_execute_stage_with_events(
                 warning_chip: None,
                 memory_delivery_chip: None,
             });
+            if options.pause_on_request {
+                emit_ticker_log(
+                    app,
+                    task_id,
+                    "execute",
+                    "warn",
+                    format!(
+                        "Stage 2 paused at step #{} awaiting user resolution before running remaining steps.",
+                        step.id
+                    ),
+                );
+                paused_at_step_id = Some(step.id);
+                pause_reason = Some(format!(
+                    "Paused at step #{} ({}) awaiting user response",
+                    step.id, step.title
+                ));
+                break;
+            }
             continue;
         }
 
@@ -3228,7 +3810,7 @@ pub async fn run_execute_stage_with_events(
             actual_class,
             cmd_opt,
             named_in_plan,
-            &cfg.whitelist,
+            &effective_whitelist,
             cruise_control,
             cfg.dry_run,
         );
@@ -3369,10 +3951,10 @@ pub async fn run_execute_stage_with_events(
                             step.id
                         ),
                     );
-                    let focus_line = if step.instruction.is_empty() {
+                    let focus_line = if effective_instruction.is_empty() {
                         String::new()
                     } else {
-                        format!("\nFocus / Task: {}\n", step.instruction)
+                        format!("\nFocus / Task: {}\n", effective_instruction)
                     };
                     let prompt = format!(
                         "{SUMMARIZE_FILE_PROMPT_PREFIX}\n{focus_line}\n{SUMMARIZE_FILE_PROMPT_SUFFIX}\n\n{step_mem_payload}"
@@ -3383,10 +3965,10 @@ pub async fn run_execute_stage_with_events(
                     let start = step.start_line.unwrap_or(1);
                     let end = step.end_line.unwrap_or(1500);
                     let numbered = read_numbered_lines(&target, start, end).unwrap_or_else(|e| e);
-                    let focus_line = if step.instruction.is_empty() {
+                    let focus_line = if effective_instruction.is_empty() {
                         String::new()
                     } else {
-                        format!("\nPay special attention to: {}\n", step.instruction)
+                        format!("\nPay special attention to: {}\n", effective_instruction)
                     };
                     let mem_block = if !step_mem_payload.is_empty() {
                         format!("\n\nReferenced Memory Context:\n{step_mem_payload}")
@@ -3427,8 +4009,13 @@ pub async fn run_execute_stage_with_events(
                 let pattern = step
                     .search_pattern
                     .clone()
-                    .unwrap_or_else(|| step.instruction.clone());
-                let search_dir = resolve_canonical_target(project_root, &step.target_path)?;
+                    .unwrap_or_else(|| effective_instruction.clone());
+                let search_target = if step.target_path.trim().is_empty() {
+                    "."
+                } else {
+                    step.target_path.as_str()
+                };
+                let search_dir = resolve_canonical_target(project_root, search_target)?;
                 let rg_out = Command::new("rg")
                     .args([
                         "-n",
@@ -3461,7 +4048,7 @@ pub async fn run_execute_stage_with_events(
                 };
                 let prompt = format!(
                     "Below are code search matches for `{pattern}` in `{}`.\nTask: {}\n{SEARCH_SUMMARIZE_PROMPT_INSTRUCTION}\n\n{snippet}{mem_block}",
-                    step.target_path, step.instruction
+                    step.target_path, effective_instruction
                 );
                 let (used_model, summary) =
                     call_ollama_generate(cfg, &cfg.fast_model, &prompt, 0.1).await?;
@@ -3591,7 +4178,7 @@ pub async fn run_execute_stage_with_events(
 
                 let prompt = format!(
                     "{prefix}\n\nSpecification:\n{}{}{}{}",
-                    step.instruction, mem_block, numbered_ctx, extra_ctx
+                    effective_instruction, mem_block, numbered_ctx, extra_ctx
                 );
                 emit_ticker_log(
                     app,
@@ -3925,6 +4512,13 @@ pub async fn run_execute_stage_with_events(
                             Ok(s) => s,
                             Err(e) => e,
                         };
+                        let out_excerpt = truncate_chars(&out, 1500, "\n... [output truncated]");
+                        if !out_excerpt.trim().is_empty() {
+                            accumulated_local_context.push_str(&format!(
+                                "\n[Shell Output `{}`]:\n{}\n",
+                                cmd_str, out_excerpt
+                            ));
+                        }
                         log_decision(
                             task_id,
                             step.id,
@@ -4052,7 +4646,12 @@ pub async fn run_execute_stage_with_events(
         }
     }
 
-    Ok((step_logs, action_cards))
+    Ok(ExecuteStageOutcome {
+        step_logs,
+        action_cards,
+        paused_at_step_id,
+        pause_reason,
+    })
 }
 
 /// Stage 3: Cloud Verify (reviews ONLY user prompt, plan, condensed summaries, and diffs — §1 Hard Rule).
@@ -4067,11 +4666,7 @@ pub fn build_verify_user_message(
 
     let mut condensed_summaries = String::new();
     for log in step_logs {
-        let mut short = log.summary.clone();
-        if short.len() > 800 {
-            short.truncate(800);
-            short.push_str("...");
-        }
+        let short = truncate_chars(&log.summary, 800, "...");
         let mem_str = match &log.memory_delivery_chip {
             Some(chip) => format!(" [{chip}]"),
             None => String::new(),
@@ -4084,11 +4679,7 @@ pub fn build_verify_user_message(
 
     let mut diffs_payload = String::new();
     for card in action_cards {
-        let mut diff_short = card.diff_or_command.clone();
-        if diff_short.len() > 4000 {
-            diff_short.truncate(4000);
-            diff_short.push_str("\n... [diff truncated]");
-        }
+        let diff_short = truncate_chars(&card.diff_or_command, 4000, "\n... [diff truncated]");
         diffs_payload.push_str(&format!(
             "\n--- Card [Step {} | {} | {} | status={}] ---\n{}\n",
             card.step_id, card.action_class, card.target_path, card.status, diff_short
@@ -4127,7 +4718,7 @@ pub fn build_verify_user_message(
         }
         if card.action_class == ActionClass::Request {
             if let Some(info) = &card.user_provided_info {
-                let short_info = if info.len() > 100 { &info[..97] } else { info };
+                let short_info = truncate_chars(info, 100, "...");
                 grounding_warnings.push_str(&format!(
                     "- Step #{} requested info: '{}'. User provided: '{}'.\n",
                     card.step_id, card.title, short_info
@@ -4182,6 +4773,39 @@ pub async fn run_verify_stage_with_provider(
     Ok(VerificationResult {
         verdict: "concerns".to_string(),
         rationale: raw_reply.trim().to_string(),
+        response: None,
+    })
+}
+
+/// Filters `plan` to keep only steps whose IDs are in `enabled_ids`, rejecting empty selections.
+pub fn filter_plan_steps_by_ids(plan: &TaskPlan, enabled_ids: &[usize]) -> Result<TaskPlan, String> {
+    let filtered_steps: Vec<_> = plan
+        .steps
+        .iter()
+        .filter(|s| enabled_ids.contains(&s.id))
+        .cloned()
+        .collect();
+    if filtered_steps.is_empty() {
+        return Err("Select at least one step before executing the plan.".to_string());
+    }
+    let mut files_involved = Vec::new();
+    for s in &filtered_steps {
+        let t = s.target_path.trim();
+        if !t.is_empty() && t != "." && t != "./" && !files_involved.iter().any(|f| f == t) {
+            files_involved.push(t.to_string());
+        }
+    }
+    if files_involved.is_empty() {
+        files_involved = plan.files_involved.clone();
+    }
+    Ok(TaskPlan {
+        goal: plan.goal.clone(),
+        estimated_risk: plan.estimated_risk.clone(),
+        files_involved,
+        memories_used: plan.memories_used.clone(),
+        steps: filtered_steps,
+        phase: plan.phase.clone(),
+        needs_planning_followup: plan.needs_planning_followup,
     })
 }
 
@@ -4285,6 +4909,14 @@ pub fn create_initial_task_record(
         local_grade_verify: false,
         provider_interpret: None,
         provider_verify: None,
+        current_round: 1,
+        rounds: Vec::new(),
+        paused_at_step_id: None,
+        pause_reason: None,
+        auto_repair_attempts: 0,
+        discovery_completed: false,
+        followup_notes: Vec::new(),
+        awaiting_plan_approval: false,
     }
 }
 
