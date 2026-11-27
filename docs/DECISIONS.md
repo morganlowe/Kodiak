@@ -968,6 +968,17 @@ With multi-task queuing and unified diff reviews operational across repositories
 ### 27.3 Follow-Up Prioritization, Tool Normalization & BFS File Discovery
 - **Decision**: Promote the latest `followup_notes` entry to the primary objective in Interpret and Verify (`build_effective_round_prompt`), seed archived local round summaries into Stage 2 (`build_local_prior_round_context`), normalize LLM document-creation `route_tool` aliases (e.g., `create_file`, `draft_doc`, `write_file`) onto `draft_code`, explicitly reject unknown `route_tool` names in `validate_plan`, and switch `list_project_relative_files` to breadth-first traversal with per-subdirectory capping (`PER_SUBDIR_CAP = 8`) so large directories (such as `docs/`) never hide root files or sibling modules.
 
+---
+
+## 28. Optional GitHub Releases Update Checker & SHA-256 Verified Downloader (v1.2.1)
+
+### 28.1 Opt-In Network Posture & Hard Deny-List Compliance
+- **Decision**: Update checks are strictly opt-in (`AppConfig.check_for_updates = false` by default). Kodiak performs zero background or startup network checks against GitHub unless the user explicitly enables startup checking or clicks **Check for Updates**.
+- **Security & Integrity**:
+  - Downloads are restricted strictly to `https://github.com/morganlowe/Kodiak/releases/download/` with single-segment filename validation (`validate_asset_download`) and stored under `~/Downloads/kodiak-updates/v<version>/`.
+  - Every downloaded file is hashed incrementally with `sha2::Sha256` into a `.part` staging file and verified against GitHub's `digest` or release-notes checksum table before renaming to final filename (partial files are deleted on mismatch).
+  - Consistent with Kodiak's Charter §4 Hard Deny-List, Kodiak never invokes `sudo`, `pacman`, `dpkg`, or `apt`; instead it detects the active variant (Arch/CachyOS `.pkg.tar.zst`, Debian/Ubuntu `.deb`, Linux AppImage, or Windows with/without ProjectsWiki NSIS installer), offers an **Open Download Folder** action, and displays a copyable shell command or **Launch Installer** trigger for standalone bundles.
+
 
 
 

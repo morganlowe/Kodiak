@@ -170,6 +170,10 @@ pub struct AppConfig {
     pub pause_on_request: bool,
     #[serde(default = "default_true")]
     pub pause_after_plan: bool,
+    #[serde(default)]
+    pub check_for_updates: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skipped_update_version: Option<String>,
 }
 
 impl Default for AppConfig {
@@ -214,6 +218,8 @@ impl Default for AppConfig {
             discovery_pass_enabled: true,
             pause_on_request: true,
             pause_after_plan: true,
+            check_for_updates: false,
+            skipped_update_version: None,
         }
     }
 }

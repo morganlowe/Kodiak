@@ -11,6 +11,7 @@ pub mod pipeline;
 pub mod prompts;
 pub mod queue;
 pub mod run_log;
+pub mod updater;
 
 use serde::{Deserialize, Serialize};
 use config::{journal_file_path, load_or_seed_config, save_config, AppConfig, GrantLevel};
@@ -3425,6 +3426,72 @@ async fn start_background_queue_worker(app: AppHandle) {
     }
 }
 
+#[tauri::command]
+async fn check_for_updates(
+    state: State<'_, AppState>,
+) -> Result<updater::UpdateCheckResult, String> {
+    let wiki_enabled = state
+        .config
+        .lock()
+        .map_err(|e| e.to_string())?
+        .wiki_enabled;
+    let res = updater::check_github_latest_release(wiki_enabled).await?;
+    append_journal_note(
+        "updater",
+        "update_check",
+        &format!(
+            "current={} latest={} available={} platform={}",
+            res.current_version, res.latest_version, res.update_available, res.platform_kind
+        ),
+    );
+    Ok(res)
+}
+
+#[tauri::command]
+async fn download_kodiak_update(
+    version: String,
+    assets: Vec<updater::ReleaseAssetInfo>,
+    platform_kind: String,
+) -> Result<updater::UpdateDownloadResult, String> {
+    let res = updater::download_update_assets(&version, &assets, &platform_kind).await?;
+    let verified_count = res.files.iter().filter(|f| f.sha256_verified).count();
+    append_journal_note(
+        "updater",
+        "update_downloaded",
+        &format!(
+            "version={} files={} sha256_verified={} dir={}",
+            res.version,
+            res.files.len(),
+            verified_count,
+            res.download_dir
+        ),
+    );
+    Ok(res)
+}
+
+#[tauri::command]
+fn open_update_download_dir(dir_path: String) -> Result<(), String> {
+    updater::open_update_download_dir_checked(&dir_path)
+}
+
+#[tauri::command]
+fn launch_downloaded_installer(file_path: String) -> Result<(), String> {
+    updater::launch_downloaded_installer_checked(&file_path)
+}
+
+#[tauri::command]
+fn skip_update_version(
+    state: State<'_, AppState>,
+    version: Option<String>,
+) -> Result<AppConfig, String> {
+    let mut guard = state.config.lock().map_err(|e| e.to_string())?;
+    guard.skipped_update_version = version
+        .map(|s| s.trim().trim_start_matches(['v', 'V']).to_string())
+        .filter(|s| !s.is_empty());
+    save_config(&guard)?;
+    Ok(guard.clone())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     if let Err(e) = migration::run_migration_if_needed() {
@@ -3518,6 +3585,11 @@ pub fn run() {
             set_active_project,
             set_exclusion_list,
             set_custom_css,
+            check_for_updates,
+            download_kodiak_update,
+            open_update_download_dir,
+            launch_downloaded_installer,
+            skip_update_version,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Kodiak tauri application");

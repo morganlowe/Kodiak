@@ -209,6 +209,51 @@ interface AppConfig {
   discovery_pass_enabled?: boolean;
   pause_on_request?: boolean;
   pause_after_plan?: boolean;
+  check_for_updates?: boolean;
+  skipped_update_version?: string | null;
+}
+
+interface ReleaseAssetInfo {
+  name: string;
+  download_url: string;
+  size: number;
+  sha256?: string | null;
+  is_companion_wiki: boolean;
+}
+
+interface UpdateCheckResult {
+  current_version: string;
+  latest_version: string;
+  tag_name: string;
+  update_available: boolean;
+  release_name: string;
+  release_url: string;
+  published_at: string;
+  notes_summary: string;
+  detected_platform: string;
+  platform_kind: string;
+  wiki_component_installed: boolean;
+  recommended_assets: ReleaseAssetInfo[];
+  all_assets: ReleaseAssetInfo[];
+  checked_at: string;
+}
+
+interface DownloadedUpdateAsset {
+  name: string;
+  saved_path: string;
+  bytes: number;
+  computed_sha256: string;
+  expected_sha256?: string | null;
+  sha256_verified: boolean;
+}
+
+interface UpdateDownloadResult {
+  version: string;
+  download_dir: string;
+  files: DownloadedUpdateAsset[];
+  install_command?: string | null;
+  can_launch_installer: boolean;
+  primary_installer_path?: string | null;
 }
 
 interface RescanResult {
@@ -669,6 +714,13 @@ interface AppState {
   tickerCollapsed: boolean;
   planReviseText: string;
   uncheckedPlanSteps: Record<number, boolean>;
+  updateCheck: UpdateCheckResult | null;
+  updateChecking: boolean;
+  updateDownloading: boolean;
+  updateDownloadResult: UpdateDownloadResult | null;
+  updateError: string | null;
+  updateBannerDismissed: boolean;
+  updateIncludeWiki: boolean;
 }
 
 const COLLAPSED_STORAGE_KEY = "kodiak:ui_collapsed";
@@ -796,9 +848,81 @@ const state: AppState = {
   tickerCollapsed: false,
   planReviseText: "",
   uncheckedPlanSteps: {},
+  updateCheck: null,
+  updateChecking: false,
+  updateDownloading: false,
+  updateDownloadResult: null,
+  updateError: null,
+  updateBannerDismissed: false,
+  updateIncludeWiki: true,
 };
 
 let tickerHover = false;
+let startupUpdateCheckDone = false;
+
+function formatAssetSizeMb(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 KB";
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+function getSelectedUpdateAssets(u: UpdateCheckResult, includeWiki: boolean): ReleaseAssetInfo[] {
+  if (u.platform_kind === "arch") {
+    const picked: ReleaseAssetInfo[] = [];
+    const core = u.all_assets.find(
+      (a) => a.name.startsWith("kodiak-") && !a.name.includes("projectswiki") && a.name.endsWith(".pkg.tar.zst")
+    );
+    if (core) picked.push(core);
+    if (includeWiki) {
+      const wiki = u.all_assets.find(
+        (a) => a.name.startsWith("kodiak-projectswiki-") && a.name.endsWith(".pkg.tar.zst")
+      );
+      if (wiki) picked.push(wiki);
+    }
+    return picked;
+  }
+  if (u.platform_kind === "debian") {
+    const splitCore = u.all_assets.find(
+      (a) => a.name.startsWith("kodiak_") && !a.name.includes("projectswiki") && a.name.endsWith(".deb")
+    );
+    if (splitCore) {
+      const picked: ReleaseAssetInfo[] = [splitCore];
+      if (includeWiki) {
+        const wiki = u.all_assets.find(
+          (a) => a.name.startsWith("kodiak-projectswiki_") && a.name.endsWith(".deb")
+        );
+        if (wiki) picked.push(wiki);
+      }
+      return picked;
+    }
+  }
+  return u.recommended_assets;
+}
+
+async function runUpdateCheck(silent = false): Promise<void> {
+  if (state.updateChecking) return;
+  state.updateChecking = true;
+  if (!silent) {
+    state.updateError = null;
+    renderApp();
+  }
+  try {
+    const res = await invoke<UpdateCheckResult>("check_for_updates");
+    state.updateCheck = res;
+    state.updateIncludeWiki = res.wiki_component_installed;
+    state.updateBannerDismissed = false;
+    state.updateError = null;
+  } catch (err) {
+    if (!silent) {
+      state.updateError = String(err);
+    } else {
+      console.debug("Opt-in startup update check skipped/failed:", err);
+    }
+  } finally {
+    state.updateChecking = false;
+    renderApp();
+  }
+}
 
 const STAGE_ORDER: StageName[] = ["interpret", "execute", "verify", "done"];
 const STAGE_LABEL: Record<StageName, string> = {
@@ -1946,6 +2070,11 @@ async function refreshAllState(): Promise<void> {
     initialAutoRescanDone = true;
     handleRescanProjects(false).catch(() => {});
   }
+
+  if (!startupUpdateCheckDone && state.config?.check_for_updates) {
+    startupUpdateCheckDone = true;
+    void runUpdateCheck(true);
+  }
 }
 
 function renderHeader(): string {
@@ -2259,6 +2388,20 @@ function renderWorkbenchTab(): string {
         ? `<div class="posture-banner is-cruise">
             <span>${escapeHtml(state.uiBannerInfo)}</span>
             <button type="button" id="dismiss-info-btn" class="btn btn--sm">Dismiss</button>
+          </div>`
+        : ""
+    }
+    ${
+      state.updateCheck?.update_available &&
+      !state.updateBannerDismissed &&
+      cfg.skipped_update_version !== state.updateCheck.latest_version
+        ? `<div class="posture-banner is-cruise" style="justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
+            <span><strong>Update Available:</strong> Kodiak v${escapeHtml(state.updateCheck.latest_version)} is on GitHub Releases (running v${escapeHtml(state.updateCheck.current_version)}).</span>
+            <div class="row-inline" style="gap:0.4rem;">
+              <button type="button" id="banner-view-update-btn" class="btn btn--sm btn--primary">View Update</button>
+              <button type="button" id="banner-skip-update-btn" class="btn btn--sm">Skip v${escapeHtml(state.updateCheck.latest_version)}</button>
+              <button type="button" id="banner-dismiss-update-btn" class="btn btn--sm">Dismiss</button>
+            </div>
           </div>`
         : ""
     }
@@ -4531,6 +4674,147 @@ function renderSettingsTab(): string {
       </div>
     </section>
 
+    <!-- Software Updates (GitHub Releases) -->
+    <section class="panel-card" id="updates-settings-section">
+      <div class="panel-header">
+        <div class="row-inline">
+          <h2 class="panel-title">Software Updates (GitHub Releases)</h2>
+          ${
+            state.updateCheck
+              ? state.updateCheck.update_available
+                ? `<span class="badge badge--warn">Update Available: v${escapeHtml(state.updateCheck.latest_version)}</span>`
+                : `<span class="badge badge--ok">Up to Date (v${escapeHtml(state.updateCheck.current_version)})</span>`
+              : `<span class="badge badge--neutral">Not Checked</span>`
+          }
+        </div>
+        <span class="muted">Optional check against morganlowe/Kodiak releases with SHA-256 verification. Off by default.</span>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:0.7rem;">
+        <label class="row-inline" style="cursor:pointer;">
+          <input type="checkbox" id="cfg-check-for-updates" ${cfg.check_for_updates ? "checked" : ""} />
+          <span>Check GitHub Releases for updates on startup (opt-in)</span>
+        </label>
+        <div class="row-inline" style="gap:0.5rem; flex-wrap:wrap;">
+          <button type="button" id="check-updates-now-btn" class="btn btn--sm btn--primary" ${state.updateChecking ? "disabled" : ""}>
+            ${state.updateChecking ? "Checking GitHub..." : "Check for Updates Now"}
+          </button>
+          ${
+            cfg.skipped_update_version
+              ? `<button type="button" id="clear-skipped-update-btn" class="btn btn--sm">Clear Skipped Version (v${escapeHtml(cfg.skipped_update_version)})</button>`
+              : ""
+          }
+        </div>
+        ${
+          state.updateError
+            ? `<div class="stage-alert"><span><strong>Update Check Error:</strong> ${escapeHtml(state.updateError)}</span></div>`
+            : ""
+        }
+        ${
+          (() => {
+            const u = state.updateCheck;
+            if (!u) return "";
+            const hasCompanionWikiAsset =
+              (u.platform_kind === "arch" || u.platform_kind === "debian") &&
+              u.all_assets.some((a) => a.is_companion_wiki);
+            const selectedAssets = getSelectedUpdateAssets(u, state.updateIncludeWiki);
+            const publishedShort = u.published_at ? u.published_at.slice(0, 10) : "unknown date";
+
+            return `
+              <div style="padding:0.75rem 1rem; background:var(--wiki-surface); border:1px solid var(--wiki-border); border-radius:var(--wiki-radius-sm); display:flex; flex-direction:column; gap:0.55rem;">
+                <div class="row-between" style="flex-wrap:wrap; gap:0.5rem; font-size:0.84rem;">
+                  <span>
+                    <strong>Installed:</strong> v${escapeHtml(u.current_version)} |
+                    <strong>Latest:</strong> v${escapeHtml(u.latest_version)} (${escapeHtml(publishedShort)}) |
+                    <strong>Platform:</strong> ${escapeHtml(u.detected_platform)}
+                  </span>
+                  <a href="${escapeHtml(u.release_url)}" target="_blank" rel="noopener" class="muted">View Release Page</a>
+                </div>
+                ${
+                  u.update_available
+                    ? `<div class="diff-view" style="max-block-size:10rem; overflow-y:auto; white-space:pre-wrap; font-size:0.78rem;">${escapeHtml(u.notes_summary || u.release_name)}</div>
+                       ${
+                         hasCompanionWikiAsset
+                           ? `<label class="row-inline" style="font-size:0.82rem; cursor:pointer;">
+                                <input type="checkbox" id="update-include-wiki-toggle" ${state.updateIncludeWiki ? "checked" : ""} />
+                                <span>Include companion <code>kodiak-projectswiki</code> package</span>
+                              </label>`
+                           : ""
+                       }
+                       <div style="font-size:0.8rem;" class="muted">
+                         <strong>Packages to download (${selectedAssets.length}):</strong>
+                         ${
+                           selectedAssets.length === 0
+                             ? "<span>No matching asset found for detected platform.</span>"
+                             : selectedAssets
+                                 .map(
+                                   (a) =>
+                                     `<div class="mono" style="margin-top:0.2rem;">- ${escapeHtml(a.name)} (${escapeHtml(formatAssetSizeMb(a.size))})${a.sha256 ? " [SHA-256 available]" : ""}</div>`
+                                 )
+                                 .join("")
+                         }
+                       </div>
+                       <div class="row-inline" style="gap:0.5rem; flex-wrap:wrap;">
+                         <button type="button" id="download-update-btn" class="btn btn--sm btn--primary" ${state.updateDownloading || selectedAssets.length === 0 ? "disabled" : ""}>
+                           ${state.updateDownloading ? "Downloading & Verifying..." : "Download & Verify Update"}
+                         </button>
+                         <button type="button" id="skip-update-btn" class="btn btn--sm">Skip v${escapeHtml(u.latest_version)}</button>
+                       </div>`
+                    : `<div class="muted" style="font-size:0.82rem;">You are running the latest Kodiak release (v${escapeHtml(u.current_version)}).</div>`
+                }
+              </div>
+            `;
+          })()
+        }
+        ${
+          (() => {
+            const d = state.updateDownloadResult;
+            if (!d) return "";
+            return `
+              <div style="padding:0.75rem 1rem; background:var(--wiki-surface); border:1px solid var(--status-ok); border-radius:var(--wiki-radius-sm); display:flex; flex-direction:column; gap:0.5rem;">
+                <div class="row-between" style="flex-wrap:wrap; gap:0.4rem;">
+                  <strong style="font-size:0.86rem;">Downloaded v${escapeHtml(d.version)}</strong>
+                  <span class="badge badge--ok">Saved to Update Folder</span>
+                </div>
+                <div class="mono muted" style="font-size:0.76rem; word-break:break-all;">${escapeHtml(d.download_dir)}</div>
+                <div style="display:flex; flex-direction:column; gap:0.25rem;">
+                  ${d.files
+                    .map(
+                      (f) => `<div style="font-size:0.78rem;" class="row-inline">
+                        <span class="badge ${f.sha256_verified ? "badge--ok" : "badge--neutral"}">${f.sha256_verified ? "SHA-256 Verified" : "No Reference Digest"}</span>
+                        <span class="mono">${escapeHtml(f.name)}</span>
+                        <span class="muted mono">(${escapeHtml(f.computed_sha256.slice(0, 16))}...)</span>
+                      </div>`
+                    )
+                    .join("")}
+                </div>
+                ${
+                  d.install_command
+                    ? `<div style="display:flex; flex-direction:column; gap:0.35rem;">
+                        <span class="muted" style="font-size:0.78rem;">Run in your terminal to install (Kodiak never invokes sudo or package managers):</span>
+                        <div class="diff-view mono" style="font-size:0.76rem; white-space:pre-wrap; word-break:break-all;">${escapeHtml(d.install_command)}</div>
+                      </div>`
+                    : ""
+                }
+                <div class="row-inline" style="gap:0.5rem; flex-wrap:wrap;">
+                  <button type="button" id="open-update-dir-btn" class="btn btn--sm">Open Download Folder</button>
+                  ${
+                    d.install_command
+                      ? `<button type="button" id="copy-update-cmd-btn" class="btn btn--sm btn--primary">Copy Install Command</button>`
+                      : ""
+                  }
+                  ${
+                    d.can_launch_installer && d.primary_installer_path
+                      ? `<button type="button" id="launch-update-installer-btn" class="btn btn--sm btn--primary">Launch Installer</button>`
+                      : ""
+                  }
+                </div>
+              </div>
+            `;
+          })()
+        }
+      </div>
+    </section>
+
     <!-- Lumo Bridge Authentication -->
     <section class="panel-card" id="lumo-auth-section">
       <div class="panel-header">
@@ -5374,9 +5658,19 @@ function renderAboutTab(): string {
       <section class="about-hero">
         <img src="${bearBuiltLogoUrl}" alt="Bear Built mark" class="about-logo-img" />
         <div style="flex:1; min-width:240px;">
-          <div class="row-inline" style="gap:0.75rem; align-items:baseline;">
+          <div class="row-inline" style="gap:0.75rem; align-items:center; flex-wrap:wrap;">
             <h1 style="margin:0; font-size:1.8rem; font-weight:700; color:var(--md-default-fg-color);">Kodiak</h1>
-            <span class="badge badge--ok" style="font-size:0.85rem;">v1.2.0</span>
+            <span class="badge badge--ok" style="font-size:0.85rem;">v1.2.1</span>
+            <button type="button" id="about-check-updates-btn" class="btn btn--sm" ${state.updateChecking ? "disabled" : ""}>
+              ${state.updateChecking ? "Checking Updates..." : "Check for Updates"}
+            </button>
+            ${
+              state.updateCheck
+                ? state.updateCheck.update_available
+                  ? `<button type="button" id="about-view-update-btn" class="badge badge--warn" style="cursor:pointer; border:none;">Update Available: v${escapeHtml(state.updateCheck.latest_version)} — View in Settings</button>`
+                  : `<span class="badge badge--ok">Up to Date</span>`
+                : ""
+            }
           </div>
           <p style="margin:0.35rem 0 0.5rem 0; font-size:1.05rem; font-weight:500; color:var(--md-default-fg-color);">
             The bear who runs the job site — local-first AI task delegation
@@ -5495,7 +5789,7 @@ function renderAboutTab(): string {
             <span><strong>Brand Asset:</strong> Morninglion Industries</span>
           </div>
           <div class="row-inline muted">
-            <span>Kodiak Task Delegation System (v1.2.0)</span>
+            <span>Kodiak Task Delegation System (v1.2.1)</span>
           </div>
         </div>
         <div style="text-align:center; padding-top:1.5rem; border-top:1px solid var(--wiki-border); margin-top:1.25rem;">
@@ -6582,6 +6876,124 @@ function bindEvents(): void {
   document.getElementById("dismiss-info-btn")?.addEventListener("click", () => {
     state.uiBannerInfo = null;
     renderApp();
+  });
+
+  // Update banner & Software Updates handlers
+  document.getElementById("banner-view-update-btn")?.addEventListener("click", () => {
+    state.tab = "settings";
+    renderApp();
+    requestAnimationFrame(() => {
+      document.getElementById("updates-settings-section")?.scrollIntoView({ behavior: "smooth" });
+    });
+  });
+  document.getElementById("banner-dismiss-update-btn")?.addEventListener("click", () => {
+    state.updateBannerDismissed = true;
+    renderApp();
+  });
+  const handleSkipLatestUpdate = async () => {
+    const ver = state.updateCheck?.latest_version;
+    if (!ver) return;
+    try {
+      state.config = await invoke<AppConfig>("skip_update_version", { version: ver });
+      state.updateBannerDismissed = true;
+      state.uiBannerInfo = `Skipped update notice for Kodiak v${ver}.`;
+      renderApp();
+    } catch (err) {
+      state.uiBannerError = String(err);
+      renderApp();
+    }
+  };
+  document.getElementById("banner-skip-update-btn")?.addEventListener("click", handleSkipLatestUpdate);
+  document.getElementById("skip-update-btn")?.addEventListener("click", handleSkipLatestUpdate);
+  document.getElementById("clear-skipped-update-btn")?.addEventListener("click", async () => {
+    try {
+      state.config = await invoke<AppConfig>("skip_update_version", { version: null });
+      state.updateBannerDismissed = false;
+      state.uiBannerInfo = "Cleared skipped update version.";
+      renderApp();
+    } catch (err) {
+      state.uiBannerError = String(err);
+      renderApp();
+    }
+  });
+  document.getElementById("cfg-check-for-updates")?.addEventListener("change", async (e) => {
+    if (!state.config) return;
+    const checked = (e.target as HTMLInputElement).checked;
+    state.config.check_for_updates = checked;
+    try {
+      state.config = await invoke<AppConfig>("update_config", { newConfig: state.config });
+      state.uiBannerInfo = checked
+        ? "Enabled opt-in startup update checks."
+        : "Disabled startup update checks.";
+      renderApp();
+    } catch (err) {
+      state.uiBannerError = String(err);
+      renderApp();
+    }
+  });
+  document.getElementById("check-updates-now-btn")?.addEventListener("click", () => {
+    void runUpdateCheck(false);
+  });
+  document.getElementById("about-check-updates-btn")?.addEventListener("click", () => {
+    void runUpdateCheck(false);
+  });
+  document.getElementById("about-view-update-btn")?.addEventListener("click", () => {
+    state.tab = "settings";
+    renderApp();
+    requestAnimationFrame(() => {
+      document.getElementById("updates-settings-section")?.scrollIntoView({ behavior: "smooth" });
+    });
+  });
+  document.getElementById("update-include-wiki-toggle")?.addEventListener("change", (e) => {
+    state.updateIncludeWiki = (e.target as HTMLInputElement).checked;
+    renderApp();
+  });
+  document.getElementById("download-update-btn")?.addEventListener("click", async () => {
+    const u = state.updateCheck;
+    if (!u || state.updateDownloading) return;
+    const assets = getSelectedUpdateAssets(u, state.updateIncludeWiki);
+    if (assets.length === 0) return;
+    state.updateDownloading = true;
+    state.updateError = null;
+    renderApp();
+    try {
+      state.updateDownloadResult = await invoke<UpdateDownloadResult>("download_kodiak_update", {
+        version: u.latest_version,
+        assets,
+        platformKind: u.platform_kind,
+      });
+      state.uiBannerInfo = `Downloaded and verified Kodiak v${u.latest_version} update assets.`;
+    } catch (err) {
+      state.updateError = String(err);
+    } finally {
+      state.updateDownloading = false;
+      renderApp();
+    }
+  });
+  document.getElementById("open-update-dir-btn")?.addEventListener("click", async () => {
+    const dir = state.updateDownloadResult?.download_dir;
+    if (!dir) return;
+    try {
+      await invoke("open_update_download_dir", { dirPath: dir });
+    } catch (err) {
+      state.updateError = String(err);
+      renderApp();
+    }
+  });
+  document.getElementById("copy-update-cmd-btn")?.addEventListener("click", async () => {
+    const cmd = state.updateDownloadResult?.install_command;
+    if (!cmd) return;
+    await copyToClipboard(cmd, "Copied install command");
+  });
+  document.getElementById("launch-update-installer-btn")?.addEventListener("click", async () => {
+    const file = state.updateDownloadResult?.primary_installer_path;
+    if (!file) return;
+    try {
+      await invoke("launch_downloaded_installer", { filePath: file });
+    } catch (err) {
+      state.updateError = String(err);
+      renderApp();
+    }
   });
 
   // Cruise Control toggle
@@ -7799,6 +8211,7 @@ function bindEvents(): void {
     const runLogKeepRuns = Number((document.getElementById("cfg-run-log-keep-runs") as HTMLInputElement)?.value);
     const cascadeEnabled = (document.getElementById("cfg-cascade-enabled") as HTMLInputElement)?.checked ?? false;
     const cascadeConsent = (document.getElementById("cfg-cascade-consent") as HTMLInputElement)?.checked ?? false;
+    const checkForUpdates = (document.getElementById("cfg-check-for-updates") as HTMLInputElement)?.checked ?? false;
 
     state.config.cloud_model = cloudModel || "lumo";
     state.config.tier = cloudTier || "medium";
@@ -7835,6 +8248,7 @@ function bindEvents(): void {
     state.config.cascade.order = getCanonicalCascadeOrder(state.config);
     state.config.cascade.enabled = cascadeEnabled && cascadeConsent;
     state.config.cascade.consent = cascadeConsent;
+    state.config.check_for_updates = checkForUpdates;
 
     try {
       state.config = await invoke<AppConfig>("update_config", { newConfig: state.config });

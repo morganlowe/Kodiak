@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] — 2026-11-27
+
+### Added
+
+- **Optional GitHub Releases Update Checker & SHA-256 Verified Downloader (`src-tauri/src/updater.rs`, `src-tauri/src/config.rs`, `src-tauri/src/lib.rs`, `src/main.ts`)**:
+  - Added opt-in `AppConfig.check_for_updates` (`false` by default) and `AppConfig.skipped_update_version` (`None` by default) so Kodiak makes zero unsolicited GitHub network calls unless enabled.
+  - Added backend module `updater.rs` and 5 Tauri commands (`check_for_updates`, `download_kodiak_update`, `open_update_download_dir`, `launch_downloaded_installer`, `skip_update_version`) querying `api.github.com/repos/morganlowe/Kodiak/releases/latest`, detecting host variant (`arch`, `debian`, `appimage`, `windows-with-wiki`, `windows-without-wiki`), validating release download URLs/filenames, verifying SHA-256 checksums via `sha2` before finalizing downloads into `~/Downloads/kodiak-updates/v<ver>/`, and generating copyable install commands (`sudo pacman -U ...` / `sudo dpkg -i ...`) without executing elevated package-manager commands.
+  - Added the **Software Updates (GitHub Releases)** panel in Settings, a dismissible Workbench **Update Available** banner, a **Check for Updates** button and badge in About, and optional companion `kodiak-projectswiki` toggle on Arch/Debian.
+  - Added 6 Rust unit tests in `updater::tests` covering semver comparison, platform asset selection, SHA-256 digest extraction, URL/filename safety validation, install command generation, and opt-in config defaults (`91` passing tests total).
+
+### Changed
+
+- Updated package versions, UI labels, `README.md`, `config.example.toml`, and `docs/DECISIONS.md` to `v1.2.1` (`Kodiak_1.2.1_x64-with-wiki-setup.exe` and `Kodiak_1.2.1_x64-without-wiki-setup.exe`).
+
 ## [1.2.0] — 2026-11-27
 
 ### Added
@@ -295,7 +309,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Split Arch `PKGBUILD` producing `kodiak` and `kodiak-projectswiki` packages with dependency hooks (`python-mkdocs-material`, `python-requests`, `python-toml`).
 - Debian/Ubuntu `.deb` binary packages with `apt` dependency resolution.
 
-[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/morganlowe/Kodiak/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/morganlowe/Kodiak/compare/v1.1.9...v1.2.0
 [1.1.9]: https://github.com/morganlowe/Kodiak/compare/v1.1.8...v1.1.9
 [1.1.8]: https://github.com/morganlowe/Kodiak/compare/v1.1.7...v1.1.8

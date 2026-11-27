@@ -28,6 +28,9 @@ discovery_pass_enabled = true      # Enable two-phase read-only discovery before
 auto_repair_enabled = false        # Opt-in bounded automatic repair rounds on Verify FAIL or shell test errors
 max_auto_repair_rounds = 2         # Maximum automatic repair rounds per task when auto_repair_enabled = true
 
+# --- Optional Update Checks (Opt-In) ---
+check_for_updates = false          # Off by default: check GitHub Releases for new Kodiak versions on startup
+
 # --- Per-Run Diagnostic Logs (§3) ---
 run_log_level = "info"             # "debug", "info", "warn", or "error"
 run_log_max_mb = 50                # Maximum disk budget (MB) for ~/.local/share/kodiak/runs/
