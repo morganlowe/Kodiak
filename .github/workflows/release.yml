@@ -85,25 +85,25 @@ jobs:
           fi
           gh release upload "$TAG" "${debs[@]}" "${appimages[@]}" --repo "${{ github.repository }}" --clobber
 
-      - name: Build Windows installer without ProjectsWiki (Windows only)
+      - name: Build Windows installer without BenchBear (Windows only)
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
           Get-ChildItem -Path src-tauri/target/release/bundle/nsis -Filter "*.exe" -ErrorAction SilentlyContinue | Remove-Item -Force
           npx --no-install tauri build --ci --bundles nsis --config src-tauri/tauri.nowiki.conf.json
           if ($LASTEXITCODE -ne 0) {
-            throw "Without-wiki tauri build failed with exit code $LASTEXITCODE"
+            throw "Without-benchbear tauri build failed with exit code $LASTEXITCODE"
           }
           $stageDir = Join-Path $env:RUNNER_TEMP "windows-releases"
           New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
           $nsis = @(Get-ChildItem -Path src-tauri/target/release/bundle/nsis -Filter "*-setup.exe")
           if ($nsis.Count -ne 1) {
-            throw "Expected 1 without-wiki NSIS installer, found $($nsis.Count)"
+            throw "Expected 1 without-benchbear NSIS installer, found $($nsis.Count)"
           }
           $ver = "${{ needs.prepare-release.outputs.version }}"
-          Move-Item -Path $nsis[0].FullName -Destination (Join-Path $stageDir "Kodiak_${ver}_x64-without-wiki-setup.exe") -Force
+          Move-Item -Path $nsis[0].FullName -Destination (Join-Path $stageDir "Kodiak_${ver}_x64-without-benchbear-setup.exe") -Force
 
-      - name: Build ProjectsWiki Windows Executable (Windows only)
+      - name: Build BenchBear Windows Executable (Windows only)
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
@@ -114,23 +114,23 @@ jobs:
           python scripts/build_windows_wiki.py
           if ($LASTEXITCODE -ne 0) { throw "build_windows_wiki.py failed" }
 
-      - name: Build Windows installer with ProjectsWiki (Windows only)
+      - name: Build Windows installer with BenchBear (Windows only)
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
           Get-ChildItem -Path src-tauri/target/release/bundle/nsis -Filter "*.exe" -ErrorAction SilentlyContinue | Remove-Item -Force
           npx --no-install tauri build --ci --bundles nsis
           if ($LASTEXITCODE -ne 0) {
-            throw "With-wiki tauri build failed with exit code $LASTEXITCODE"
+            throw "With-benchbear tauri build failed with exit code $LASTEXITCODE"
           }
           $stageDir = Join-Path $env:RUNNER_TEMP "windows-releases"
           New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
           $nsis = @(Get-ChildItem -Path src-tauri/target/release/bundle/nsis -Filter "*-setup.exe")
           if ($nsis.Count -ne 1) {
-            throw "Expected 1 with-wiki NSIS installer, found $($nsis.Count)"
+            throw "Expected 1 with-benchbear NSIS installer, found $($nsis.Count)"
           }
           $ver = "${{ needs.prepare-release.outputs.version }}"
-          Move-Item -Path $nsis[0].FullName -Destination (Join-Path $stageDir "Kodiak_${ver}_x64-with-wiki-setup.exe") -Force
+          Move-Item -Path $nsis[0].FullName -Destination (Join-Path $stageDir "Kodiak_${ver}_x64-with-benchbear-setup.exe") -Force
 
       - name: Upload Windows release assets
         if: matrix.platform == 'windows-latest'
@@ -141,8 +141,8 @@ jobs:
         run: |
           $ver = "${{ needs.prepare-release.outputs.version }}"
           $stageDir = Join-Path $env:RUNNER_TEMP "windows-releases"
-          $withWiki = Join-Path $stageDir "Kodiak_${ver}_x64-with-wiki-setup.exe"
-          $withoutWiki = Join-Path $stageDir "Kodiak_${ver}_x64-without-wiki-setup.exe"
+          $withWiki = Join-Path $stageDir "Kodiak_${ver}_x64-with-benchbear-setup.exe"
+          $withoutWiki = Join-Path $stageDir "Kodiak_${ver}_x64-without-benchbear-setup.exe"
           if (-not (Test-Path $withWiki) -or -not (Test-Path $withoutWiki)) {
             throw "Missing expected Windows installer(s): $withWiki / $withoutWiki"
           }

@@ -189,10 +189,6 @@ fn find_config_file(wiki_root: &Path) -> Option<PathBuf> {
         candidates.push(h.join(".config/benchbear/wiki.toml"));
     }
     candidates.push(wiki_root.join("wiki.toml"));
-    if let Some(ref h) = home {
-        candidates.push(h.join(".config/projects-parts-wiki/wiki.toml"));
-        candidates.push(h.join(".config/kodiak/wiki.toml"));
-    }
     candidates.into_iter().find(|p| p.is_file())
 }
 

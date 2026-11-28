@@ -36,9 +36,9 @@ run_log_level = "info"             # "debug", "info", "warn", or "error"
 run_log_max_mb = 50                # Maximum disk budget (MB) for ~/.local/share/kodiak/runs/
 run_log_keep_runs = 20             # Maximum number of recent runs to keep before pruning oldest
 
-# --- Projects Wiki & AI Documentation Feature ---
-# Bundled optional component (`/usr/share/kodiak/projectswiki`) or local repository (`./ProjectsWiki`):
-wiki_dir = "/usr/share/kodiak/projectswiki" # Path to knowledge base / wiki directory
+# --- BenchBear Project Wiki & AI Documentation Feature ---
+# Bundled optional component (`/usr/share/kodiak/benchbear`) or local repository (`./BenchBear`):
+wiki_dir = "/usr/share/kodiak/benchbear" # Path to BenchBear companion directory
 memory_step_budget_chars = 8000       # Per-step context budget for injected memories
 memory_auto_sanitize = true           # Strip ANSI art / binary blobs before feeding memories
 

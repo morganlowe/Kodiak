@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-wiki_config.py - Centralized configuration loader for Projects & Parts Wiki.
+wiki_config.py - Centralized configuration loader for BenchBear.
 
-Supports standalone config (~/.config/projects-parts-wiki/wiki.toml or ./wiki.toml)
-with fallback to Kodiak config (~/.config/kodiak/wiki.toml), environment variables,
+Supports ~/.config/benchbear/wiki.toml or ./wiki.toml, environment variables,
 and clean defaults.
 """
 import json
@@ -94,8 +93,6 @@ def _resolve_config_file(config_path: str = None) -> Path | None:
     candidates = [
         Path("~/.config/benchbear/wiki.toml").expanduser(),
         WIKI_DIR / "wiki.toml",
-        Path("~/.config/projects-parts-wiki/wiki.toml").expanduser(),
-        Path("~/.config/kodiak/wiki.toml").expanduser(),
     ]
     for candidate in candidates:
         if candidate.is_file():
@@ -104,16 +101,7 @@ def _resolve_config_file(config_path: str = None) -> Path | None:
 
 
 def _default_overrides_path() -> str:
-    benchbear_ovr = Path("~/.config/benchbear/project_overrides.json").expanduser()
-    standalone_ovr = Path("~/.config/projects-parts-wiki/project_overrides.json").expanduser()
-    kodiak_ovr = Path("~/.config/kodiak/project_overrides.json").expanduser()
-    if benchbear_ovr.is_file():
-        return str(benchbear_ovr)
-    if standalone_ovr.is_file():
-        return str(standalone_ovr)
-    if kodiak_ovr.is_file():
-        return str(kodiak_ovr)
-    return str(benchbear_ovr)
+    return str(Path("~/.config/benchbear/project_overrides.json").expanduser())
 
 
 def _default_data_dir() -> str:
@@ -123,12 +111,12 @@ def _default_data_dir() -> str:
         return str(local_data)
     if os.name == "nt":
         base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local"))
-        return str(base / "kodiak" / "projectswiki-data")
-    return str(Path("~/.local/share/kodiak/projectswiki-data").expanduser())
+        return str(base / "kodiak" / "benchbear-data")
+    return str(Path("~/.local/share/kodiak/benchbear-data").expanduser())
 
 
 def load_wiki_config(config_path: str = None) -> Dict[str, Any]:
-    """Loads standalone BenchBear or Kodiak wiki.toml with environment variable overrides."""
+    """Loads BenchBear wiki.toml with environment variable overrides."""
     cfg: Dict[str, Any] = {
         "site_name": "BenchBear",
         "projects_dir": None,

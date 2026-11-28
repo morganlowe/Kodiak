@@ -49,7 +49,7 @@ def fmt_size(num_bytes: int) -> str:
     return f"{num_bytes / (1024 * 1024):.2f} MB"
 
 
-def file_url(proj_name: str, rel_path: str, site_domain: str = "wiki.local", port_api: int = 8765) -> str:
+def file_url(proj_name: str, rel_path: str, site_domain: str = "benchbear.localhost", port_api: int = 8765) -> str:
     encoded_proj = urllib.parse.quote(proj_name)
     encoded_rel = "/".join(urllib.parse.quote(part) for part in rel_path.split("/"))
     return f"http://{site_domain}:{port_api}/files/{encoded_proj}/{encoded_rel}"

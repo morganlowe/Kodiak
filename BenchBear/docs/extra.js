@@ -1227,6 +1227,7 @@
         document.getElementById("bb-part-dialog").close();
         showToast(`Saved ${payload.sku}`);
         if (window.location.pathname.includes("/inventory/")) {
+          await invFetch("/api/export", { method: "POST" }).catch(() => {});
           setTimeout(() => window.location.reload(), 650);
         } else {
           refreshExplorerStrip();
@@ -1256,6 +1257,7 @@
         document.getElementById("bb-loc-dialog").close();
         showToast(`Saved location ${payload.code}`);
         if (window.location.pathname.includes("/inventory/")) {
+          await invFetch("/api/export", { method: "POST" }).catch(() => {});
           setTimeout(() => window.location.reload(), 650);
         } else {
           refreshExplorerStrip();
@@ -1284,6 +1286,7 @@
         document.getElementById("bb-sup-dialog").close();
         showToast(`Saved supplier ${payload.name}`);
         if (window.location.pathname.includes("/inventory/")) {
+          await invFetch("/api/export", { method: "POST" }).catch(() => {});
           setTimeout(() => window.location.reload(), 650);
         }
       } catch (err) {

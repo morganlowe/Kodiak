@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-app/wiki_app.py - Compatibility entrypoint for the standalone Inventory & Barcode Hub.
-Delegates to the compiled Rust binary (`target/release/parts-wiki serve`) when available.
+app/wiki_app.py - Entrypoint for the standalone BenchBear Inventory & Barcode Hub.
+Delegates to the compiled Rust binary (`target/release/benchbear serve`) when available.
 """
 import os
 import pathlib

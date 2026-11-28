@@ -18,7 +18,7 @@ pkg-bundle:
 	mkdir -p $(ARCH_BUNDLE_DIR)
 	cp -f kodiak-*.pkg.tar.* $(ARCH_BUNDLE_DIR)/
 
-## Build Debian/Ubuntu packages (.deb) for Kodiak and kodiak-projectswiki
+## Build Debian/Ubuntu packages (.deb) for Kodiak and kodiak-benchbear
 deb:
 	./scripts/build_deb.sh
 
@@ -31,11 +31,11 @@ dev:
 
 check:
 	cargo check --manifest-path src-tauri/Cargo.toml
-	cargo check --manifest-path ProjectsWiki/Cargo.toml
+	cargo check --manifest-path BenchBear/Cargo.toml
 
 test:
 	cargo test --manifest-path src-tauri/Cargo.toml
-	cargo test --manifest-path ProjectsWiki/Cargo.toml
+	cargo test --manifest-path BenchBear/Cargo.toml
 
 clean:
 	rm -rf pkg/ kodiak-*.pkg.tar.* foreman-*.pkg.tar.* dist/

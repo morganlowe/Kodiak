@@ -29,7 +29,7 @@ MAKE_WIKI_SCRIPT = os.path.join(WIKI_DIR, "make_wiki.py")
 BUILD_WIKI_SCRIPT = os.path.join(WIKI_DIR, "build_wiki.py")
 PROJECTS_JSON = os.path.join(WIKI_DIR, "docs", "projects.json")
 INV_PATH = os.path.join(WIKI_DIR, "projects_inventory.json")
-SERVICE_FILE = os.path.expanduser("~/.config/systemd/user/projects-wiki.service")
+SERVICE_FILE = os.path.expanduser("~/.config/systemd/user/benchbear.service")
 
 _sync_lock = threading.Lock()
 
@@ -159,7 +159,7 @@ def get_service_status() -> dict:
     active = False
     try:
         res_en = subprocess.run(
-            ["systemctl", "--user", "is-enabled", "projects-wiki.service"],
+            ["systemctl", "--user", "is-enabled", "benchbear.service"],
             capture_output=True,
             text=True,
             timeout=5,
@@ -169,7 +169,7 @@ def get_service_status() -> dict:
         pass
     try:
         res_act = subprocess.run(
-            ["systemctl", "--user", "is-active", "projects-wiki.service"],
+            ["systemctl", "--user", "is-active", "benchbear.service"],
             capture_output=True,
             text=True,
             timeout=5,
@@ -184,7 +184,7 @@ def set_service_boot(enable: bool) -> dict:
     os.makedirs(os.path.dirname(SERVICE_FILE), exist_ok=True)
     wiki_sh = os.path.join(WIKI_DIR, "wiki.sh")
     unit_content = f"""[Unit]
-Description=ProjectsWiki Local Server
+Description=BenchBear Local Server
 After=network.target
 
 [Service]
@@ -211,9 +211,9 @@ WantedBy=default.target
             f.write(unit_content)
         subprocess.run(["systemctl", "--user", "daemon-reload"], capture_output=True, timeout=5)
     if enable:
-        subprocess.run(["systemctl", "--user", "enable", "projects-wiki.service"], capture_output=True, timeout=5)
+        subprocess.run(["systemctl", "--user", "enable", "benchbear.service"], capture_output=True, timeout=5)
     else:
-        subprocess.run(["systemctl", "--user", "disable", "projects-wiki.service"], capture_output=True, timeout=5)
+        subprocess.run(["systemctl", "--user", "disable", "benchbear.service"], capture_output=True, timeout=5)
 
     return get_service_status()
 
@@ -244,7 +244,7 @@ class SyncAPIHandler(http.server.BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path.startswith("/health"):
             self._send_cors_headers(200, extra_headers={"Cache-Control": "no-store"})
-            self.wfile.write(json.dumps({"ok": True, "service": "projects-wiki-sync"}).encode("utf-8"))
+            self.wfile.write(json.dumps({"ok": True, "service": "benchbear-sync"}).encode("utf-8"))
             return
         if parsed.path.startswith("/service-status"):
             self._send_cors_headers(200, extra_headers={"Cache-Control": "no-store"})

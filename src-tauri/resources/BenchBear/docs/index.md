@@ -8,6 +8,8 @@ hide:
 
 <p class="hero-subtitle">Interactive index of hardware builds, synthesizers, microcontrollers, cyberdecks, mechanical restorations, and software tools.</p>
 
+<div id="bb-explorer-inventory-strip"></div>
+
 <div id="wiki-explorer-app" class="explorer-wrapper">
   <div class="explorer-toolbar" role="search" aria-label="Filter and search projects">
     <div class="search-input-wrap">
@@ -48,7 +50,7 @@ hide:
         id="boot-toggle-btn"
         class="explorer-btn explorer-btn--ghost"
         aria-pressed="false"
-        title="Toggle starting ProjectsWiki automatically at boot (systemd user service)"
+        title="Toggle starting BenchBear automatically at boot (systemd user service)"
       >
         <span class="boot-dot" aria-hidden="true"></span>
         <span class="boot-label">Boot: OFF</span>
@@ -58,6 +60,8 @@ hide:
         <span class="sync-icon" aria-hidden="true">↻</span>
         <span class="sync-label">Sync</span>
       </button>
+
+      <a href="inventory-hub/" class="explorer-btn explorer-btn--ghost" title="Open Inventory, Locations, Suppliers, Costs &amp; Barcode Labels">Parts &amp; Barcodes</a>
 
       <button type="button" id="random-peek-btn" class="explorer-btn explorer-btn--accent" title="Preview a random project via AJAX">
         Surprise Me

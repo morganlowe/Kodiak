@@ -1,6 +1,5 @@
 # BenchBear Configuration Template
 # Copy to ~/.config/benchbear/wiki.toml or ./wiki.toml
-# (Also compatible with ~/.config/kodiak/wiki.toml when embedded in Kodiak)
 
 site_name = "BenchBear"
 
@@ -8,7 +7,7 @@ site_name = "BenchBear"
 projects_dir = "~/Projects"
 
 # Writable user data directory for the SQLite inventory DB, snapshot JSON, and audit log.
-data_dir = "~/.local/share/kodiak/projectswiki-data"
+data_dir = "~/.local/share/kodiak/benchbear-data"
 
 # Domain name for browser access (default: "benchbear.localhost")
 site_domain = "benchbear.localhost"

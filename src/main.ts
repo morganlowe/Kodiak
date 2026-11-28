@@ -876,12 +876,12 @@ function getSelectedUpdateAssets(u: UpdateCheckResult, includeWiki: boolean): Re
   if (u.platform_kind === "arch") {
     const picked: ReleaseAssetInfo[] = [];
     const core = u.all_assets.find(
-      (a) => a.name.startsWith("kodiak-") && !a.name.includes("projectswiki") && a.name.endsWith(".pkg.tar.zst")
+      (a) => a.name.startsWith("kodiak-") && !a.name.includes("benchbear") && a.name.endsWith(".pkg.tar.zst")
     );
     if (core) picked.push(core);
     if (includeWiki) {
       const wiki = u.all_assets.find(
-        (a) => a.name.startsWith("kodiak-projectswiki-") && a.name.endsWith(".pkg.tar.zst")
+        (a) => a.name.startsWith("kodiak-benchbear-") && a.name.endsWith(".pkg.tar.zst")
       );
       if (wiki) picked.push(wiki);
     }
@@ -889,13 +889,13 @@ function getSelectedUpdateAssets(u: UpdateCheckResult, includeWiki: boolean): Re
   }
   if (u.platform_kind === "debian") {
     const splitCore = u.all_assets.find(
-      (a) => a.name.startsWith("kodiak_") && !a.name.includes("projectswiki") && a.name.endsWith(".deb")
+      (a) => a.name.startsWith("kodiak_") && !a.name.includes("benchbear") && a.name.endsWith(".deb")
     );
     if (splitCore) {
       const picked: ReleaseAssetInfo[] = [splitCore];
       if (includeWiki) {
         const wiki = u.all_assets.find(
-          (a) => a.name.startsWith("kodiak-projectswiki_") && a.name.endsWith(".deb")
+          (a) => a.name.startsWith("kodiak-benchbear_") && a.name.endsWith(".deb")
         );
         if (wiki) picked.push(wiki);
       }
@@ -4166,7 +4166,7 @@ function renderWikiSetupWizard(): string {
               />
               <div>
                 <label for="wizard-enable-service-cb" style="font-weight:600; font-size:0.85rem; cursor:pointer;">
-                  ${isWindows ? "Manage Background Daemon with Kodiak" : "Enable systemd User Service (<code>wiki.service</code>)"}
+                  ${isWindows ? "Manage Background Daemon with Kodiak" : "Enable systemd User Service (<code>benchbear.service</code>)"}
                 </label>
                 <div class="muted" style="font-size:0.78rem;">
                   ${isWindows ? "Automatically coordinates the MkDocs server and Sync API in the background while Kodiak runs." : "Automatically runs the MkDocs server and Sync API in the background at user login."}
@@ -4396,7 +4396,7 @@ function renderWikiTab(): string {
           <span class="badge badge--bad">MkDocs & Sync API Offline</span>
         </div>
         <p class="muted">
-          Kodiak includes the BenchBear and local AI documentation generator directly at <code>${escapeHtml(wd?.wiki_dir || cfg.wiki_dir || "./ProjectsWiki")}</code>.
+          Kodiak includes the BenchBear and local AI documentation generator directly at <code>${escapeHtml(wd?.wiki_dir || cfg.wiki_dir || "./BenchBear")}</code>.
           The background MkDocs Material server, Sync API (port 8765), and BenchBear Inventory &amp; Barcode Hub (port 8090) are currently stopped.
         </p>
         <div class="row-inline" style="gap:0.75rem; margin-top:1rem; flex-wrap:wrap;">
@@ -4470,7 +4470,7 @@ function renderWikiTab(): string {
         </div>
       </div>
       <iframe
-        id="projects-wiki-iframe"
+        id="benchbear-iframe"
         class="wiki-iframe"
         src="${escapeHtml(h.wiki_url)}"
         title="BenchBear"
@@ -4757,7 +4757,7 @@ function renderSettingsTab(): string {
                          hasCompanionWikiAsset
                            ? `<label class="row-inline" style="font-size:0.82rem; cursor:pointer;">
                                 <input type="checkbox" id="update-include-wiki-toggle" ${state.updateIncludeWiki ? "checked" : ""} />
-                                <span>Include companion <code>kodiak-projectswiki</code> package (BenchBear)</span>
+                                <span>Include companion <code>kodiak-benchbear</code> package</span>
                               </label>`
                            : ""
                        }
@@ -4937,7 +4937,7 @@ function renderSettingsTab(): string {
           </div>
           <div style="padding:0.65rem 0.85rem; border:1px solid var(--wiki-border); border-radius:var(--wiki-radius-sm); background:rgba(0,0,0,0.15);">
             <span class="muted">Wiki Application Path:</span>
-            <div class="mono" style="margin-top:0.25rem; word-break:break-all;"><strong>${escapeHtml(cfg.wiki_dir || "./ProjectsWiki")}</strong></div>
+            <div class="mono" style="margin-top:0.25rem; word-break:break-all;"><strong>${escapeHtml(cfg.wiki_dir || "./BenchBear")}</strong></div>
           </div>
         </div>
 
@@ -5681,7 +5681,7 @@ function renderAboutTab(): string {
         <div style="flex:1; min-width:240px;">
           <div class="row-inline" style="gap:0.75rem; align-items:center; flex-wrap:wrap;">
             <h1 style="margin:0; font-size:1.8rem; font-weight:700; color:var(--md-default-fg-color);">Kodiak</h1>
-            <span class="badge badge--ok" style="font-size:0.85rem;">v1.3.0</span>
+            <span class="badge badge--ok" style="font-size:0.85rem;">v1.3.1</span>
             <button type="button" id="about-check-updates-btn" class="btn btn--sm" ${state.updateChecking ? "disabled" : ""}>
               ${state.updateChecking ? "Checking Updates..." : "Check for Updates"}
             </button>
@@ -5810,7 +5810,7 @@ function renderAboutTab(): string {
             <span><strong>Brand Asset:</strong> Morninglion Industries</span>
           </div>
           <div class="row-inline muted">
-            <span>Kodiak Task Delegation System (v1.3.0)</span>
+            <span>Kodiak Task Delegation System (v1.3.1)</span>
           </div>
         </div>
         <div style="text-align:center; padding-top:1.5rem; border-top:1px solid var(--wiki-border); margin-top:1.25rem;">
@@ -7843,7 +7843,7 @@ function bindEvents(): void {
       const msg = await invoke<string>("sync_wiki_catalog");
       state.uiBannerInfo = msg || "BenchBear catalog synced.";
       await refreshAllState();
-      const iframe = document.getElementById("projects-wiki-iframe") as HTMLIFrameElement | null;
+      const iframe = document.getElementById("benchbear-iframe") as HTMLIFrameElement | null;
       if (iframe && state.health?.wiki_url) {
         iframe.src = state.health.wiki_url;
       }
@@ -7865,7 +7865,7 @@ function bindEvents(): void {
       const msg = await invoke<string>("rebuild_wiki_assets");
       state.uiBannerInfo = msg || "Assets indexed and catalog synced.";
       await refreshAllState();
-      const iframe = document.getElementById("projects-wiki-iframe") as HTMLIFrameElement | null;
+      const iframe = document.getElementById("benchbear-iframe") as HTMLIFrameElement | null;
       if (iframe && state.health?.wiki_url) {
         iframe.src = state.health.wiki_url;
       }
@@ -7884,14 +7884,14 @@ function bindEvents(): void {
   });
 
   document.getElementById("reload-wiki-iframe-btn")?.addEventListener("click", () => {
-    const iframe = document.getElementById("projects-wiki-iframe") as HTMLIFrameElement | null;
+    const iframe = document.getElementById("benchbear-iframe") as HTMLIFrameElement | null;
     if (iframe && state.health?.wiki_url) {
       iframe.src = state.health.wiki_url;
     }
   });
 
   document.getElementById("open-wiki-inventory-btn")?.addEventListener("click", () => {
-    const iframe = document.getElementById("projects-wiki-iframe") as HTMLIFrameElement | null;
+    const iframe = document.getElementById("benchbear-iframe") as HTMLIFrameElement | null;
     if (iframe && state.health?.wiki_url) {
       iframe.src = `${state.health.wiki_url.replace(/\/$/, "")}/inventory-hub/`;
     }
@@ -8020,7 +8020,7 @@ function bindEvents(): void {
       state.wikiAiOutput = res;
       state.wikiAiStatusMessage = `Documentation generated and catalog updated for ${projSel}!`;
       await refreshAllState();
-      const iframe = document.getElementById("projects-wiki-iframe") as HTMLIFrameElement | null;
+      const iframe = document.getElementById("benchbear-iframe") as HTMLIFrameElement | null;
       if (iframe && state.health?.wiki_url) {
         const cleanSlug = projSel.replace(/ /g, "_");
         iframe.src = `${state.health.wiki_url}/${cleanSlug}/`;
@@ -8040,7 +8040,7 @@ function bindEvents(): void {
       renderApp();
       if (state.config?.active_project && state.health?.wiki_url) {
         const clean = state.config.active_project.split("/").pop()?.replace(/ /g, "_");
-        const iframe = document.getElementById("projects-wiki-iframe") as HTMLIFrameElement | null;
+        const iframe = document.getElementById("benchbear-iframe") as HTMLIFrameElement | null;
         if (iframe && clean) {
           iframe.src = `${state.health.wiki_url}/${clean}/`;
         }
@@ -8249,7 +8249,7 @@ function bindEvents(): void {
     state.config.coder_model = coderModel || "qwen2.5-coder:7b";
     state.config.heavy_model = heavyModel || "qwen2.5-coder:14b";
     state.config.command_timeout_secs = timeoutVal > 0 ? timeoutVal : 60;
-    state.config.wiki_dir = wikiDir || "./ProjectsWiki";
+    state.config.wiki_dir = wikiDir || "./BenchBear";
     state.config.dry_run = dryRun;
     state.config.auto_repair_enabled = autoRepairEnabled;
     state.config.discovery_pass_enabled = discoveryPassEnabled;

@@ -137,8 +137,8 @@ pub fn detect_platform_kind(wiki_enabled_fallback: bool) -> (String, String, boo
         let mut wiki_installed = wiki_enabled_fallback;
         if let Ok(exe) = std::env::current_exe() {
             if let Some(exe_dir) = exe.parent() {
-                let bundled = exe_dir.join("resources").join("ProjectsWiki");
-                if bundled.join("kodiak-projectswiki.exe").exists() || bundled.exists() {
+                let bundled = exe_dir.join("resources").join("BenchBear");
+                if bundled.join("kodiak-benchbear.exe").exists() || bundled.exists() {
                     wiki_installed = true;
                 } else {
                     wiki_installed = false;
@@ -147,13 +147,13 @@ pub fn detect_platform_kind(wiki_enabled_fallback: bool) -> (String, String, boo
         }
         if wiki_installed {
             return (
-                "windows-with-wiki".to_string(),
-                "Windows x64 (With ProjectsWiki)".to_string(),
+                "windows-with-benchbear".to_string(),
+                "Windows x64 (With BenchBear)".to_string(),
                 true,
             );
         }
         return (
-            "windows-without-wiki".to_string(),
+            "windows-without-benchbear".to_string(),
             "Windows x64 (Core Only)".to_string(),
             false,
         );
@@ -162,8 +162,7 @@ pub fn detect_platform_kind(wiki_enabled_fallback: bool) -> (String, String, boo
     #[cfg(not(target_os = "windows"))]
     {
         let _ = wiki_enabled_fallback;
-        let wiki_installed = Path::new("/usr/share/kodiak/projectswiki").exists()
-            || Path::new("/usr/share/kodiak/ProjectsWiki").exists();
+        let wiki_installed = Path::new("/usr/share/kodiak/benchbear").exists();
 
         if std::env::var_os("APPIMAGE").is_some() {
             return (
@@ -250,7 +249,7 @@ pub fn extract_sha256_for_asset(
     None
 }
 
-/// Selects recommended release assets matching `platform_kind` and optional `kodiak-projectswiki` companion.
+/// Selects recommended release assets matching `platform_kind` and optional `kodiak-benchbear` companion.
 pub fn select_recommended_assets(
     all_assets: &[ReleaseAssetInfo],
     platform_kind: &str,
@@ -261,14 +260,14 @@ pub fn select_recommended_assets(
         "arch" => {
             if let Some(core) = all_assets.iter().find(|a| {
                 a.name.starts_with("kodiak-")
-                    && !a.name.contains("projectswiki")
+                    && !a.name.contains("benchbear")
                     && a.name.ends_with(".pkg.tar.zst")
             }) {
                 selected.push(core.clone());
             }
             if include_wiki {
                 if let Some(wiki) = all_assets.iter().find(|a| {
-                    a.name.starts_with("kodiak-projectswiki-") && a.name.ends_with(".pkg.tar.zst")
+                    a.name.starts_with("kodiak-benchbear-") && a.name.ends_with(".pkg.tar.zst")
                 }) {
                     selected.push(wiki.clone());
                 }
@@ -277,20 +276,20 @@ pub fn select_recommended_assets(
         "debian" => {
             if let Some(split_core) = all_assets.iter().find(|a| {
                 a.name.starts_with("kodiak_")
-                    && !a.name.contains("projectswiki")
+                    && !a.name.contains("benchbear")
                     && a.name.ends_with(".deb")
             }) {
                 selected.push(split_core.clone());
                 if include_wiki {
                     if let Some(wiki) = all_assets.iter().find(|a| {
-                        a.name.starts_with("kodiak-projectswiki_") && a.name.ends_with(".deb")
+                        a.name.starts_with("kodiak-benchbear_") && a.name.ends_with(".deb")
                     }) {
                         selected.push(wiki.clone());
                     }
                 }
             } else if let Some(bundle_deb) = all_assets
                 .iter()
-                .find(|a| a.name.ends_with(".deb") && !a.name.contains("projectswiki"))
+                .find(|a| a.name.ends_with(".deb") && !a.name.contains("benchbear"))
             {
                 selected.push(bundle_deb.clone());
             }
@@ -300,23 +299,18 @@ pub fn select_recommended_assets(
                 selected.push(appimg.clone());
             }
         }
-        "windows-with-wiki" => {
+        "windows-with-benchbear" => {
             if let Some(exe) = all_assets
                 .iter()
-                .find(|a| a.name.ends_with("-with-wiki-setup.exe"))
-                .or_else(|| {
-                    all_assets
-                        .iter()
-                        .find(|a| a.name.ends_with("-setup.exe") && !a.name.contains("without-wiki"))
-                })
+                .find(|a| a.name.ends_with("-with-benchbear-setup.exe"))
             {
                 selected.push(exe.clone());
             }
         }
-        "windows-without-wiki" => {
+        "windows-without-benchbear" => {
             if let Some(exe) = all_assets
                 .iter()
-                .find(|a| a.name.ends_with("-without-wiki-setup.exe"))
+                .find(|a| a.name.ends_with("-without-benchbear-setup.exe"))
             {
                 selected.push(exe.clone());
             }
@@ -383,7 +377,7 @@ pub fn build_install_command(
                 Some(first_path),
             )
         }
-        "windows-with-wiki" | "windows-without-wiki" => {
+        "windows-with-benchbear" | "windows-without-benchbear" => {
             (None, true, Some(files[0].saved_path.clone()))
         }
         _ => (None, false, None),
@@ -471,7 +465,7 @@ pub async fn check_github_latest_release(
         .into_iter()
         .map(|a| {
             let sha256 = extract_sha256_for_asset(a.digest.as_deref(), &a.name, body_str);
-            let is_companion_wiki = a.name.contains("projectswiki");
+            let is_companion_wiki = a.name.contains("benchbear");
             ReleaseAssetInfo {
                 name: a.name,
                 download_url: a.browser_download_url,
@@ -736,8 +730,8 @@ mod tests {
                 is_companion_wiki: false,
             },
             ReleaseAssetInfo {
-                name: "kodiak-projectswiki-1.2.1-1-any.pkg.tar.zst".to_string(),
-                download_url: "https://github.com/morganlowe/Kodiak/releases/download/v1.2.1/kodiak-projectswiki-1.2.1-1-any.pkg.tar.zst".to_string(),
+                name: "kodiak-benchbear-1.3.1-1-x86_64.pkg.tar.zst".to_string(),
+                download_url: "https://github.com/morganlowe/Kodiak/releases/download/v1.3.1/kodiak-benchbear-1.3.1-1-x86_64.pkg.tar.zst".to_string(),
                 size: 134000,
                 sha256: Some("b".repeat(64)),
                 is_companion_wiki: true,
@@ -750,8 +744,8 @@ mod tests {
                 is_companion_wiki: false,
             },
             ReleaseAssetInfo {
-                name: "kodiak-projectswiki_1.2.1-1_all.deb".to_string(),
-                download_url: "https://github.com/morganlowe/Kodiak/releases/download/v1.2.1/kodiak-projectswiki_1.2.1-1_all.deb".to_string(),
+                name: "kodiak-benchbear_1.3.1-1_amd64.deb".to_string(),
+                download_url: "https://github.com/morganlowe/Kodiak/releases/download/v1.3.1/kodiak-benchbear_1.3.1-1_amd64.deb".to_string(),
                 size: 110000,
                 sha256: Some("d".repeat(64)),
                 is_companion_wiki: true,
@@ -764,15 +758,15 @@ mod tests {
                 is_companion_wiki: false,
             },
             ReleaseAssetInfo {
-                name: "Kodiak_1.2.1_x64-with-wiki-setup.exe".to_string(),
-                download_url: "https://github.com/morganlowe/Kodiak/releases/download/v1.2.1/Kodiak_1.2.1_x64-with-wiki-setup.exe".to_string(),
+                name: "Kodiak_1.3.1_x64-with-benchbear-setup.exe".to_string(),
+                download_url: "https://github.com/morganlowe/Kodiak/releases/download/v1.3.1/Kodiak_1.3.1_x64-with-benchbear-setup.exe".to_string(),
                 size: 40000000,
                 sha256: Some("f".repeat(64)),
                 is_companion_wiki: false,
             },
             ReleaseAssetInfo {
-                name: "Kodiak_1.2.1_x64-without-wiki-setup.exe".to_string(),
-                download_url: "https://github.com/morganlowe/Kodiak/releases/download/v1.2.1/Kodiak_1.2.1_x64-without-wiki-setup.exe".to_string(),
+                name: "Kodiak_1.3.1_x64-without-benchbear-setup.exe".to_string(),
+                download_url: "https://github.com/morganlowe/Kodiak/releases/download/v1.3.1/Kodiak_1.3.1_x64-without-benchbear-setup.exe".to_string(),
                 size: 4200000,
                 sha256: Some("0".repeat(64)),
                 is_companion_wiki: false,
@@ -797,7 +791,7 @@ mod tests {
         assert_eq!(arch_with[0].name, "kodiak-1.2.1-1-x86_64.pkg.tar.zst");
         assert_eq!(
             arch_with[1].name,
-            "kodiak-projectswiki-1.2.1-1-any.pkg.tar.zst"
+            "kodiak-benchbear-1.3.1-1-x86_64.pkg.tar.zst"
         );
 
         let arch_core = select_recommended_assets(&all, "arch", false);
@@ -812,11 +806,11 @@ mod tests {
         assert_eq!(appimg.len(), 1);
         assert_eq!(appimg[0].name, "Kodiak_1.2.1_amd64.AppImage");
 
-        let win_with = select_recommended_assets(&all, "windows-with-wiki", true);
-        assert_eq!(win_with[0].name, "Kodiak_1.2.1_x64-with-wiki-setup.exe");
+        let win_with = select_recommended_assets(&all, "windows-with-benchbear", true);
+        assert_eq!(win_with[0].name, "Kodiak_1.3.1_x64-with-benchbear-setup.exe");
 
-        let win_no = select_recommended_assets(&all, "windows-without-wiki", false);
-        assert_eq!(win_no[0].name, "Kodiak_1.2.1_x64-without-wiki-setup.exe");
+        let win_no = select_recommended_assets(&all, "windows-without-benchbear", false);
+        assert_eq!(win_no[0].name, "Kodiak_1.3.1_x64-without-benchbear-setup.exe");
     }
 
     #[test]
@@ -872,8 +866,8 @@ mod tests {
                 sha256_verified: false,
             },
             DownloadedUpdateAsset {
-                name: "kodiak-projectswiki-1.2.1-1-any.pkg.tar.zst".to_string(),
-                saved_path: "/home/user/Downloads/kodiak-updates/v1.2.1/kodiak-projectswiki-1.2.1-1-any.pkg.tar.zst".to_string(),
+                name: "kodiak-benchbear-1.3.1-1-x86_64.pkg.tar.zst".to_string(),
+                saved_path: "/home/user/Downloads/kodiak-updates/v1.3.1/kodiak-benchbear-1.3.1-1-x86_64.pkg.tar.zst".to_string(),
                 bytes: 10,
                 computed_sha256: "b".repeat(64),
                 expected_sha256: None,
@@ -886,17 +880,17 @@ mod tests {
         let cmd_str = cmd.unwrap();
         assert!(cmd_str.starts_with("sudo pacman -U "));
         assert!(cmd_str.contains("kodiak-1.2.1-1-x86_64.pkg.tar.zst"));
-        assert!(cmd_str.contains("kodiak-projectswiki-1.2.1-1-any.pkg.tar.zst"));
+        assert!(cmd_str.contains("kodiak-benchbear-1.3.1-1-x86_64.pkg.tar.zst"));
 
         let win_files = vec![DownloadedUpdateAsset {
-            name: "Kodiak_1.2.1_x64-with-wiki-setup.exe".to_string(),
-            saved_path: r"C:\Users\u\Downloads\kodiak-updates\v1.2.1\Kodiak_1.2.1_x64-with-wiki-setup.exe".to_string(),
+            name: "Kodiak_1.3.1_x64-with-benchbear-setup.exe".to_string(),
+            saved_path: r"C:\Users\u\Downloads\kodiak-updates\v1.3.1\Kodiak_1.3.1_x64-with-benchbear-setup.exe".to_string(),
             bytes: 10,
             computed_sha256: "f".repeat(64),
             expected_sha256: None,
             sha256_verified: false,
         }];
-        let (w_cmd, w_launch, w_primary) = build_install_command("windows-with-wiki", &win_files);
+        let (w_cmd, w_launch, w_primary) = build_install_command("windows-with-benchbear", &win_files);
         assert!(w_cmd.is_none());
         assert!(w_launch);
         assert!(w_primary.unwrap().ends_with(".exe"));

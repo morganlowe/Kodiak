@@ -47,10 +47,9 @@ def find_mkdocs_cmd():
         os.path.join(WIKI_DIR, ".venv", "bin", "mkdocs"),
         os.path.join(WIKI_DIR, ".venv", "Scripts", "mkdocs.exe"),
         os.path.expanduser("~/.local/share/benchbear/venv/bin/mkdocs"),
-        os.path.expanduser("~/.local/share/projects-parts-wiki/venv/bin/mkdocs"),
-        os.path.expanduser("~/.local/share/kodiak/projectswiki-venv/bin/mkdocs"),
+        os.path.expanduser("~/.local/share/kodiak/benchbear-venv/bin/mkdocs"),
         os.path.expandvars(r"%LOCALAPPDATA%\benchbear\venv\Scripts\mkdocs.exe"),
-        os.path.expandvars(r"%LOCALAPPDATA%\kodiak\projectswiki-venv\Scripts\mkdocs.exe"),
+        os.path.expandvars(r"%LOCALAPPDATA%\kodiak\benchbear-venv\Scripts\mkdocs.exe"),
         os.path.expanduser("~/.pyenv/shims/mkdocs"),
     ]
     for c in candidates:
@@ -61,15 +60,14 @@ def find_mkdocs_cmd():
 
 
 def find_or_build_rust_bin() -> Optional[str]:
-    for base_name in ("benchbear", "parts-wiki"):
-        exe_name = f"{base_name}.exe" if os.name == "nt" else base_name
-        for cand in (
-            os.path.join(WIKI_DIR, "target", "release", exe_name),
-            os.path.join(WIKI_DIR, exe_name),
-            os.path.join(WIKI_DIR, "bin", exe_name),
-        ):
-            if os.path.isfile(cand) and os.access(cand, os.X_OK):
-                return cand
+    exe_name = "benchbear.exe" if os.name == "nt" else "benchbear"
+    for cand in (
+        os.path.join(WIKI_DIR, "target", "release", exe_name),
+        os.path.join(WIKI_DIR, exe_name),
+        os.path.join(WIKI_DIR, "bin", exe_name),
+    ):
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return cand
     which_bin = shutil.which("benchbear")
     if which_bin:
         return which_bin
@@ -217,12 +215,11 @@ def stop_command(args):
     """Terminates running server instances across Windows and Linux."""
     if os.name == "nt":
         subprocess.run(["taskkill", "/F", "/IM", "benchbear.exe", "/T"], stderr=subprocess.DEVNULL)
-        subprocess.run(["taskkill", "/F", "/IM", "kodiak-projectswiki.exe", "/T"], stderr=subprocess.DEVNULL)
-        subprocess.run(["taskkill", "/F", "/IM", "parts-wiki.exe", "/T"], stderr=subprocess.DEVNULL)
+        subprocess.run(["taskkill", "/F", "/IM", "kodiak-benchbear.exe", "/T"], stderr=subprocess.DEVNULL)
     else:
         subprocess.run(["pkill", "-f", "mkdocs serve"], stderr=subprocess.DEVNULL)
         subprocess.run(["pkill", "-f", "sync_api.py"], stderr=subprocess.DEVNULL)
-        subprocess.run(["pkill", "-f", "(benchbear|parts-wiki).*serve"], stderr=subprocess.DEVNULL)
+        subprocess.run(["pkill", "-f", "benchbear.*serve"], stderr=subprocess.DEVNULL)
     print(":: [BenchBear] Stopped server processes.")
     return 0
 

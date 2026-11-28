@@ -9,7 +9,13 @@ use crate::models::Part;
 
 pub fn sync_all(db: &Database, cfg: &AppConfig) -> Result<()> {
     write_snapshot(db, &cfg.data_dir)?;
-    export_markdown(db, cfg)?;
+    export_markdown_targets(db, cfg, true)?;
+    Ok(())
+}
+
+pub fn sync_portable(db: &Database, cfg: &AppConfig) -> Result<()> {
+    write_snapshot(db, &cfg.data_dir)?;
+    export_markdown_targets(db, cfg, false)?;
     Ok(())
 }
 
@@ -25,13 +31,21 @@ pub fn write_snapshot(db: &Database, data_dir: &Path) -> Result<()> {
 }
 
 pub fn export_markdown(db: &Database, cfg: &AppConfig) -> Result<()> {
+    export_markdown_targets(db, cfg, true)
+}
+
+fn export_markdown_targets(db: &Database, cfg: &AppConfig, include_docs: bool) -> Result<()> {
     let parts = db.list_parts(None, None, None, None, false)?;
     let locations = db.list_locations()?;
     let suppliers = db.list_suppliers()?;
     let valuation = db.compute_valuation()?;
     let reorder = db.compute_reorder_list()?;
 
-    let targets = [cfg.inventory_dir.as_path(), &cfg.docs_dir.join("inventory")];
+    let docs_inv = cfg.docs_dir.join("inventory");
+    let mut targets: Vec<&Path> = vec![cfg.inventory_dir.as_path()];
+    if include_docs {
+        targets.push(docs_inv.as_path());
+    }
     for dir in &targets {
         fs::create_dir_all(dir)?;
     }
@@ -210,16 +224,18 @@ pub fn export_markdown(db: &Database, cfg: &AppConfig) -> Result<()> {
     }
 
     // 5. Mirror projects/*.md into docs/projects/ without symlinks
-    let docs_proj = cfg.docs_dir.join("projects");
-    if cfg.projects_dir.is_dir() {
-        fs::create_dir_all(&docs_proj)?;
-        for entry in fs::read_dir(&cfg.projects_dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) == Some("md") {
-                if let Some(name) = path.file_name() {
-                    let content = fs::read_to_string(&path)?;
-                    write_if_changed(&docs_proj.join(name), &content)?;
+    if include_docs {
+        let docs_proj = cfg.docs_dir.join("projects");
+        if cfg.projects_dir.is_dir() {
+            fs::create_dir_all(&docs_proj)?;
+            for entry in fs::read_dir(&cfg.projects_dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("md") {
+                    if let Some(name) = path.file_name() {
+                        let content = fs::read_to_string(&path)?;
+                        write_if_changed(&docs_proj.join(name), &content)?;
+                    }
                 }
             }
         }

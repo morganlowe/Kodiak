@@ -27,36 +27,36 @@ config.toml
 journal.jsonl
 history.json
 
-# ProjectsWiki runtime & local virtualenvs
-ProjectsWiki/venv/
-ProjectsWiki/__pycache__/
-ProjectsWiki/**/__pycache__/
-ProjectsWiki/.archive_duplicates/
-ProjectsWiki/site/
-ProjectsWiki/target/
-ProjectsWiki/data/
-ProjectsWiki/inventory/
-ProjectsWiki/projects/
-ProjectsWiki/*.log
-ProjectsWiki/projects_inventory.json
-ProjectsWiki/docs/projects.json
-ProjectsWiki/project_overrides.json
-ProjectsWiki/docs/inventory/
-ProjectsWiki/docs/projects/
-ProjectsWiki/docs/*.md
-!ProjectsWiki/docs/index.md
-!ProjectsWiki/docs/demo-project.md
-!ProjectsWiki/docs/inventory-hub.md
+# BenchBear runtime & local virtualenvs
+BenchBear/venv/
+BenchBear/__pycache__/
+BenchBear/**/__pycache__/
+BenchBear/.archive_duplicates/
+BenchBear/site/
+BenchBear/target/
+BenchBear/data/
+BenchBear/inventory/
+BenchBear/projects/
+BenchBear/*.log
+BenchBear/projects_inventory.json
+BenchBear/docs/projects.json
+BenchBear/project_overrides.json
+BenchBear/docs/inventory/
+BenchBear/docs/projects/
+BenchBear/docs/*.md
+!BenchBear/docs/index.md
+!BenchBear/docs/demo-project.md
+!BenchBear/docs/inventory-hub.md
 
 # Staged Windows resource bundles
-src-tauri/resources/ProjectsWiki/*.py
-src-tauri/resources/ProjectsWiki/*.sh
-src-tauri/resources/ProjectsWiki/*.json
-src-tauri/resources/ProjectsWiki/*.exe
-src-tauri/resources/ProjectsWiki/docs/*.md
-!src-tauri/resources/ProjectsWiki/docs/index.md
-!src-tauri/resources/ProjectsWiki/docs/demo-project.md
-!src-tauri/resources/ProjectsWiki/docs/inventory-hub.md
+src-tauri/resources/BenchBear/*.py
+src-tauri/resources/BenchBear/*.sh
+src-tauri/resources/BenchBear/*.json
+src-tauri/resources/BenchBear/*.exe
+src-tauri/resources/BenchBear/docs/*.md
+!src-tauri/resources/BenchBear/docs/index.md
+!src-tauri/resources/BenchBear/docs/demo-project.md
+!src-tauri/resources/BenchBear/docs/inventory-hub.md
 
 # Internal development docs & proposals (local only)
 docs/internal/

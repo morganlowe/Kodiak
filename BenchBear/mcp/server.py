@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-mcp/server.py - stdio MCP Server wrapper for Projects & Parts Wiki.
+mcp/server.py - stdio MCP Server wrapper for BenchBear.
 
-Prefers the compiled Rust binary (`target/release/parts-wiki mcp`) so MCP tools
+Prefers the compiled Rust binary (`target/release/benchbear mcp`) so MCP tools
 operate directly against the portable SQLite DB, locations, suppliers, costs,
-BOMs, and barcode labels. Falls back to the legacy Markdown parser if the Rust
-binary has not been built yet.
+BOMs, and barcode labels. Falls back to the lightweight Python reader if the
+Rust binary has not been built yet.
 """
 import datetime
 import json
@@ -16,8 +16,6 @@ import sys
 
 WIKI_ROOT = pathlib.Path(__file__).resolve().parent.parent
 RUST_BIN = WIKI_ROOT / "target" / "release" / "benchbear"
-if not RUST_BIN.is_file():
-    RUST_BIN = WIKI_ROOT / "target" / "release" / "parts-wiki"
 
 if RUST_BIN.is_file() and os.access(RUST_BIN, os.X_OK):
     os.execv(str(RUST_BIN), [str(RUST_BIN), "--wiki-root", str(WIKI_ROOT), "mcp"])

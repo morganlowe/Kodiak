@@ -1,27 +1,34 @@
-# Kodiak ProjectsWiki Configuration Template
-# Copy to ~/.config/kodiak/wiki.toml to customize your local wiki deployment.
+# BenchBear Configuration Template
+# Copy to ~/.config/benchbear/wiki.toml or ./wiki.toml
+
+site_name = "BenchBear"
 
 # Directory where your local project repositories and hardware builds are stored.
-# Set this to your actual projects directory (e.g. "~/Projects" or "/home/user/src").
 projects_dir = "~/Projects"
 
-# Domain name for browser access (default: "wiki.local")
-# If "127.0.0.1 wiki.local" is present in /etc/hosts, browse at http://wiki.local:8000
-# Zero-Sudo Fallback: If unconfigured, browse directly at http://127.0.0.1:8000
-site_domain = "wiki.local"
+# Writable user data directory for the SQLite inventory DB, snapshot JSON, and audit log.
+data_dir = "~/.local/share/kodiak/benchbear-data"
 
-# Local Ollama intelligence configuration for doc synthesis & AI tuning
+# Domain name for browser access (default: "benchbear.localhost")
+site_domain = "benchbear.localhost"
+
+# Local Ollama configuration for doc synthesis & AI tuning
 ollama_url = "http://127.0.0.1:11434"
 ollama_model = "qwen2.5-coder:7b"
 
 # Service ports
 port_web = 8000
 port_api = 8765
+port_inventory = 8090
+
+# Inventory & label defaults
+default_currency = "USD"
+# Supported presets: "2x1", "2.25x1.25", "ql62x29", "ql62x42"
+default_label_preset = "2x1"
 
 # Externalized project overrides JSON (persists manual title, category, and overview edits across rebuilds)
-overrides_file = "~/.config/kodiak/project_overrides.json"
+overrides_file = "~/.config/benchbear/project_overrides.json"
 
-# Neutral default project taxonomy: category name -> keyword pattern / folder slug matches
 [categories]
 "Hardware & Electronics" = ["hardware", "pcb", "circuit", "kicad", "schematic", "sensor", "display", "eink", "oled"]
 "Embedded & Firmware" = ["esp32", "rp2040", "pico", "arduino", "firmware", "iot", "wifi", "ble"]

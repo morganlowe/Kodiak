@@ -30,8 +30,7 @@ PORT_INV="${PORT_INV:-8090}"
 DATA_DIR="${DATA_DIR:-$WIKI_DIR/data}"
 
 LOCAL_VENV="$HOME/.local/share/benchbear/venv"
-LEGACY_VENV="$HOME/.local/share/projects-parts-wiki/venv"
-KODIAK_VENV="$HOME/.local/share/kodiak/projectswiki-venv"
+KODIAK_VENV="$HOME/.local/share/kodiak/benchbear-venv"
 RUST_BIN="${RUST_BIN:-$WIKI_DIR/target/release/benchbear}"
 if [[ ! -x "$RUST_BIN" ]]; then
     if [[ -x "$WIKI_DIR/benchbear" ]]; then
@@ -43,19 +42,15 @@ if [[ ! -x "$RUST_BIN" ]]; then
     fi
 fi
 SYSCTL_CONF="/etc/sysctl.d/90-wiki-local.conf"
-SERVICE_FILE="$HOME/.config/systemd/user/projects-wiki.service"
-LOG_FILE="/tmp/projects-wiki.log"
-PID_FILE="/tmp/projects-wiki.pids"
+SERVICE_FILE="$HOME/.config/systemd/user/benchbear.service"
+LOG_FILE="/tmp/benchbear.log"
+PID_FILE="/tmp/benchbear.pids"
 
 export NO_MKDOCS_2_WARNING=1
 
 find_mkdocs() {
     if [[ -x "$LOCAL_VENV/bin/mkdocs" ]]; then
         echo "$LOCAL_VENV/bin/mkdocs"
-        return 0
-    fi
-    if [[ -x "$LEGACY_VENV/bin/mkdocs" ]]; then
-        echo "$LEGACY_VENV/bin/mkdocs"
         return 0
     fi
     if [[ -x "$KODIAK_VENV/bin/mkdocs" ]]; then
@@ -174,7 +169,7 @@ install_shell_integration() {
 }
 
 stop_all() {
-    systemctl --user stop projects-wiki.service 2>/dev/null || true
+    systemctl --user stop benchbear.service 2>/dev/null || true
     if [[ -f "$PID_FILE" ]]; then
         while read -r pid; do
             [[ -n "$pid" ]] && kill "$pid" 2>/dev/null || true
@@ -183,7 +178,7 @@ stop_all() {
     fi
     pkill -f "sync_api.py" 2>/dev/null || true
     pkill -f "mkdocs serve" 2>/dev/null || true
-    pkill -f "(benchbear|parts-wiki).*serve" 2>/dev/null || true
+    pkill -f "benchbear.*serve" 2>/dev/null || true
     sleep 0.5
 }
 
@@ -227,8 +222,8 @@ resolve_runtime_urls() {
 }
 
 start_background() {
-    if systemctl --user is-active --quiet projects-wiki.service 2>/dev/null; then
-        echo ":: BenchBear is already running as a systemd service (projects-wiki.service)."
+    if systemctl --user is-active --quiet benchbear.service 2>/dev/null; then
+        echo ":: BenchBear is already running as a systemd service (benchbear.service)."
         resolve_runtime_urls
         echo "============================================================"
         echo "  [OK] BenchBear is LIVE via systemd service!"
@@ -335,9 +330,9 @@ case "$cmd" in
         echo ":: [BenchBear] Stopped background server."
         ;;
     restart)
-        if systemctl --user is-active --quiet projects-wiki.service 2>/dev/null; then
-            echo ":: Restarting projects-wiki.service via systemd..."
-            systemctl --user restart projects-wiki.service
+        if systemctl --user is-active --quiet benchbear.service 2>/dev/null; then
+            echo ":: Restarting benchbear.service via systemd..."
+            systemctl --user restart benchbear.service
             echo ":: [BenchBear] Restarted."
         else
             stop_all
@@ -387,8 +382,8 @@ case "$cmd" in
         echo ":: [BenchBear] Rebuilding release binary..."
         cargo build --release
         sync_catalog
-        if systemctl --user is-active --quiet projects-wiki.service 2>/dev/null; then
-            systemctl --user restart projects-wiki.service
+        if systemctl --user is-active --quiet benchbear.service 2>/dev/null; then
+            systemctl --user restart benchbear.service
             echo ":: [BenchBear] Updated and restarted systemd service."
         else
             stop_all
@@ -396,8 +391,8 @@ case "$cmd" in
         fi
         ;;
     status)
-        if systemctl --user is-active --quiet projects-wiki.service 2>/dev/null; then
-            echo ":: [BenchBear] Running (systemd service: projects-wiki.service)"
+        if systemctl --user is-active --quiet benchbear.service 2>/dev/null; then
+            echo ":: [BenchBear] Running (systemd service: benchbear.service)"
             exit 0
         fi
         if [[ -f "$PID_FILE" ]]; then

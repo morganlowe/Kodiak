@@ -141,7 +141,7 @@ pub fn gather_dashboard_data(
         };
 
         let wiki_doc_exists = p_path.join("README.md").exists()
-            || Path::new("ProjectsWiki/docs/projects")
+            || Path::new("BenchBear/docs/projects")
                 .join(format!("{name}.md"))
                 .exists();
 

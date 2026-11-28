@@ -1,7 +1,7 @@
 # Maintainer: Morgan Lowe
 # Version is read dynamically from src-tauri/tauri.conf.json so PKGBUILD never drifts from the app version.
 
-pkgname=('kodiak' 'kodiak-projectswiki')
+pkgname=('kodiak' 'kodiak-benchbear')
 pkgver=$(sed -n 's/.*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "${startdir}/src-tauri/tauri.conf.json" | head -n1)
 pkgrel=1
 pkgdesc="Local-First AI Task Delegation Workbench"
@@ -28,7 +28,7 @@ build() {
   fi
   npm run build
   RUSTFLAGS="--remap-path-prefix=${startdir}=/usr/src/kodiak" cargo build --release --manifest-path src-tauri/Cargo.toml
-  RUSTFLAGS="--remap-path-prefix=${startdir}=/usr/src/kodiak" cargo build --release --manifest-path ProjectsWiki/Cargo.toml
+  RUSTFLAGS="--remap-path-prefix=${startdir}=/usr/src/kodiak" cargo build --release --manifest-path BenchBear/Cargo.toml
 }
 
 package_kodiak() {
@@ -46,7 +46,7 @@ package_kodiak() {
     'hicolor-icon-theme'
   )
   optdepends=(
-    'kodiak-projectswiki: BenchBear project wiki and hardware inventory companion'
+    'kodiak-benchbear: BenchBear project wiki and hardware inventory companion'
     'python-mkdocs-material: Material theme rendering for BenchBear'
   )
 
@@ -83,10 +83,12 @@ EOF
   install -Dm644 "docs/THEME.md" "${pkgdir}/usr/share/doc/kodiak/THEME.md"
 }
 
-package_kodiak-projectswiki() {
+package_kodiak-benchbear() {
   license=('Apache-2.0' 'GPL-3.0-only')
   pkgdesc="BenchBear project wiki and hardware inventory companion for Kodiak"
   arch=('x86_64')
+  conflicts=('kodiak-projectswiki')
+  replaces=('kodiak-projectswiki')
   depends=('python' 'gcc-libs' 'glibc')
   optdepends=(
     'python-mkdocs-material: Fast local rendering with Material for MkDocs'
@@ -95,9 +97,9 @@ package_kodiak-projectswiki() {
 
   cd "${startdir}"
 
-  local dest="${pkgdir}/usr/share/kodiak/projectswiki"
+  local dest="${pkgdir}/usr/share/kodiak/benchbear"
   install -dm755 "${dest}"
-  tar -C "ProjectsWiki" \
+  tar -C "BenchBear" \
     --exclude=target \
     --exclude=venv \
     --exclude=__pycache__ \
@@ -114,26 +116,27 @@ package_kodiak-projectswiki() {
     -cf - . | tar -C "${dest}" --no-same-owner -xf -
   find "${dest}/docs" -type f -name "*.md" ! -name "index.md" ! -name "demo-project.md" ! -name "inventory-hub.md" -delete
 
-  install -Dm755 "ProjectsWiki/target/release/benchbear" "${dest}/benchbear"
+  install -Dm755 "BenchBear/target/release/benchbear" "${dest}/benchbear"
 
   chmod +x "${dest}/wiki.sh"
   chmod +x "${dest}"/*.py "${dest}/app/wiki_app.py" "${dest}/mcp/server.py" 2>/dev/null || true
 
-  # CLI wrapper in /usr/bin/wiki
+  # CLI wrappers in /usr/bin
   install -dm755 "${pkgdir}/usr/bin"
-  ln -sf "/usr/share/kodiak/projectswiki/wiki.sh" "${pkgdir}/usr/bin/wiki"
+  ln -sf "/usr/share/kodiak/benchbear/wiki.sh" "${pkgdir}/usr/bin/benchbear-wiki"
+  ln -sf "/usr/share/kodiak/benchbear/wiki.sh" "${pkgdir}/usr/bin/wiki"
 
   # Systemd user service unit (shipped, not auto-enabled)
   install -dm755 "${pkgdir}/usr/lib/systemd/user"
-  cat > "${pkgdir}/usr/lib/systemd/user/projects-wiki.service" << 'EOF'
+  cat > "${pkgdir}/usr/lib/systemd/user/benchbear.service" << 'EOF'
 [Unit]
 Description=BenchBear Local Server (http://benchbear.localhost)
 After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/usr/share/kodiak/projectswiki
-ExecStart=/usr/share/kodiak/projectswiki/wiki.sh daemon
+WorkingDirectory=/usr/share/kodiak/benchbear
+ExecStart=/usr/share/kodiak/benchbear/wiki.sh daemon
 Restart=on-failure
 RestartSec=3
 
@@ -141,7 +144,7 @@ RestartSec=3
 WantedBy=default.target
 EOF
 
-  # Example configuration in /usr/share/doc/kodiak-projectswiki/
-  install -Dm644 "ProjectsWiki/config.example.toml" "${pkgdir}/usr/share/doc/kodiak-projectswiki/config.example.toml"
-  install -Dm644 "ProjectsWiki/project_overrides.example.json" "${pkgdir}/usr/share/doc/kodiak-projectswiki/project_overrides.example.json"
+  # Example configuration in /usr/share/doc/kodiak-benchbear/
+  install -Dm644 "BenchBear/config.example.toml" "${pkgdir}/usr/share/doc/kodiak-benchbear/config.example.toml"
+  install -Dm644 "BenchBear/project_overrides.example.json" "${pkgdir}/usr/share/doc/kodiak-benchbear/project_overrides.example.json"
 }

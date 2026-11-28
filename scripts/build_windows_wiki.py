@@ -11,9 +11,9 @@ import shutil
 import subprocess
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PROJECTS_WIKI_DIR = os.path.join(ROOT_DIR, "ProjectsWiki")
-WIKI_SERVER_SCRIPT = os.path.join(PROJECTS_WIKI_DIR, "wiki_server.py")
-OUTPUT_RESOURCE_DIR = os.path.join(ROOT_DIR, "src-tauri", "resources", "ProjectsWiki")
+BENCHBEAR_DIR = os.path.join(ROOT_DIR, "BenchBear")
+WIKI_SERVER_SCRIPT = os.path.join(BENCHBEAR_DIR, "wiki_server.py")
+OUTPUT_RESOURCE_DIR = os.path.join(ROOT_DIR, "src-tauri", "resources", "BenchBear")
 DIST_DIR = os.path.join(ROOT_DIR, "dist", "windows-wiki")
 
 
@@ -33,9 +33,9 @@ def main():
         "--clean",
         "--onefile",
         "--name",
-        "kodiak-projectswiki",
+        "kodiak-benchbear",
         "--paths",
-        PROJECTS_WIKI_DIR,
+        BENCHBEAR_DIR,
         "--collect-all",
         "mkdocs",
         "--collect-all",
@@ -60,34 +60,34 @@ def main():
     ]
 
     print(f":: [Windows Build] Executing PyInstaller: {' '.join(cmd)}")
-    proc = subprocess.run(cmd, cwd=PROJECTS_WIKI_DIR)
+    proc = subprocess.run(cmd, cwd=BENCHBEAR_DIR)
     if proc.returncode != 0:
         print("[!] PyInstaller build failed!")
         return proc.returncode
 
-    built_exe = os.path.join(PROJECTS_WIKI_DIR, "dist", "kodiak-projectswiki.exe" if os.name == "nt" else "kodiak-projectswiki")
+    built_exe = os.path.join(BENCHBEAR_DIR, "dist", "kodiak-benchbear.exe" if os.name == "nt" else "kodiak-benchbear")
     if not os.path.exists(built_exe):
         # On non-Windows testing, might be without .exe extension
-        fallback = os.path.join(PROJECTS_WIKI_DIR, "dist", "kodiak-projectswiki")
+        fallback = os.path.join(BENCHBEAR_DIR, "dist", "kodiak-benchbear")
         if os.path.exists(fallback):
             built_exe = fallback
 
     if os.path.exists(built_exe):
-        dest_exe = os.path.join(OUTPUT_RESOURCE_DIR, "kodiak-projectswiki.exe")
+        dest_exe = os.path.join(OUTPUT_RESOURCE_DIR, "kodiak-benchbear.exe")
         shutil.copy2(built_exe, dest_exe)
-        shutil.copy2(built_exe, os.path.join(DIST_DIR, "kodiak-projectswiki.exe"))
+        shutil.copy2(built_exe, os.path.join(DIST_DIR, "kodiak-benchbear.exe"))
         print(f":: [Windows Build] Successfully staged: {dest_exe}")
 
     # Build BenchBear Rust Inventory & Barcode binary
     print(":: [Windows Build] Compiling BenchBear inventory & barcode binary...")
-    rust_cmd = ["cargo", "build", "--release", "--manifest-path", os.path.join(PROJECTS_WIKI_DIR, "Cargo.toml")]
+    rust_cmd = ["cargo", "build", "--release", "--manifest-path", os.path.join(BENCHBEAR_DIR, "Cargo.toml")]
     rust_proc = subprocess.run(rust_cmd, cwd=ROOT_DIR)
     if rust_proc.returncode != 0:
         print("[!] BenchBear Rust build failed!")
         return rust_proc.returncode
 
     benchbear_bin = os.path.join(
-        PROJECTS_WIKI_DIR,
+        BENCHBEAR_DIR,
         "target",
         "release",
         "benchbear.exe" if os.name == "nt" else "benchbear",
@@ -100,18 +100,18 @@ def main():
 
     # Copy template configs, docs, MCP wrapper, and assets
     for item in ["mkdocs.yml", "config.example.toml", "LICENSE"]:
-        src = os.path.join(PROJECTS_WIKI_DIR, item)
+        src = os.path.join(BENCHBEAR_DIR, item)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(OUTPUT_RESOURCE_DIR, item))
 
     mcp_dst = os.path.join(OUTPUT_RESOURCE_DIR, "mcp")
     os.makedirs(mcp_dst, exist_ok=True)
     for item in ["server.py", "README.md"]:
-        src = os.path.join(PROJECTS_WIKI_DIR, "mcp", item)
+        src = os.path.join(BENCHBEAR_DIR, "mcp", item)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(mcp_dst, item))
 
-    docs_src = os.path.join(PROJECTS_WIKI_DIR, "docs")
+    docs_src = os.path.join(BENCHBEAR_DIR, "docs")
     docs_dst = os.path.join(OUTPUT_RESOURCE_DIR, "docs")
     if os.path.exists(docs_src):
         if os.path.exists(docs_dst):
@@ -130,7 +130,7 @@ def main():
             if os.path.isfile(src_f):
                 shutil.copy2(src_f, os.path.join(docs_dst, fname))
 
-    print(":: [Windows Build] BenchBear companion bundle ready in src-tauri/resources/ProjectsWiki/.")
+    print(":: [Windows Build] BenchBear companion bundle ready in src-tauri/resources/BenchBear/.")
     return 0
 
 

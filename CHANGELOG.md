@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] — 2026-11-27
+
+### Changed
+
+- **Full BenchBear Migration (Removed Legacy ProjectsWiki Compatibility)**:
+  - Renamed `ProjectsWiki/` directory to `BenchBear/` and staged Windows bundle directory to `src-tauri/resources/BenchBear/`.
+  - Renamed Arch and Debian companion packages from `kodiak-projectswiki` to `kodiak-benchbear`, installing to `/usr/share/kodiak/benchbear`, providing `/usr/bin/benchbear-wiki` and `/usr/bin/wiki`, and shipping `/usr/lib/systemd/user/benchbear.service`.
+  - Standardized Windows NSIS installers and updater asset matching to `Kodiak_<ver>_x64-with-benchbear-setup.exe` (`kodiak-benchbear.exe` + `benchbear.exe`) and `Kodiak_<ver>_x64-without-benchbear-setup.exe`.
+  - Updated `src-tauri/src/config.rs`, `dashboard.rs`, `pipeline.rs`, `updater.rs`, `src/main.ts`, `BenchBear/wiki_config.py`, `wiki_server.py`, `sync_api.py`, `wiki.sh`, `src/config.rs`, and docs to use BenchBear paths (`~/.config/benchbear/wiki.toml`, `~/.local/share/kodiak/benchbear-data/`, `benchbear.localhost`, `benchbear.service`) without legacy fallbacks.
+
+### Fixed
+
+- **Ultrawide Layout & Table Overflow (`BenchBear/docs/extra.css`, `BenchBear/src/ui_page.html`)**:
+  - Widened `.md-grid` for ultra-wide monitors and embedded Inventory Hub views, enabled `.md-tabs__list` and `.bb-inline-actions` flex wrapping so top tabs and table action buttons stay visible without horizontal scrolling.
+- **No-Full-Refresh Inventory CRUD (`BenchBear/src/export.rs`, `BenchBear/src/web.rs`, `BenchBear/src/ui_page.html`, `BenchBear/docs/extra.js`)**:
+  - Split `export::sync_portable` (writing `data/snapshot.json` and `inventory/*.md`) from `export::sync_all` so deleting, adding, or adjusting inventory parts no longer touches `docs/inventory/*.md` or triggers a ~1s MkDocs LiveReload full-page refresh; removed items disappear immediately from the table.
+- **Dark-Theme `<select>` Dropdown Styling (`BenchBear/src/ui_page.html`, `BenchBear/docs/extra.css`, `src/theme.css`)**:
+  - Applied `color-scheme: dark`, `appearance: none` with SVG chevrons, and dark `<option>` colors so `<select>` dropdowns in WebKitGTK render legibly with the dark theme.
+
 ## [1.3.0] — 2026-11-27
 
 ### Added

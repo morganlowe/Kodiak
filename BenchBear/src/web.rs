@@ -206,7 +206,7 @@ async fn create_part_handler(
             }
         }
     }
-    let _ = export::sync_all(&st.db, &st.cfg);
+    let _ = export::sync_portable(&st.db, &st.cfg);
     Ok(Json(part))
 }
 
@@ -248,7 +248,7 @@ async fn update_part_handler(
             }
         }
     }
-    let _ = export::sync_all(&st.db, &st.cfg);
+    let _ = export::sync_portable(&st.db, &st.cfg);
     Ok(Json(part))
 }
 
@@ -263,7 +263,7 @@ async fn delete_part_handler(
     if !deleted {
         return Err(err_resp(StatusCode::NOT_FOUND, format!("SKU not found: {}", sku)));
     }
-    let _ = export::sync_all(&st.db, &st.cfg);
+    let _ = export::sync_portable(&st.db, &st.cfg);
     Ok(Json(serde_json::json!({ "deleted": true, "sku": sku })))
 }
 
@@ -276,7 +276,7 @@ async fn adjust_stock_handler(
         .db
         .adjust_stock(&sku, &req)
         .map_err(|e| err_resp(StatusCode::BAD_REQUEST, e.to_string()))?;
-    let _ = export::sync_all(&st.db, &st.cfg);
+    let _ = export::sync_portable(&st.db, &st.cfg);
     Ok(Json(part))
 }
 
@@ -289,7 +289,7 @@ async fn move_part_handler(
         .db
         .move_part(&sku, &req)
         .map_err(|e| err_resp(StatusCode::BAD_REQUEST, e.to_string()))?;
-    let _ = export::sync_all(&st.db, &st.cfg);
+    let _ = export::sync_portable(&st.db, &st.cfg);
     Ok(Json(part))
 }
 
@@ -302,7 +302,7 @@ async fn add_part_supplier_handler(
         .db
         .add_part_supplier(&sku, &req)
         .map_err(|e| err_resp(StatusCode::BAD_REQUEST, e.to_string()))?;
-    let _ = export::sync_all(&st.db, &st.cfg);
+    let _ = export::sync_portable(&st.db, &st.cfg);
     Ok(Json(rows))
 }
 
@@ -314,7 +314,7 @@ async fn delete_part_supplier_handler(
         .db
         .delete_part_supplier(&sku, ps_id)
         .map_err(|e| err_resp(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let _ = export::sync_all(&st.db, &st.cfg);
+    let _ = export::sync_portable(&st.db, &st.cfg);
     Ok(Json(serde_json::json!({ "deleted": ok })))
 }
 
@@ -336,7 +336,7 @@ async fn upsert_location_handler(
         .db
         .upsert_location(&req)
         .map_err(|e| err_resp(StatusCode::BAD_REQUEST, e.to_string()))?;
-    let _ = export::sync_all(&st.db, &st.cfg);
+    let _ = export::sync_portable(&st.db, &st.cfg);
     Ok(Json(loc))
 }
 
@@ -352,7 +352,7 @@ async fn update_location_handler(
         .db
         .upsert_location(&req)
         .map_err(|e| err_resp(StatusCode::BAD_REQUEST, e.to_string()))?;
-    let _ = export::sync_all(&st.db, &st.cfg);
+    let _ = export::sync_portable(&st.db, &st.cfg);
     Ok(Json(loc))
 }
 
@@ -364,7 +364,7 @@ async fn delete_location_handler(
         .db
         .delete_location(&code)
         .map_err(|e| err_resp(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let _ = export::sync_all(&st.db, &st.cfg);
+    let _ = export::sync_portable(&st.db, &st.cfg);
     Ok(Json(serde_json::json!({ "deleted": ok })))
 }
 
@@ -397,7 +397,7 @@ async fn upsert_supplier_handler(
         .db
         .upsert_supplier(&req)
         .map_err(|e| err_resp(StatusCode::BAD_REQUEST, e.to_string()))?;
-    let _ = export::sync_all(&st.db, &st.cfg);
+    let _ = export::sync_portable(&st.db, &st.cfg);
     Ok(Json(row))
 }
 
@@ -410,7 +410,7 @@ async fn update_supplier_handler(
         .db
         .update_supplier(id, &req)
         .map_err(|e| err_resp(StatusCode::BAD_REQUEST, e.to_string()))?;
-    let _ = export::sync_all(&st.db, &st.cfg);
+    let _ = export::sync_portable(&st.db, &st.cfg);
     Ok(Json(row))
 }
 
@@ -422,7 +422,7 @@ async fn delete_supplier_handler(
         .db
         .delete_supplier(id)
         .map_err(|e| err_resp(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let _ = export::sync_all(&st.db, &st.cfg);
+    let _ = export::sync_portable(&st.db, &st.cfg);
     Ok(Json(serde_json::json!({ "deleted": ok })))
 }
 
@@ -442,7 +442,7 @@ async fn upsert_bom_handler(
         .db
         .upsert_bom(&req)
         .map_err(|e| err_resp(StatusCode::BAD_REQUEST, e.to_string()))?;
-    let _ = export::sync_all(&st.db, &st.cfg);
+    let _ = export::sync_portable(&st.db, &st.cfg);
     Ok(Json(bom))
 }
 
@@ -455,7 +455,7 @@ async fn deduct_bom_handler(
         .db
         .deduct_bom(&slug, &req)
         .map_err(|e| err_resp(StatusCode::BAD_REQUEST, e.to_string()))?;
-    let _ = export::sync_all(&st.db, &st.cfg);
+    let _ = export::sync_portable(&st.db, &st.cfg);
     Ok(Json(bom))
 }
 
@@ -1065,7 +1065,7 @@ async fn upload_part_image_handler(
         .db
         .set_part_image(&sku, &kind, &filename)
         .map_err(|e| err_resp(StatusCode::BAD_REQUEST, e.to_string()))?;
-    let _ = export::sync_all(&st.db, &st.cfg);
+    let _ = export::sync_portable(&st.db, &st.cfg);
     Ok(Json(part))
 }
 

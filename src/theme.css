@@ -1,6 +1,6 @@
 /* ==========================================================================
    Kodiak Single Source-of-Truth Theme Stylesheet (src/theme.css)
-   Derived directly from ~/Nextcloud/ProjectsWiki/docs/extra.css
+   Derived directly from BenchBear/docs/extra.css
    No hardcoded hex colors are permitted outside this file.
    ========================================================================== */
 
@@ -15,7 +15,7 @@
     color-scheme: light;
   }
 
-  /* Core Wiki Custom Properties (from ProjectsWiki/docs/extra.css) */
+  /* Core Wiki Custom Properties (from BenchBear/docs/extra.css) */
   --wiki-accent: #ff6e40;
   --wiki-accent-hover: #ff8a65;
   --wiki-accent-soft: rgba(255, 110, 64, 0.14);
@@ -38,7 +38,7 @@
   --md-text-font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   --md-code-font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
-  /* Status & Diff Tokens (aligned with ProjectsWiki boot-dot & Material slate) */
+  /* Status & Diff Tokens (aligned with BenchBear boot-dot & Material slate) */
   --status-ok: #22c55e;
   --status-ok-border: rgba(34, 197, 94, 0.55);
   --status-ok-soft: rgba(34, 197, 94, 0.14);
@@ -436,6 +436,23 @@ body {
   min-block-size: 5.5rem;
   resize: vertical;
   line-height: 1.45;
+}
+
+.form-select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 2rem;
+  background-color: var(--wiki-surface-elevated);
+  color: var(--md-default-fg-color);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='%239aa0aa' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  cursor: pointer;
+}
+
+.form-select option {
+  background: var(--wiki-surface-elevated);
+  color: var(--md-default-fg-color);
 }
 
 .form-input:focus,

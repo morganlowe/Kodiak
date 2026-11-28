@@ -6,7 +6,7 @@
 
   **Autonomous Desktop Orchestrator & Local-First AI Development Partner for Linux & Windows**
 
-  [![Version: v1.3.0](https://img.shields.io/badge/Version-v1.3.0-success.svg)](https://github.com/morganlowe/Kodiak/releases)
+  [![Version: v1.3.1](https://img.shields.io/badge/Version-v1.3.1-success.svg)](https://github.com/morganlowe/Kodiak/releases)
   [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
   [![Platform: Linux | Windows | Arch | Debian](https://img.shields.io/badge/Platform-Linux_%7C_Windows_%7C_Arch_%7C_Debian-orange.svg)](#prebuilt-packages)
   [![Tech: Rust | Tauri v2 | TypeScript](https://img.shields.io/badge/Stack-Rust_%7C_Tauri_v2_%7C_TypeScript-red.svg)](#system-architecture)
@@ -16,7 +16,7 @@
 
   ---
 
-  [Why Kodiak](#why-kodiak) · [Security Model](#the-four-charter-security-model) · [Architecture](#system-architecture) · [Features](#feature-highlights) · [Packages](#prebuilt-packages) · [Quick Start](#quick-start-from-source) · [BenchBear](#benchbear-companion-kodiak-projectswiki) · [Config](#configuration-reference) · [FAQ](#faq)
+  [Why Kodiak](#why-kodiak) · [Security Model](#the-four-charter-security-model) · [Architecture](#system-architecture) · [Features](#feature-highlights) · [Packages](#prebuilt-packages) · [Quick Start](#quick-start-from-source) · [BenchBear](#benchbear-companion-kodiak-benchbear) · [Config](#configuration-reference) · [FAQ](#faq)
 </div>
 
 ---
@@ -42,7 +42,7 @@ Kodiak enforces four strict, non-negotiable principles:
 * **§ 1. Your Files Stay Home (Local-First Isolation):** Kodiak touches nothing outside explicitly whitelisted project directories. Cloud synthesis is strictly isolated to sanitized architectural plans and metadata. Local models (`local-delegation_local-ollama` running `llama3.2:3b` and `qwen2.5-coder:7b`/`14b`) handle raw file inspection, register maps, compiler output parsing, and unified diff reviews at zero cloud token cost.
 * **§ 2. Nothing Happens Without You (Human Authority):** File writes, command executions, and deletions require explicit human consent or must match strict, downward-only grant levels (`READ`, `CREATE`, `BUILD`, `AUTONOMOUS`). An unbypassable hard deny-list protects root system directories, SSH keys, cloud credentials, `.env` secrets, shell profiles, and `.git/` history — even in `AUTONOMOUS` mode.
 * **§ 3. Standby Failover & Automated Cascade:** Kodiak uses **Proton Lumo** (via the local `lumo-tamer` bridge) as its primary zero-access cloud reasoning engine. When cloud quotas are exhausted or rate limits (`429`/`503`) hit, Kodiak never crashes or loses state. It either executes an opt-in **Automated Failover Cascade** across configured standby OpenAI-compatible endpoints ([Google Gemini](https://aistudio.google.com/), [Groq](https://groq.com/), [OpenRouter](https://openrouter.ai/)) or presents interactive **Choice Cards** to pivot to local Ollama execution.
-* **§ 4. BenchBear Project Wiki & Inventory (`kodiak-projectswiki`):** An optional, loosely coupled companion subsystem that pairs **[MkDocs Material](https://squidfunk.github.io/mkdocs-material/)** project documentation (`http://benchbear.localhost:8000` / `http://127.0.0.1:8000`) with the integrated **[BenchBear](https://github.com/morganlowe/BenchBear)** Rust inventory, storage bin, supplier, cost, BOM, and 1D/2D thermal barcode engine (`http://127.0.0.1:8090`).
+* **§ 4. BenchBear Project Wiki & Inventory (`kodiak-benchbear`):** An optional, loosely coupled companion subsystem that pairs **[MkDocs Material](https://squidfunk.github.io/mkdocs-material/)** project documentation (`http://benchbear.localhost:8000` / `http://127.0.0.1:8000`) with the integrated **[BenchBear](https://github.com/morganlowe/BenchBear)** Rust inventory, storage bin, supplier, cost, BOM, and 1D/2D thermal barcode engine (`http://127.0.0.1:8090`).
 
 ---
 
@@ -98,7 +98,7 @@ Permissions are configured per whitelisted directory and never escalate without 
 
 ### BenchBear Inventory, Locations, Suppliers, Costs & Thermal Barcodes (v1.3.0)
 
-Integrated directly from **[BenchBear](https://github.com/morganlowe/BenchBear)** (`benchbear v1.0.0`) inside `ProjectsWiki/`:
+Integrated directly from **[BenchBear](https://github.com/morganlowe/BenchBear)** (`benchbear v1.0.0`) inside `BenchBear/`:
 
 * **Portable SQLite Inventory & Markdown Sync:** Stores parts, bins, suppliers, quotes, BOMs, and stock movements in `inventory.db` (`PRAGMA journal_mode = DELETE`, `PRAGMA synchronous = FULL` for clean Nextcloud/Syncthing sync), mirroring atomic `snapshot.json` exports and Markdown tables (`inventory/` and `docs/inventory/`).
 * **Storage Locations & Bins:** Structured bin records (`code`, `area`, `rack`, `drawer`, `BIN:<CODE>` barcodes) with per-bin SKU counts, unit totals, and valuation rollups.
@@ -106,7 +106,7 @@ Integrated directly from **[BenchBear](https://github.com/morganlowe/BenchBear)*
 * **URL Product Scraper & Photo/Pinout Picker:** Paste store URLs (Amazon, Adafruit, SparkFun, LCSC, DigiKey, etc.) to extract titles, specs, descriptions, canonical URLs, pack-divided unit costs (with a **Packs / Final Qty / Final Cost** calculator), and product gallery candidates with **Possible Pinout** hints and zoomable **Part Detail** modals.
 * **Project BOMs & Atomic Deduction:** Parses `` `SKU` xN `` lines from project Markdown or UI forms, tracks readiness/shortage costs, and deducts complete builds atomically.
 * **1D/2D Thermal Labels & Scanning:** Pure-Rust Code 128 and QR generation (`2x1`, `2.25x1.25`, Brother QL `ql62x29`/`ql62x42`, Phomemo sizes, and custom dimensions) in SVG, vector PDF, 203-DPI PNG, and driverless Phomemo ESC/POS `.phomemo` output, plus USB scanner, browser camera, photo upload, and DigiKey/Mouser/LCSC 2D bag resolution.
-* **18-Tool Stdio MCP Server:** Built-in `benchbear mcp` (and `ProjectsWiki/mcp/server.py` wrapper) exposing inventory, bin, supplier, valuation, reorder, BOM, label, and barcode scan tools to AI assistants.
+* **18-Tool Stdio MCP Server:** Built-in `benchbear mcp` (and `BenchBear/mcp/server.py` wrapper) exposing inventory, bin, supplier, valuation, reorder, BOM, label, and barcode scan tools to AI assistants.
 
 <details>
 <summary><strong>Standby Failover, Live Model Discovery & Memory Bank (Click to expand)</strong></summary>
@@ -143,20 +143,20 @@ Download ready-to-run binaries from the [**GitHub Releases**](https://github.com
 <summary><strong>Arch Linux & Derivatives (CachyOS, EndeavourOS, Manjaro)</strong></summary>
 <br />
 
-Kodiak provides a split `PKGBUILD` producing the desktop orchestrator (`/usr/bin/kodiak`) and the optional documentation hub (`kodiak-projectswiki`, installed to `/usr/share/kodiak/projectswiki/`).
+Kodiak provides a split `PKGBUILD` producing the desktop orchestrator (`/usr/bin/kodiak`) and the optional BenchBear companion (`kodiak-benchbear`, installed to `/usr/share/kodiak/benchbear/`).
 
 ```bash
-# Install both Core Orchestrator and BenchBear + BenchBear Inventory Engine
-sudo pacman -U kodiak-1.3.0-1-x86_64.pkg.tar.zst kodiak-projectswiki-1.3.0-1-x86_64.pkg.tar.zst
+# Install both Core Orchestrator and BenchBear Inventory & Wiki Companion
+sudo pacman -U kodiak-1.3.1-1-x86_64.pkg.tar.zst kodiak-benchbear-1.3.1-1-x86_64.pkg.tar.zst
 
 # Or install Core Orchestrator only
-sudo pacman -U kodiak-1.3.0-1-x86_64.pkg.tar.zst
+sudo pacman -U kodiak-1.3.1-1-x86_64.pkg.tar.zst
 ```
 
 To build and install directly from source via `makepkg` / `make`:
 
 ```bash
-git clone [https://github.com/morganlowe/Kodiak.git](https://github.com/morganlowe/Kodiak.git)
+git clone https://github.com/morganlowe/Kodiak.git
 cd Kodiak
 make install
 ```
@@ -170,8 +170,8 @@ make install
 Single standalone binary with zero dependencies — works on all modern Linux distributions:
 
 ```bash
-chmod +x Kodiak_1.3.0_amd64.AppImage
-./Kodiak_1.3.0_amd64.AppImage
+chmod +x Kodiak_1.3.1_amd64.AppImage
+./Kodiak_1.3.1_amd64.AppImage
 ```
 
 </details>
@@ -181,7 +181,7 @@ chmod +x Kodiak_1.3.0_amd64.AppImage
 <br />
 
 ```bash
-sudo dpkg -i dist/deb/kodiak_1.3.0-1_amd64.deb dist/deb/kodiak-projectswiki_1.3.0-1_amd64.deb
+sudo dpkg -i dist/deb/kodiak_1.3.1-1_amd64.deb dist/deb/kodiak-benchbear_1.3.1-1_amd64.deb
 sudo apt-get install -f
 ```
 
@@ -193,10 +193,10 @@ sudo apt-get install -f
 
 Two Windows NSIS installers are published on [GitHub Releases](https://github.com/morganlowe/Kodiak/releases):
 
-* **Full Bundle (With BenchBear & BenchBear):** **`Kodiak_1.3.0_x64-with-wiki-setup.exe`**
-  * Packages the **Kodiak** desktop orchestrator, the BenchBear project wiki runner (`kodiak-projectswiki.exe`), and the **[BenchBear](https://github.com/morganlowe/BenchBear)** inventory & barcode binary (`benchbear.exe`).
+* **Full Bundle (With BenchBear):** **`Kodiak_1.3.1_x64-with-benchbear-setup.exe`**
+  * Packages the **Kodiak** desktop orchestrator, the BenchBear project wiki runner (`kodiak-benchbear.exe`), and the **[BenchBear](https://github.com/morganlowe/BenchBear)** inventory & barcode binary (`benchbear.exe`).
   * Zero Python or pip setup required: includes an embedded MkDocs Material runtime, Sync API, SQLite inventory hub, and automated catalog generator.
-* **Core Orchestrator Only (Without BenchBear):** **`Kodiak_1.3.0_x64-without-wiki-setup.exe`**
+* **Core Orchestrator Only (Without BenchBear):** **`Kodiak_1.3.1_x64-without-benchbear-setup.exe`**
   * Smaller installer containing only the **Kodiak** desktop orchestrator without bundled **BenchBear** resources.
 
 **Windows Prerequisites:**
@@ -224,14 +224,14 @@ cargo tauri build --bundles nsis
 <summary><strong>Systemd User Service Integration (Linux Wiki Daemon)</strong></summary>
 <br />
 
-`kodiak-projectswiki` ships an opt-in systemd user unit at `/usr/lib/systemd/user/kodiak-projectswiki.service`. Start it via the Kodiak UI or manually from your terminal:
+`kodiak-benchbear` ships an opt-in systemd user unit at `/usr/lib/systemd/user/benchbear.service`. Start it via the Kodiak UI or manually from your terminal:
 
 ```bash
 systemctl --user daemon-reload
-systemctl --user start kodiak-projectswiki.service
+systemctl --user start benchbear.service
 
 # Optional: Enable automatically at login
-systemctl --user enable --now kodiak-projectswiki.service
+systemctl --user enable --now benchbear.service
 ```
 
 </details>
@@ -271,15 +271,15 @@ The compiled binary is output to `src-tauri/target/release/kodiak`. A default co
 
 ---
 
-## BenchBear Companion (`kodiak-projectswiki`)
+## BenchBear Companion (`kodiak-benchbear`)
 
 ![BenchBear logo](docs/benchbear-logo.png)
 
 ![Kodiak BenchBear Interface](docs/screenshots/wiki.png)
 
-For makers, embedded engineers, and polyglot developers, project catalogs fragment quickly across Git repositories, datasheets, parts bins, and BOM spreadsheets. **BenchBear** is an optional, 100% local companion subsystem (packaged as `kodiak-projectswiki`) that monitors your project directories, indexes schematics/manuals, uses local Ollama models to generate standardized documentation, and embeds the standalone **[BenchBear](https://github.com/morganlowe/BenchBear)** Rust inventory, storage bin, supplier, cost, BOM, and thermal barcode engine.
+For makers, embedded engineers, and polyglot developers, project catalogs fragment quickly across Git repositories, datasheets, parts bins, and BOM spreadsheets. **BenchBear** is an optional, 100% local companion subsystem (packaged as `kodiak-benchbear`) that monitors your project directories, indexes schematics/manuals, uses local Ollama models to generate standardized documentation, and embeds the standalone **[BenchBear](https://github.com/morganlowe/BenchBear)** Rust inventory, storage bin, supplier, cost, BOM, and thermal barcode engine.
 
-> **Standalone Project:** The inventory, locations, suppliers, costs, BOM, and barcode label engine is developed in **[github.com/morganlowe/BenchBear](https://github.com/morganlowe/BenchBear)** and synced directly into Kodiak's `ProjectsWiki/` subsystem.
+> **Standalone Project:** The inventory, locations, suppliers, costs, BOM, and barcode label engine is developed in **[github.com/morganlowe/BenchBear](https://github.com/morganlowe/BenchBear)** and synced directly into Kodiak's `BenchBear/` subsystem.
 
 ### BenchBear Operations
 
@@ -291,7 +291,7 @@ For makers, embedded engineers, and polyglot developers, project catalogs fragme
 | Index PDFs & schematics | `Rebuild Assets` | `wiki.sh rebuild` |
 | Generate docs via AI | `AI Build Doc` | `python build_wiki.py --project <name>` |
 | Generate thermal barcode labels | Label Studio in Inventory Hub | `wiki.sh labels --kind part --id <SKU> --out label.pdf` |
-| Run BenchBear MCP stdio server | — | `benchbear mcp` (or `ProjectsWiki/mcp/server.py`) |
+| Run BenchBear MCP stdio server | — | `benchbear mcp` (or `BenchBear/mcp/server.py`) |
 | Stop wiki & inventory services | `Stop` | `wiki.sh stop` |
 | Open in system browser | `External` / `Hub :8090` | `xdg-open http://benchbear.localhost:8000` |
 
@@ -337,9 +337,9 @@ For makers, embedded engineers, and polyglot developers, project catalogs fragme
 5. **Local AI Documentation Generator (`build_wiki.py`):** Feeds directory structures, code comments, and README excerpts to local Ollama (`qwen2.5-coder:7b`) to generate standardized engineering docs.
 
 #### Integration & Security Boundaries
-* **Strictly Optional:** Install `kodiak` standalone without `kodiak-projectswiki`; the Wiki tab hides cleanly when absent.
+* **Strictly Optional:** Install `kodiak` standalone without `kodiak-benchbear`; the BenchBear tab hides cleanly when absent.
 * **Zero-Sudo Hostname (`benchbear.localhost`):** Mapping `127.0.0.1 benchbear.localhost` in `/etc/hosts` happens only with explicit consent; otherwise falls back to `http://127.0.0.1:8000`.
-* **Writable User Data Fallback:** Packaged installs under `/usr/share/kodiak/projectswiki/` automatically store SQLite inventory data and snapshots in `~/.local/share/kodiak/projectswiki-data/` (or `%LOCALAPPDATA%\kodiak\projectswiki-data` on Windows) unless overridden by `data_dir` in `wiki.toml`.
+* **Writable User Data Fallback:** Packaged installs under `/usr/share/kodiak/benchbear/` automatically store SQLite inventory data and snapshots in `~/.local/share/kodiak/benchbear-data/` (or `%LOCALAPPDATA%\kodiak\benchbear-data` on Windows) unless overridden by `data_dir` in `wiki.toml`.
 
 </details>
 
@@ -384,7 +384,7 @@ Kodiak generates default configuration files on first launch. Expand the section
 <br />
 
 ```toml
-# Kodiak v1.3.0 Core Orchestrator Configuration
+# Kodiak v1.3.1 Core Orchestrator Configuration
 
 [general]
 theme = "kodiak-dark"
@@ -503,18 +503,17 @@ hard_deny_patterns = [
 </details>
 
 <details>
-<summary><strong>2. BenchBear — <code>~/.config/kodiak/wiki.toml</code> (Click to expand)</strong></summary>
+<summary><strong>2. BenchBear — <code>~/.config/benchbear/wiki.toml</code> (Click to expand)</strong></summary>
 <br />
 
-BenchBear’s wiki and inventory subsystem reads configuration from `~/.config/benchbear/wiki.toml`, `./wiki.toml`, `~/.config/projects-parts-wiki/wiki.toml`, or `~/.config/kodiak/wiki.toml`, and preserves manual metadata edits in `project_overrides.json`.
+BenchBear’s wiki and inventory subsystem reads configuration from `~/.config/benchbear/wiki.toml` or `./wiki.toml`, and preserves manual metadata edits in `~/.config/benchbear/project_overrides.json`.
 
 ```toml
-# Kodiak BenchBear Configuration
-# Compatible with both ~/.config/kodiak/wiki.toml and ~/.config/benchbear/wiki.toml
+# Kodiak BenchBear Configuration (~/.config/benchbear/wiki.toml)
 
 site_name = "BenchBear"
 projects_dir = "~/Nextcloud/Projects"
-data_dir = "~/.local/share/kodiak/projectswiki-data"
+data_dir = "~/.local/share/kodiak/benchbear-data"
 site_domain = "benchbear.localhost"              # Zero-sudo fallback to 127.0.0.1:8000 if unmapped in /etc/hosts
 
 ollama_url = "http://127.0.0.1:11434"
@@ -526,7 +525,7 @@ port_inventory = 8090                   # BenchBear Rust Inventory & Barcode Hub
 
 default_currency = "USD"
 default_label_preset = "2x1"            # 2x1 | 2.25x1.25 | ql62x29 | ql62x42
-overrides_file = "~/.config/kodiak/project_overrides.json"
+overrides_file = "~/.config/benchbear/project_overrides.json"
 ```
 
 </details>

@@ -102,7 +102,7 @@ pub struct WikiSetupPayload {
     pub start_now: bool,
 }
 
-/// Probes Lumo bridge (`GET /v1/models`), Ollama (`GET /api/tags`), and ProjectsWiki (`127.0.0.1:80` / `:8000`).
+/// Probes Lumo bridge (`GET /v1/models`), Ollama (`GET /api/tags`), and BenchBear (`127.0.0.1:80` / `:8000`).
 pub async fn check_system_health(cfg: &AppConfig) -> HealthStatus {
     let client = Client::builder()
         .no_proxy()
@@ -182,7 +182,7 @@ pub async fn check_system_health(cfg: &AppConfig) -> HealthStatus {
         }
     }
 
-    // 4. ProjectsWiki probe (`127.0.0.1:8000` or `127.0.0.1:80` per wiki.sh)
+    // 4. BenchBear probe (`127.0.0.1:8000` or `127.0.0.1:80` per wiki.sh)
     let mut wiki_reachable = false;
     let mut wiki_url = None;
     if cfg.wiki_enabled {
@@ -485,16 +485,16 @@ pub fn resolve_python_cmd() -> &'static str {
     }
 }
 
-/// Starts the ProjectsWiki server via standalone `kodiak-projectswiki.exe`, systemd user service,
+/// Starts the BenchBear server via standalone `kodiak-benchbear.exe`, systemd user service,
 /// `<wiki_dir>/wiki_server.py serve`, or `<wiki_dir>/wiki.sh start`, then polls until reachable.
 pub async fn start_wiki_service(cfg: &AppConfig) -> Result<HealthStatus, String> {
     let wiki_dir = resolve_wiki_dir(cfg);
     let projects_dir = resolve_projects_dir(cfg);
-    let wiki_exe = wiki_dir.join("kodiak-projectswiki.exe");
+    let wiki_exe = wiki_dir.join("kodiak-benchbear.exe");
     let wiki_server_py = wiki_dir.join("wiki_server.py");
     let wiki_sh = wiki_dir.join("wiki.sh");
     let home_unit = dirs::config_dir()
-        .map(|d| d.join("systemd/user/projects-wiki.service"))
+        .map(|d| d.join("systemd/user/benchbear.service"))
         .unwrap_or_default();
 
     #[cfg(windows)]
@@ -531,7 +531,7 @@ pub async fn start_wiki_service(cfg: &AppConfig) -> Result<HealthStatus, String>
     {
         if home_unit.exists() {
             let _ = Command::new("systemctl")
-                .args(["--user", "start", "projects-wiki.service"])
+                .args(["--user", "start", "benchbear.service"])
                 .output();
         } else if wiki_exe.exists() {
             let mut cmd = Command::new(&wiki_exe);
@@ -556,7 +556,7 @@ pub async fn start_wiki_service(cfg: &AppConfig) -> Result<HealthStatus, String>
             let _ = cmd.spawn().map_err(|e| format!("Failed to spawn wiki_server.py: {e}"))?;
         } else {
             return Err(format!(
-                "Neither ~/.config/systemd/user/projects-wiki.service nor {} was found in {}.",
+                "Neither ~/.config/systemd/user/benchbear.service nor {} was found in {}.",
                 wiki_sh.display(),
                 wiki_dir.display()
             ));
@@ -574,13 +574,13 @@ pub async fn start_wiki_service(cfg: &AppConfig) -> Result<HealthStatus, String>
     Err("Wiki start command invoked, but neither 127.0.0.1:80 nor 127.0.0.1:8000 became reachable within 8 seconds.".to_string())
 }
 
-/// Stops the ProjectsWiki server via standalone `kodiak-projectswiki.exe`, systemctl, or `wiki.sh stop`.
+/// Stops the BenchBear server via standalone `kodiak-benchbear.exe`, systemctl, or `wiki.sh stop`.
 pub async fn stop_wiki_service(cfg: &AppConfig) -> Result<HealthStatus, String> {
     let wiki_dir = resolve_wiki_dir(cfg);
     let wiki_server_py = wiki_dir.join("wiki_server.py");
     let wiki_sh = wiki_dir.join("wiki.sh");
     let home_unit = dirs::config_dir()
-        .map(|d| d.join("systemd/user/projects-wiki.service"))
+        .map(|d| d.join("systemd/user/benchbear.service"))
         .unwrap_or_default();
 
     #[cfg(windows)]
@@ -588,7 +588,7 @@ pub async fn stop_wiki_service(cfg: &AppConfig) -> Result<HealthStatus, String> 
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         let _ = Command::new("taskkill")
-            .args(["/F", "/IM", "kodiak-projectswiki.exe", "/T"])
+            .args(["/F", "/IM", "kodiak-benchbear.exe", "/T"])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
         let _ = Command::new("taskkill")
@@ -608,7 +608,7 @@ pub async fn stop_wiki_service(cfg: &AppConfig) -> Result<HealthStatus, String> 
     {
         if home_unit.exists() {
             let _ = Command::new("systemctl")
-                .args(["--user", "stop", "projects-wiki.service"])
+                .args(["--user", "stop", "benchbear.service"])
                 .output();
         }
         if wiki_sh.exists() {
@@ -630,7 +630,7 @@ pub async fn stop_wiki_service(cfg: &AppConfig) -> Result<HealthStatus, String> 
     Ok(check_system_health(cfg).await)
 }
 
-/// Restarts the ProjectsWiki server.
+/// Restarts the BenchBear server.
 pub async fn restart_wiki_service(cfg: &AppConfig) -> Result<HealthStatus, String> {
     let _ = stop_wiki_service(cfg).await;
     tokio::time::sleep(Duration::from_millis(600)).await;
@@ -641,7 +641,7 @@ pub async fn restart_wiki_service(cfg: &AppConfig) -> Result<HealthStatus, Strin
 pub async fn sync_wiki_catalog_service(cfg: &AppConfig) -> Result<String, String> {
     let wiki_dir = resolve_wiki_dir(cfg);
     let projects_dir = resolve_projects_dir(cfg);
-    let wiki_exe = wiki_dir.join("kodiak-projectswiki.exe");
+    let wiki_exe = wiki_dir.join("kodiak-benchbear.exe");
     let wiki_server_py = wiki_dir.join("wiki_server.py");
     let make_wiki = wiki_dir.join("make_wiki.py");
 
@@ -658,7 +658,7 @@ pub async fn sync_wiki_catalog_service(cfg: &AppConfig) -> Result<String, String
         c.arg(&make_wiki);
         c
     } else {
-        return Err(format!("Neither kodiak-projectswiki.exe nor make_wiki.py found in {}", wiki_dir.display()));
+        return Err(format!("Neither kodiak-benchbear.exe nor make_wiki.py found in {}", wiki_dir.display()));
     };
 
     #[cfg(windows)]
@@ -684,7 +684,7 @@ pub async fn sync_wiki_catalog_service(cfg: &AppConfig) -> Result<String, String
 pub async fn rebuild_wiki_assets_service(cfg: &AppConfig) -> Result<String, String> {
     let wiki_dir = resolve_wiki_dir(cfg);
     let projects_dir = resolve_projects_dir(cfg);
-    let wiki_exe = wiki_dir.join("kodiak-projectswiki.exe");
+    let wiki_exe = wiki_dir.join("kodiak-benchbear.exe");
     let wiki_server_py = wiki_dir.join("wiki_server.py");
     let rebuild_py = wiki_dir.join("rebuild_accurate_docs.py");
 
@@ -734,7 +734,7 @@ pub async fn ai_build_wiki_project_service(
 ) -> Result<String, String> {
     let wiki_dir = resolve_wiki_dir(cfg);
     let projects_dir = resolve_projects_dir(cfg);
-    let wiki_exe = wiki_dir.join("kodiak-projectswiki.exe");
+    let wiki_exe = wiki_dir.join("kodiak-benchbear.exe");
     let wiki_server_py = wiki_dir.join("wiki_server.py");
     let build_py = wiki_dir.join("build_wiki.py");
 
@@ -781,7 +781,7 @@ pub async fn ai_build_wiki_project_service(
     Ok(stdout)
 }
 
-/// Returns detailed status of the ProjectsWiki including doc counts, catalog items, and API reachability.
+/// Returns detailed status of BenchBear including doc counts, catalog items, and API reachability.
 pub async fn get_detailed_wiki_status(cfg: &AppConfig) -> Result<WikiStatusDetails, String> {
     let health = check_system_health(cfg).await;
     let client = Client::builder()
@@ -1369,17 +1369,17 @@ pub async fn get_wiki_setup_info_service(cfg: &AppConfig) -> Result<WikiSetupInf
         (cfg.wiki_enabled, false)
     } else {
         let home_unit = dirs::config_dir()
-            .map(|d| d.join("systemd/user/projects-wiki.service"))
+            .map(|d| d.join("systemd/user/benchbear.service"))
             .unwrap_or_default();
         let s_enabled = home_unit.exists() && {
             Command::new("systemctl")
-                .args(["--user", "is-enabled", "projects-wiki.service"])
+                .args(["--user", "is-enabled", "benchbear.service"])
                 .output()
                 .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "enabled")
                 .unwrap_or(false)
         };
         let s_active = Command::new("systemctl")
-            .args(["--user", "is-active", "projects-wiki.service"])
+            .args(["--user", "is-active", "benchbear.service"])
             .output()
             .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "active")
             .unwrap_or(false);
@@ -1446,7 +1446,7 @@ pub async fn complete_wiki_setup_service(
             let wiki_dir = resolve_wiki_dir(cfg);
             let wiki_sh = wiki_dir.join("wiki.sh");
             if let Some(config_dir) = dirs::config_dir() {
-                let service_path = config_dir.join("systemd/user/projects-wiki.service");
+                let service_path = config_dir.join("systemd/user/benchbear.service");
                 let unit = format!(
                     "[Unit]\nDescription=BenchBear Local Server (http://benchbear.localhost)\nAfter=network.target\n\n\
                     [Service]\nType=simple\nWorkingDirectory={}\nExecStart={} daemon\nRestart=on-failure\nRestartSec=3\n\n\
@@ -1459,7 +1459,7 @@ pub async fn complete_wiki_setup_service(
                 }
                 let _ = std::fs::write(&service_path, unit);
                 let _ = Command::new("systemctl").args(["--user", "daemon-reload"]).output();
-                let _ = Command::new("systemctl").args(["--user", "enable", "projects-wiki.service"]).output();
+                let _ = Command::new("systemctl").args(["--user", "enable", "benchbear.service"]).output();
             }
         }
 

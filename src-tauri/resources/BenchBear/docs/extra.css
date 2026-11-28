@@ -203,6 +203,7 @@ html[lang],
 
 .md-tabs__list {
   display: flex !important;
+  flex-wrap: wrap !important;
   align-items: center !important;
   height: auto !important;
 }
@@ -235,7 +236,15 @@ html[lang],
 
 /* Wider desktop container & readable sidebar nav */
 .md-grid {
-  max-width: 92rem !important;
+  max-width: min(98vw, 156rem) !important;
+}
+
+.md-grid:has(#inventory-hub-frame) {
+  max-width: 100% !important;
+}
+
+.md-content__inner:has(#inventory-hub-frame) {
+  margin-inline: 0.4rem !important;
 }
 
 .md-nav {
@@ -305,9 +314,16 @@ html[lang],
 }
 
 .explorer-select {
+  -webkit-appearance: none;
+  appearance: none;
   padding-block: 0.5rem !important;
-  padding-inline: 0.75rem !important;
+  padding-inline: 0.75rem 2rem !important;
   font-size: 0.86rem !important;
+  background-color: var(--wiki-surface-elevated) !important;
+  color: var(--md-default-fg-color) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='%239aa0aa' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 0.65rem center !important;
 }
 
 .view-toggle-btn {
@@ -420,17 +436,17 @@ body {
 }
 
 .md-typeset table:not([class]) th {
-  font-size: 0.84rem !important;
+  font-size: 0.82rem !important;
   font-weight: 700 !important;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   background-color: #26282c !important;
   color: #c2c6d0 !important;
-  padding: 0.72rem 0.95rem !important;
+  padding: 0.62rem 0.72rem !important;
 }
 
 .md-typeset table:not([class]) td {
-  padding: 0.72rem 0.95rem !important;
+  padding: 0.62rem 0.72rem !important;
   border-top: 1px solid rgba(140, 145, 155, 0.16) !important;
   vertical-align: middle !important;
 }
@@ -1144,6 +1160,25 @@ body {
   resize: vertical;
 }
 
+.tune-select,
+.bb-field select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-inline-end: 2rem;
+  background-color: var(--wiki-surface-elevated);
+  color: var(--md-default-fg-color);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='%239aa0aa' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  cursor: pointer;
+}
+
+.tune-select option,
+.bb-field select option {
+  background: #171a21;
+  color: #e8e6e3;
+}
+
 .tune-input:focus,
 .tune-select:focus,
 .tune-textarea:focus {
@@ -1252,7 +1287,7 @@ body {
 
 .bb-inline-actions {
   display: inline-flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 0.3rem;
   align-items: center;
 }

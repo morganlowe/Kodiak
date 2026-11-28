@@ -4,7 +4,7 @@ A sample hardware documentation page illustrating schematics, pinouts, component
 
 ## Overview
 
-This is a demonstration project template rendered by Kodiak ProjectsWiki. When you run `wiki sync` or use the Kodiak Setup Wizard, this catalog automatically indexes your local project folders and synthesizes documentation using your local AI model.
+This is a demonstration project template rendered by Kodiak BenchBear. When you run `wiki sync` or use the Kodiak Setup Wizard, this catalog automatically indexes your local project folders and synthesizes documentation using your local AI model.
 
 ## Specifications
 
