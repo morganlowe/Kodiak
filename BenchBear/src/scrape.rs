@@ -67,6 +67,91 @@ fn is_private_or_loopback_ip(ip: IpAddr) -> bool {
     }
 }
 
+fn populate_draft_from_html_response(
+    draft: &mut ProductUrlDraft,
+    status_code: u16,
+    html: &str,
+    from_paste: bool,
+) {
+    if is_antibot_or_captcha(status_code, html) {
+        draft.blocked = true;
+        draft.warning = if from_paste {
+            format!(
+                "The pasted HTML appears to be a CAPTCHA or bot-check page from {}. Complete any verification in your browser first, then press Ctrl+U, Ctrl+A, Ctrl+C on the loaded product page and paste again.",
+                if draft.supplier_name.is_empty() { "the store" } else { &draft.supplier_name }
+            )
+        } else {
+            format!(
+                "{} returned an anti-bot/CAPTCHA page (HTTP {}). Open the URL in your browser, press Ctrl+U -> Ctrl+A -> Ctrl+C to copy page source, and paste it below (or enter Part Name manually).",
+                if draft.supplier_name.is_empty() { "The store" } else { &draft.supplier_name },
+                status_code
+            )
+        };
+        return;
+    }
+
+    if !(200..300).contains(&status_code) {
+        draft.blocked = true;
+        draft.warning = format!(
+            "Store returned HTTP {}; paste page source from your browser below or finish the fields manually.",
+            status_code
+        );
+        return;
+    }
+
+    enrich_draft_from_html(draft, html);
+    let html_extracted = !draft.spec.trim().is_empty()
+        || !draft.description.trim().is_empty()
+        || draft.unit_cost > 0.0
+        || !draft.images.is_empty()
+        || !draft.mpn.trim().is_empty()
+        || !draft.datasheet_url.trim().is_empty();
+    if !html_extracted {
+        draft.blocked = true;
+        draft.warning = if from_paste {
+            "Could not extract product details from the pasted text. Make sure you copied full Page Source (Ctrl+U -> Ctrl+A -> Ctrl+C) rather than selected page text.".to_string()
+        } else {
+            format!(
+                "{} returned HTTP {} without product metadata (bot/JS challenge). Open the URL in your browser, press Ctrl+U -> Ctrl+A -> Ctrl+C, and paste page source below.",
+                if draft.supplier_name.is_empty() { "The store" } else { &draft.supplier_name },
+                status_code
+            )
+        };
+    } else {
+        draft.fetched = true;
+        draft.blocked = false;
+    }
+}
+
+pub fn parse_product_html(raw_url: &str, raw_html: &str, db: &Database) -> Result<ProductUrlDraft> {
+    let trimmed_url = raw_url.trim();
+    let effective_url = if !trimmed_url.is_empty() {
+        trimmed_url.to_string()
+    } else {
+        capture_first(
+            raw_html,
+            r#"(?is)<link[^>]*rel\s*=\s*["']canonical["'][^>]*href\s*=\s*["'](https?://[^"']+)["']"#,
+        )
+        .or_else(|| extract_meta_content(raw_html, "og:url"))
+        .unwrap_or_default()
+    };
+
+    let mut draft = if !effective_url.is_empty() {
+        let (clean_url, host) = validate_public_http_url(&effective_url)?;
+        base_draft_from_url(&clean_url, &host)
+    } else {
+        base_draft_from_url("", "")
+    };
+
+    let mut end = raw_html.len().min(MAX_HTML_BYTES);
+    while end > 0 && !raw_html.is_char_boundary(end) {
+        end -= 1;
+    }
+    populate_draft_from_html_response(&mut draft, 200, &raw_html[..end], true);
+    finalize_draft(&mut draft, db)?;
+    Ok(draft)
+}
+
 pub async fn fetch_product_url(raw_url: &str, db: &Database) -> Result<ProductUrlDraft> {
     let (clean_url, host) = validate_public_http_url(raw_url)?;
     let mut draft = base_draft_from_url(&clean_url, &host);
@@ -115,35 +200,12 @@ pub async fn fetch_product_url(raw_url: &str, db: &Database) -> Result<ProductUr
                 &bytes[..]
             };
             let html = String::from_utf8_lossy(slice).into_owned();
-
-            if is_antibot_or_captcha(status.as_u16(), &html) {
-                draft.blocked = true;
-                draft.warning = format!(
-                    "{} returned an anti-bot or CAPTCHA page (HTTP {}); filled available fields from the URL so you can review and finish manually.",
-                    if draft.supplier_name.is_empty() { "The store" } else { &draft.supplier_name },
-                    status.as_u16()
-                );
-            } else if !status.is_success() {
-                draft.warning = format!(
-                    "Store returned HTTP {}; filled available fields from the URL.",
-                    status.as_u16()
-                );
-            } else {
-                enrich_draft_from_html(&mut draft, &html);
-                if draft.name.trim().is_empty() && draft.images.is_empty() {
-                    draft.blocked = true;
-                    draft.warning = format!(
-                        "{} returned a page without product metadata (possible bot check or JS-rendered page); filled available URL/SKU fields so you can enter the Part Name manually.",
-                        if draft.supplier_name.is_empty() { "The store" } else { &draft.supplier_name }
-                    );
-                } else {
-                    draft.fetched = true;
-                }
-            }
+            populate_draft_from_html_response(&mut draft, status.as_u16(), &html, false);
         }
         Err(e) => {
+            draft.blocked = true;
             draft.warning = format!(
-                "Could not fetch page ({}); filled available fields from the URL.",
+                "Could not fetch page ({}). Open the URL in your browser, press Ctrl+U -> Ctrl+A -> Ctrl+C, and paste page source below.",
                 e
             );
         }
@@ -210,8 +272,11 @@ pub fn base_draft_from_url(url: &str, host: &str) -> ProductUrlDraft {
 
 pub fn is_antibot_or_captcha(status: u16, html: &str) -> bool {
     let lower = html.to_ascii_lowercase();
-    if lower.contains("validatecaptcha")
+    if status == 202
+        || lower.contains("validatecaptcha")
         || lower.contains("opfcaptcha")
+        || lower.contains("awswaf")
+        || lower.contains("challenge.js")
         || lower.contains("type the characters you see in this image")
         || lower.contains("click the button below to continue shopping")
         || lower.contains("sorry, we just need to make sure you're not a robot")
@@ -823,7 +888,30 @@ fn clean_store_title(raw: &str) -> String {
             s = re.replace(&s, "").to_string();
         }
     }
-    s.split_whitespace().collect::<Vec<_>>().join(" ")
+    let collapsed: String = s.split_whitespace().collect::<Vec<_>>().join(" ");
+    if matches!(
+        collapsed.to_ascii_lowercase().as_str(),
+        "amazon.com"
+            | "amazon"
+            | "amazon.ca"
+            | "amazon.co.uk"
+            | "amazon.de"
+            | "adafruit"
+            | "sparkfun"
+            | "digikey"
+            | "mouser"
+            | "lcsc"
+            | "aliexpress"
+            | "robot check"
+            | "just a moment..."
+            | "access denied"
+            | "page not found"
+            | "sorry! something went wrong!"
+            | "something went wrong"
+    ) {
+        return String::new();
+    }
+    collapsed
 }
 
 fn parse_price_str(s: &str) -> Option<f64> {
@@ -1231,5 +1319,35 @@ mod tests {
         assert_eq!(imgs.len(), 2);
         assert!(!imgs[0].likely_pinout);
         assert!(imgs[1].likely_pinout);
+    }
+
+    #[test]
+    fn parses_pasted_browser_html_and_flags_blocked_captcha() {
+        let db = Database::open_in_memory().unwrap();
+        let product_html = r#"
+            <html><head><title>Amazon.com: JESSINIE 4Pcs RCWL-1601 Ultrasonic Ranging Sensor Module</title></head>
+            <body>
+              <span id="productTitle">JESSINIE 4Pcs RCWL-1601 Ultrasonic Ranging Sensor Module 2.2mA 3V-5V</span>
+              <span class="a-offscreen">$7.16</span>
+              <div id="feature-bullets"><ul><li><span class="a-list-item">Compatible with HC-SR04 with 2.2mA ultra-low current</span></li></ul></div>
+            </body></html>
+        "#;
+        let ok = parse_product_html("https://www.amazon.com/dp/B0CB3YCFYY", product_html, &db).unwrap();
+        assert!(ok.fetched);
+        assert!(!ok.blocked);
+        assert_eq!(ok.supplier_sku, "B0CB3YCFYY");
+        assert_eq!(ok.pack_qty, 4);
+        assert_eq!(ok.unit_cost, 1.79);
+        assert!(ok.name.contains("RCWL-1601"));
+
+        let blocked = parse_product_html(
+            "https://www.amazon.com/JESSINIE-RCWL-1601/dp/B0CB3YCFYY",
+            "<html><title>Amazon.com</title><body></body></html>",
+            &db,
+        )
+        .unwrap();
+        assert!(!blocked.fetched);
+        assert!(blocked.blocked);
+        assert!(!blocked.warning.is_empty());
     }
 }

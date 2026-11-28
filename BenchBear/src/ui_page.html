@@ -94,6 +94,7 @@ dialog::backdrop{background:rgba(0,0,0,.74)}
 .dialog-footer{flex:0 0 auto;background:var(--surface-2);padding:10px 18px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;z-index:2}
 .modal-error{margin:0 18px 10px;padding:9px 12px;border-radius:7px;background:rgba(127,29,29,0.38);border:1px solid #ef4444;color:#fecaca;font-size:.86rem}
 .field-invalid{border-color:#ef4444 !important;box-shadow:0 0 0 1px rgba(239,68,68,0.45)}
+kbd{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-family:var(--mono);font-size:.76rem;color:var(--text)}
 .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(195px,1fr));gap:8px;margin:8px 0}
 dialog .field input,dialog .field select,dialog .field textarea{padding:6px 9px;font-size:.88rem}
 dialog .field select{padding-right:28px}
@@ -430,8 +431,18 @@ dialog .field select{padding-right:28px}
         <div style="display:flex;gap:8px;align-items:center">
           <input id="pfImportUrl" type="url" placeholder="https://www.amazon.com/.../dp/... or store link" style="flex:1" />
           <button type="button" id="pfImportBtn" class="btn-primary" onclick="fetchPartFromUrl()">Fetch Info</button>
+          <button type="button" class="btn-sm" onclick="toggleHtmlPasteBox()" title="Paste browser Page Source HTML if store blocks direct fetch">Paste HTML</button>
         </div>
         <div id="pfImportStatus" style="font-size:.82rem;color:var(--muted);margin-top:4px"></div>
+        <div id="pfHtmlPasteBox" class="hidden" style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">
+          <div style="font-size:.79rem;color:var(--muted);margin-bottom:5px">
+            Browser fallback: open the product page in Firefox/Chrome, press <kbd>Ctrl+U</kbd> (View Source), <kbd>Ctrl+A</kbd>, <kbd>Ctrl+C</kbd>, and paste below:
+          </div>
+          <div style="display:flex;gap:8px;align-items:flex-start">
+            <textarea id="pfImportHtml" rows="3" placeholder="Paste full page HTML source here (auto-parses on paste)..." style="flex:1;font-family:var(--mono);font-size:.78rem" onpaste="setTimeout(parsePartFromHtml, 40)"></textarea>
+            <button type="button" id="pfParseHtmlBtn" class="btn-primary" onclick="parsePartFromHtml()">Parse HTML</button>
+          </div>
+        </div>
         <div class="cost-calc-bar">
           <div class="cost-calc-field">
             <label>Packs</label>
@@ -1326,6 +1337,8 @@ function openPartModal(sku) {
   document.getElementById("pfImportUrl").value = p ? p.product_url : "";
   document.getElementById("pfImportStatus").textContent = "";
   document.getElementById("pfImportStatus").style.color = "var(--muted)";
+  document.getElementById("pfImportHtml").value = "";
+  document.getElementById("pfHtmlPasteBox").classList.add("hidden");
   showModalError("", dlg);
   dlg.querySelectorAll(".field-invalid").forEach(el => el.classList.remove("field-invalid"));
 
@@ -1353,6 +1366,86 @@ function openPartModal(sku) {
   dlg.showModal();
 }
 
+function toggleHtmlPasteBox(forceOpen) {
+  const box = document.getElementById("pfHtmlPasteBox");
+  if (!box) return;
+  if (typeof forceOpen === "boolean") {
+    box.classList.toggle("hidden", !forceOpen);
+  } else {
+    box.classList.toggle("hidden");
+  }
+  if (!box.classList.contains("hidden")) {
+    document.getElementById("pfImportHtml")?.focus();
+  }
+}
+
+function applyFetchedDraft(d, st, fromHtmlPaste = false) {
+  const skuEl = document.getElementById("pfSku");
+  if (!skuEl.readOnly && !skuEl.value.trim() && d.suggested_sku) skuEl.value = d.suggested_sku;
+  if (d.category) document.getElementById("pfCat").value = d.category;
+  if (d.name) document.getElementById("pfName").value = d.name;
+  if (d.spec) document.getElementById("pfSpec").value = d.spec;
+  if (d.package) document.getElementById("pfPkg").value = d.package;
+  if (d.pack_qty > 1) document.getElementById("pfQty").value = d.pack_qty;
+  if (d.unit_cost > 0) document.getElementById("pfCost").value = Number(d.unit_cost).toFixed(2);
+  if (d.supplier_name) document.getElementById("pfSup").value = d.supplier_name;
+  if (d.mpn) document.getElementById("pfMpn").value = d.mpn;
+  if (d.supplier_sku) document.getElementById("pfSupSku").value = d.supplier_sku;
+  if (d.url) document.getElementById("pfUrl").value = d.url;
+  if (d.datasheet_url) document.getElementById("pfDsUrl").value = d.datasheet_url;
+  if (d.description) document.getElementById("pfDesc").value = d.description;
+
+  const packQty = Math.max(1, parseInt(d.pack_qty || 1, 10));
+  const totalPrice = Number(d.total_price || 0) > 0
+    ? Number(d.total_price)
+    : (Number(d.unit_cost || 0) > 0 ? Number(d.unit_cost) * packQty : 0);
+  packCalcState.basePackQty = packQty;
+  packCalcState.basePackPrice = totalPrice;
+  document.getElementById("pfPacks").value = "1";
+  document.getElementById("pfFinalQty").value = String(packQty);
+  document.getElementById("pfQty").value = String(packQty);
+  if (totalPrice > 0) {
+    document.getElementById("pfFinalCost").value = totalPrice.toFixed(2);
+    document.getElementById("pfCost").value = (totalPrice / packQty).toFixed(2);
+  } else {
+    document.getElementById("pfFinalCost").value = "";
+  }
+  updateCalcSummary();
+
+  imgModalState.galleryImages = Array.isArray(d.images) ? d.images : [];
+  if (!imgModalState.selectedImgUrl && !imgModalState.existingPartPath && !imgModalState.pendingPartFile && imgModalState.galleryImages.length) {
+    const firstPhoto = imgModalState.galleryImages.find(x => !x.likely_pinout) || imgModalState.galleryImages[0];
+    if (firstPhoto) imgModalState.selectedImgUrl = firstPhoto.url;
+  }
+  if (!imgModalState.selectedPinoutUrl && !imgModalState.existingPinoutPath && !imgModalState.pendingPinoutFile) {
+    const firstPinout = imgModalState.galleryImages.find(x => x.likely_pinout);
+    if (firstPinout) imgModalState.selectedPinoutUrl = firstPinout.url;
+  }
+  renderImageSlots();
+  renderGalleryStrip();
+
+  if (d.warning) {
+    st.textContent = d.warning;
+    st.style.color = (d.blocked || !d.name) ? "var(--warn)" : "var(--ok)";
+  } else if (!d.name) {
+    st.textContent = `Fetched partial details from ${d.supplier_name || "store"} (no product title found). Open the page in your browser, paste View Source below, or enter Part Name manually.`;
+    st.style.color = "var(--warn)";
+  } else {
+    st.textContent = `${fromHtmlPaste ? "Parsed from pasted page source" : `Imported from ${d.supplier_name || "store"}`}${d.unit_cost > 0 ? " ($" + Number(d.unit_cost).toFixed(2) + ")" : ""}. Review fields, pick Photo/Pinout, and click Save Part.`;
+    st.style.color = "var(--ok)";
+  }
+
+  if (d.blocked || !d.fetched) {
+    toggleHtmlPasteBox(true);
+  } else if (fromHtmlPaste) {
+    document.getElementById("pfImportHtml").value = "";
+    toggleHtmlPasteBox(false);
+  }
+  if (!document.getElementById("pfName").value.trim()) {
+    document.getElementById("pfName").focus();
+  }
+}
+
 async function fetchPartFromUrl() {
   const urlEl = document.getElementById("pfImportUrl");
   const btn = document.getElementById("pfImportBtn");
@@ -1364,71 +1457,47 @@ async function fetchPartFromUrl() {
   }
   btn.disabled = true;
   st.textContent = "Fetching product metadata...";
+  st.style.color = "var(--muted)";
   try {
     const d = await api("/api/parts/fetch-url", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url })
     });
-    const skuEl = document.getElementById("pfSku");
-    if (!skuEl.readOnly && !skuEl.value.trim() && d.suggested_sku) skuEl.value = d.suggested_sku;
-    if (d.category) document.getElementById("pfCat").value = d.category;
-    if (d.name) document.getElementById("pfName").value = d.name;
-    if (d.spec) document.getElementById("pfSpec").value = d.spec;
-    if (d.package) document.getElementById("pfPkg").value = d.package;
-    if (d.pack_qty > 1) document.getElementById("pfQty").value = d.pack_qty;
-    if (d.unit_cost > 0) document.getElementById("pfCost").value = Number(d.unit_cost).toFixed(2);
-    if (d.supplier_name) document.getElementById("pfSup").value = d.supplier_name;
-    if (d.mpn) document.getElementById("pfMpn").value = d.mpn;
-    if (d.supplier_sku) document.getElementById("pfSupSku").value = d.supplier_sku;
-    if (d.url) document.getElementById("pfUrl").value = d.url;
-    if (d.datasheet_url) document.getElementById("pfDsUrl").value = d.datasheet_url;
-    if (d.description) document.getElementById("pfDesc").value = d.description;
-
-    const packQty = Math.max(1, parseInt(d.pack_qty || 1, 10));
-    const totalPrice = Number(d.total_price || 0) > 0
-      ? Number(d.total_price)
-      : (Number(d.unit_cost || 0) > 0 ? Number(d.unit_cost) * packQty : 0);
-    packCalcState.basePackQty = packQty;
-    packCalcState.basePackPrice = totalPrice;
-    document.getElementById("pfPacks").value = "1";
-    document.getElementById("pfFinalQty").value = String(packQty);
-    document.getElementById("pfQty").value = String(packQty);
-    if (totalPrice > 0) {
-      document.getElementById("pfFinalCost").value = totalPrice.toFixed(2);
-      document.getElementById("pfCost").value = (totalPrice / packQty).toFixed(2);
-    } else {
-      document.getElementById("pfFinalCost").value = "";
-    }
-    updateCalcSummary();
-
-    imgModalState.galleryImages = Array.isArray(d.images) ? d.images : [];
-    if (!imgModalState.selectedImgUrl && !imgModalState.existingPartPath && !imgModalState.pendingPartFile && imgModalState.galleryImages.length) {
-      const firstPhoto = imgModalState.galleryImages.find(x => !x.likely_pinout) || imgModalState.galleryImages[0];
-      if (firstPhoto) imgModalState.selectedImgUrl = firstPhoto.url;
-    }
-    if (!imgModalState.selectedPinoutUrl && !imgModalState.existingPinoutPath && !imgModalState.pendingPinoutFile) {
-      const firstPinout = imgModalState.galleryImages.find(x => x.likely_pinout);
-      if (firstPinout) imgModalState.selectedPinoutUrl = firstPinout.url;
-    }
-    renderImageSlots();
-    renderGalleryStrip();
-
-    if (d.warning) {
-      st.textContent = d.warning;
-      st.style.color = (d.blocked || !d.name) ? "var(--warn)" : "var(--ok)";
-    } else if (!d.name) {
-      st.textContent = `Fetched partial details from ${d.supplier_name || "store"} (no product title found). Enter Part Name and click Save Part.`;
-      st.style.color = "var(--warn)";
-    } else {
-      st.textContent = `Imported from ${d.supplier_name || "store"}${d.unit_cost > 0 ? " ($" + Number(d.unit_cost).toFixed(2) + ")" : ""}. Review fields, pick Photo/Pinout, and click Save Part.`;
-      st.style.color = "var(--ok)";
-    }
-    if (!document.getElementById("pfName").value.trim()) {
-      document.getElementById("pfName").focus();
-    }
+    applyFetchedDraft(d, st, false);
   } catch (err) {
-    st.textContent = "Fetch failed: " + err.message;
+    st.textContent = "Fetch failed: " + err.message + " You can open the URL in your browser and paste View Source (Ctrl+U -> Ctrl+A -> Ctrl+C) below.";
+    st.style.color = "var(--bad)";
+    toggleHtmlPasteBox(true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function parsePartFromHtml() {
+  const urlEl = document.getElementById("pfImportUrl");
+  const htmlEl = document.getElementById("pfImportHtml");
+  const btn = document.getElementById("pfParseHtmlBtn");
+  const st = document.getElementById("pfImportStatus");
+  const url = urlEl.value.trim() || document.getElementById("pfUrl").value.trim();
+  const html = htmlEl.value.trim();
+  if (!html) {
+    st.textContent = "Paste the page HTML source first (Ctrl+U -> Ctrl+A -> Ctrl+C in your browser).";
+    st.style.color = "var(--warn)";
+    return;
+  }
+  btn.disabled = true;
+  st.textContent = "Parsing pasted page HTML...";
+  st.style.color = "var(--muted)";
+  try {
+    const d = await api("/api/parts/fetch-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, html })
+    });
+    applyFetchedDraft(d, st, true);
+  } catch (err) {
+    st.textContent = "HTML parse failed: " + err.message;
     st.style.color = "var(--bad)";
   } finally {
     btn.disabled = false;

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.4] — 2026-11-27
+
+### Added
+
+- **Browser Page Source Fallback for Bot-Gated Stores (`BenchBear/src/scrape.rs`, `BenchBear/src/web.rs`, `BenchBear/src/ui_page.html`)**:
+  - When **Fetch Info** detects an anti-bot/CAPTCHA gate, `HTTP 202` challenge, or missing product HTML, BenchBear automatically reveals a **Paste HTML** box prompting the user to copy View Source (`Ctrl+U` -> `Ctrl+A` -> `Ctrl+C`) from their browser and parses title, specs, price, pack size, feature bullets, and product/pinout images locally (`8 MiB` body cap on `/api/parts/fetch-url`).
+
+### Fixed
+
+- **URL Slug Fallback False-Positive Scrape (`BenchBear/src/scrape.rs`)**:
+  - Detected `HTTP 202` / AWS WAF challenge responses and empty HTML extraction (`!html_extracted`) even when a URL slug pre-populated `name`, returning `fetched = false, blocked = true` with an explicit warning instead of falsely reporting `"Imported from Amazon"` with zero extracted specs, price, or images.
+
 ## [1.3.3] — 2026-11-27
 
 ### Fixed

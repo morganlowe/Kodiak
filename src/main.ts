@@ -5681,7 +5681,7 @@ function renderAboutTab(): string {
         <div style="flex:1; min-width:240px;">
           <div class="row-inline" style="gap:0.75rem; align-items:center; flex-wrap:wrap;">
             <h1 style="margin:0; font-size:1.8rem; font-weight:700; color:var(--md-default-fg-color);">Kodiak</h1>
-            <span class="badge badge--ok" style="font-size:0.85rem;">v1.3.3</span>
+            <span class="badge badge--ok" style="font-size:0.85rem;">v1.3.4</span>
             <button type="button" id="about-check-updates-btn" class="btn btn--sm" ${state.updateChecking ? "disabled" : ""}>
               ${state.updateChecking ? "Checking Updates..." : "Check for Updates"}
             </button>
@@ -5810,7 +5810,7 @@ function renderAboutTab(): string {
             <span><strong>Brand Asset:</strong> Morninglion Industries</span>
           </div>
           <div class="row-inline muted">
-            <span>Kodiak Task Delegation System (v1.3.3)</span>
+            <span>Kodiak Task Delegation System (v1.3.4)</span>
           </div>
         </div>
         <div style="text-align:center; padding-top:1.5rem; border-top:1px solid var(--wiki-border); margin-top:1.25rem;">

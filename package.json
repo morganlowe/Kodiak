@@ -1,7 +1,7 @@
 {
   "name": "kodiak",
   "private": true,
-  "version": "1.3.3",
+  "version": "1.3.4",
   "author": "Morgan Lowe",
   "license": "Apache-2.0",
   "type": "module",

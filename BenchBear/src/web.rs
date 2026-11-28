@@ -1,5 +1,5 @@
 use anyhow::Result;
-use axum::extract::{FromRequest, Multipart, Path as AxumPath, Query, State};
+use axum::extract::{DefaultBodyLimit, FromRequest, Multipart, Path as AxumPath, Query, State};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
@@ -51,7 +51,10 @@ pub async fn run_server(host: String, port: u16, cfg: AppConfig, db: Arc<Databas
         .route("/api/health", get(health_handler))
         .route("/api/updates/check", get(check_updates_handler))
         .route("/api/parts", get(list_parts_handler).post(create_part_handler))
-        .route("/api/parts/fetch-url", post(fetch_url_handler))
+        .route(
+            "/api/parts/fetch-url",
+            post(fetch_url_handler).layer(DefaultBodyLimit::max(8 * 1024 * 1024)),
+        )
         .route(
             "/api/parts/:sku",
             get(get_part_handler)
@@ -931,15 +934,20 @@ async fn export_handler(State(st): State<AppState>) -> ApiResult<Json<serde_json
 #[derive(Deserialize)]
 struct FetchUrlReq {
     url: String,
+    #[serde(default)]
+    html: Option<String>,
 }
 
 async fn fetch_url_handler(
     State(st): State<AppState>,
     Json(req): Json<FetchUrlReq>,
 ) -> ApiResult<Json<ProductUrlDraft>> {
-    let draft = scrape::fetch_product_url(&req.url, &st.db)
-        .await
-        .map_err(|e| err_resp(StatusCode::BAD_REQUEST, e.to_string()))?;
+    let draft = if let Some(raw_html) = req.html.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        scrape::parse_product_html(&req.url, raw_html, &st.db)
+    } else {
+        scrape::fetch_product_url(&req.url, &st.db).await
+    }
+    .map_err(|e| err_resp(StatusCode::BAD_REQUEST, e.to_string()))?;
     Ok(Json(draft))
 }
 

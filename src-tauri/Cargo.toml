@@ -1,6 +1,6 @@
 [package]
 name = "kodiak"
-version = "1.3.3"
+version = "1.3.4"
 description = "Local-First AI Task Delegation Workbench"
 authors = ["Morgan Lowe"]
 license = "Apache-2.0"
