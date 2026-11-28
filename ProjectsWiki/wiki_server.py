@@ -1,25 +1,23 @@
 #!/usr/bin/env python3
 """
-wiki_server.py - Cross-Platform Execution Engine for Kodiak ProjectsWiki.
+wiki_server.py - Cross-Platform Execution Engine for BenchBear.
 
 Provides a unified runner for:
-  - serve:   Launches MkDocs Material server & Sync API concurrently.
-  - sync:    Regenerates projects.json and mkdocs.yml navigation.
+  - serve:   Launches MkDocs Material, Sync API, and the Rust Inventory/Barcode Hub concurrently.
+  - sync:    Regenerates projects.json, inventory Markdown exports, and mkdocs.yml navigation.
   - build:   Synthesizes documentation for projects using local Ollama.
   - rebuild: Rebuilds accurate Markdown pages with media links.
   - stop:    Gracefully terminates running server processes (Windows/Linux).
-
-Can be executed directly via Python or compiled into `kodiak-projectswiki.exe` via PyInstaller.
 """
-import sys
-import os
 import argparse
-import subprocess
+import os
 import shutil
+import subprocess
+import sys
 import threading
 import time
+from typing import Optional
 
-# Ensure ProjectsWiki directory is on sys.path
 WIKI_DIR = os.path.dirname(os.path.abspath(__file__))
 if WIKI_DIR not in sys.path:
     sys.path.insert(0, WIKI_DIR)
@@ -29,12 +27,10 @@ from wiki_config import load_wiki_config
 
 def find_mkdocs_cmd():
     """Locates the mkdocs executable or module runner across platforms."""
-    # 1. System PATH
     cmd = shutil.which("mkdocs")
     if cmd:
         return [cmd]
 
-    # 2. Python module invocation
     try:
         proc = subprocess.run(
             [sys.executable, "-m", "mkdocs", "--version"],
@@ -47,13 +43,14 @@ def find_mkdocs_cmd():
     except Exception:
         pass
 
-    # 3. Known virtual environments
     candidates = [
-        # Linux standard local venv
+        os.path.join(WIKI_DIR, ".venv", "bin", "mkdocs"),
+        os.path.join(WIKI_DIR, ".venv", "Scripts", "mkdocs.exe"),
+        os.path.expanduser("~/.local/share/benchbear/venv/bin/mkdocs"),
+        os.path.expanduser("~/.local/share/projects-parts-wiki/venv/bin/mkdocs"),
         os.path.expanduser("~/.local/share/kodiak/projectswiki-venv/bin/mkdocs"),
-        # Windows standard local venv
+        os.path.expandvars(r"%LOCALAPPDATA%\benchbear\venv\Scripts\mkdocs.exe"),
         os.path.expandvars(r"%LOCALAPPDATA%\kodiak\projectswiki-venv\Scripts\mkdocs.exe"),
-        # pyenv shims
         os.path.expanduser("~/.pyenv/shims/mkdocs"),
     ]
     for c in candidates:
@@ -63,55 +60,89 @@ def find_mkdocs_cmd():
     return None
 
 
+def find_or_build_rust_bin() -> Optional[str]:
+    for base_name in ("benchbear", "parts-wiki"):
+        exe_name = f"{base_name}.exe" if os.name == "nt" else base_name
+        for cand in (
+            os.path.join(WIKI_DIR, "target", "release", exe_name),
+            os.path.join(WIKI_DIR, exe_name),
+            os.path.join(WIKI_DIR, "bin", exe_name),
+        ):
+            if os.path.isfile(cand) and os.access(cand, os.X_OK):
+                return cand
+    which_bin = shutil.which("benchbear")
+    if which_bin:
+        return which_bin
+
+    cargo = shutil.which("cargo")
+    cargo_toml = os.path.join(WIKI_DIR, "Cargo.toml")
+    target_name = "benchbear.exe" if os.name == "nt" else "benchbear"
+    target_bin = os.path.join(WIKI_DIR, "target", "release", target_name)
+    if cargo and os.path.isfile(cargo_toml):
+        print(":: [BenchBear] Building Rust Inventory & Barcode binary (release)...")
+        res = subprocess.run([cargo, "build", "--release"], cwd=WIKI_DIR)
+        if res.returncode == 0 and os.path.isfile(target_bin):
+            return target_bin
+    return None
+
+
 def run_sync_api(port_api: int):
     """Runs the Sync API HTTP server in a background thread."""
     try:
         from sync_api import ReusableTCPServer, SyncAPIHandler
-        print(f":: [ProjectsWiki] Sync API starting on 127.0.0.1:{port_api}")
+        print(f":: [BenchBear] Sync API starting on 127.0.0.1:{port_api}")
         with ReusableTCPServer(("127.0.0.1", port_api), SyncAPIHandler) as httpd:
             httpd.serve_forever()
     except OSError as e:
-        print(f":: [ProjectsWiki] Sync API bind note: {e}")
+        print(f":: [BenchBear] Sync API bind note: {e}")
     except Exception as e:
-        print(f":: [ProjectsWiki] Sync API error: {e}")
+        print(f":: [BenchBear] Sync API error: {e}")
 
 
 def serve_command(args):
-    """Starts the MkDocs Material documentation server and Sync API concurrently."""
+    """Starts MkDocs Material, Sync API, and the Rust Inventory/Barcode Hub concurrently."""
     cfg = load_wiki_config()
     port_web = cfg.get("port_web", 8000)
     port_api = cfg.get("port_api", 8765)
-    site_domain = cfg.get("site_domain", "wiki.local")
+    port_inv = cfg.get("port_inventory", 8090)
+    data_dir = cfg.get("data_dir", os.path.join(WIKI_DIR, "data"))
+    site_domain = cfg.get("site_domain", "benchbear.localhost")
 
-    # Start Sync API in daemon thread
+    inv_proc = None
+    rust_bin = find_or_build_rust_bin()
+    if rust_bin:
+        print(f":: [BenchBear] Starting Inventory & Barcode Hub on http://127.0.0.1:{port_inv}")
+        inv_proc = subprocess.Popen(
+            [
+                rust_bin,
+                "--wiki-root", WIKI_DIR,
+                "--data-dir", data_dir,
+                "serve",
+                "--host", "127.0.0.1",
+                "--port", str(port_inv),
+            ],
+            cwd=WIKI_DIR,
+        )
+    else:
+        print(":: [BenchBear] Note: Rust binary unavailable; inventory hub not started.")
+
     api_thread = threading.Thread(target=run_sync_api, args=(port_api,), daemon=True)
     api_thread.start()
 
     bind_addr = f"127.0.0.1:{port_web}"
-    print(f":: [ProjectsWiki] Serving MkDocs on http://{bind_addr} (Domain: http://{site_domain})")
-
-    # If bundled via PyInstaller, mkdocs may be importable directly
-    if getattr(sys, "frozen", False):
-        try:
-            from mkdocs.commands import serve as mkdocs_serve
-            from mkdocs.config import load_config
-            cfg_file = os.path.join(WIKI_DIR, "mkdocs.yml")
-            if os.path.exists(cfg_file):
-                print(f":: [ProjectsWiki] Launching in-process MkDocs Material server...")
-                # Serve blocking in main thread
-                mkdocs_serve.serve(config_file=cfg_file, dev_addr=bind_addr)
-                return 0
-        except Exception as e:
-            print(f":: [ProjectsWiki] In-process mkdocs note: {e}, falling back to CLI...")
+    print(f":: [BenchBear] Serving MkDocs on http://{bind_addr} (Domain: http://{site_domain})")
 
     mkdocs_cmd = find_mkdocs_cmd()
     if not mkdocs_cmd:
-        print(f"[!] MkDocs was not found on PATH or in standard venvs.")
-        print(f"[!] Please install mkdocs-material: pip install mkdocs-material pyyaml")
-        # Keep Sync API alive even if MkDocs CLI is missing
-        while True:
-            time.sleep(1)
-        return 1
+        print("[!] MkDocs was not found on PATH or in standard venvs.")
+        print("[!] Please install mkdocs-material: pip install mkdocs-material pyyaml")
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            if inv_proc:
+                inv_proc.terminate()
+            return 1
 
     cmd = list(mkdocs_cmd) + ["serve", "-a", bind_addr]
     env = os.environ.copy()
@@ -123,11 +154,23 @@ def serve_command(args):
     except KeyboardInterrupt:
         proc.terminate()
         proc.wait()
+    finally:
+        if inv_proc and inv_proc.poll() is None:
+            inv_proc.terminate()
+            inv_proc.wait()
     return proc.returncode
 
 
 def sync_command(args):
-    """Regenerates projects.json and mkdocs.yml."""
+    """Exports inventory Markdown/snapshot and regenerates projects.json and mkdocs.yml."""
+    cfg = load_wiki_config()
+    rust_bin = find_or_build_rust_bin()
+    if rust_bin:
+        subprocess.run(
+            [rust_bin, "--wiki-root", WIKI_DIR, "--data-dir", cfg["data_dir"], "export"],
+            cwd=WIKI_DIR,
+            check=False,
+        )
     from make_wiki import main as make_main
     make_main()
     return 0
@@ -158,7 +201,6 @@ def build_command(args):
             sync_catalog()
         return 0 if ok else 1
     else:
-        # All projects
         from build_wiki import main as build_main
         build_main()
         return 0
@@ -174,27 +216,27 @@ def rebuild_command(args):
 def stop_command(args):
     """Terminates running server instances across Windows and Linux."""
     if os.name == "nt":
+        subprocess.run(["taskkill", "/F", "/IM", "benchbear.exe", "/T"], stderr=subprocess.DEVNULL)
         subprocess.run(["taskkill", "/F", "/IM", "kodiak-projectswiki.exe", "/T"], stderr=subprocess.DEVNULL)
+        subprocess.run(["taskkill", "/F", "/IM", "parts-wiki.exe", "/T"], stderr=subprocess.DEVNULL)
     else:
         subprocess.run(["pkill", "-f", "mkdocs serve"], stderr=subprocess.DEVNULL)
         subprocess.run(["pkill", "-f", "sync_api.py"], stderr=subprocess.DEVNULL)
-    print(":: [ProjectsWiki] Stopped server processes.")
+        subprocess.run(["pkill", "-f", "(benchbear|parts-wiki).*serve"], stderr=subprocess.DEVNULL)
+    print(":: [BenchBear] Stopped server processes.")
     return 0
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Kodiak ProjectsWiki Cross-Platform Runner")
+    parser = argparse.ArgumentParser(description="BenchBear Cross-Platform Runner")
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
-    # serve
-    sub_serve = subparsers.add_parser("serve", help="Run documentation server & Sync API")
+    sub_serve = subparsers.add_parser("serve", help="Run MkDocs, Sync API, and Rust Inventory Hub")
     sub_serve.set_defaults(func=serve_command)
 
-    # sync
-    sub_sync = subparsers.add_parser("sync", help="Sync project inventory & mkdocs.yml")
+    sub_sync = subparsers.add_parser("sync", help="Export inventory & sync project catalog + mkdocs.yml")
     sub_sync.set_defaults(func=sync_command)
 
-    # build
     sub_build = subparsers.add_parser("build", help="Synthesize documentation via Ollama")
     sub_build.add_argument("--project", "-p", help="Target project directory name")
     sub_build.add_argument("--model", "-m", help="Ollama model")
@@ -204,17 +246,13 @@ def main():
     sub_build.add_argument("--dry-run", action="store_true", help="Dry run without writing")
     sub_build.set_defaults(func=build_command)
 
-    # rebuild
     sub_rebuild = subparsers.add_parser("rebuild", help="Rebuild accurate markdown documentation")
     sub_rebuild.set_defaults(func=rebuild_command)
 
-    # stop
     sub_stop = subparsers.add_parser("stop", help="Stop running server instances")
     sub_stop.set_defaults(func=stop_command)
 
     args = parser.parse_args()
-
-    # Default to serve if no subcommand provided
     if not args.command:
         return serve_command(args)
 

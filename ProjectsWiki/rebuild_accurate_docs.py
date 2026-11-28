@@ -151,7 +151,7 @@ def main():
     port_api = cfg["port_api"]
 
     if not os.path.exists(INV_PATH):
-        print(f":: [ProjectsWiki] No {INV_PATH} found. Run inspect_projects.py first if needed.")
+        print(f":: [BenchBear] No {INV_PATH} found. Run inspect_projects.py first if needed.")
         return
 
     with open(INV_PATH, "r", encoding="utf-8") as f:
@@ -212,7 +212,7 @@ def main():
                     out.write(content)
                 enriched_count += 1
 
-    print(f":: [ProjectsWiki] Rebuilt {rebuilt_count} pages and enriched {enriched_count} code pages.")
+    print(f":: [BenchBear] Rebuilt {rebuilt_count} pages and enriched {enriched_count} code pages.")
 
 
 if __name__ == "__main__":

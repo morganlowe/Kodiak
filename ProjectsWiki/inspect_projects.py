@@ -44,10 +44,10 @@ def scan_projects():
     inventory = {}
 
     if not os.path.isdir(projects_dir):
-        print(f":: [ProjectsWiki] Error: Projects directory not found: {projects_dir}")
+        print(f":: [BenchBear] Error: Projects directory not found: {projects_dir}")
         return
 
-    print(f":: [ProjectsWiki] Scanning projects directory: {projects_dir}")
+    print(f":: [BenchBear] Scanning projects directory: {projects_dir}")
     for proj_name in sorted(os.listdir(projects_dir)):
         proj_path = os.path.join(projects_dir, proj_name)
         if not os.path.isdir(proj_path) or proj_name.startswith("."):
@@ -107,7 +107,7 @@ def scan_projects():
 
     with open(OUT_PATH, "w", encoding="utf-8") as f:
         json.dump(inventory, f, indent=2)
-    print(f":: [ProjectsWiki] Scanned {len(inventory)} projects into {OUT_PATH}")
+    print(f":: [BenchBear] Scanned {len(inventory)} projects into {OUT_PATH}")
 
 
 if __name__ == "__main__":

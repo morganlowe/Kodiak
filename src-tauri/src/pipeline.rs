@@ -57,6 +57,12 @@ pub struct WikiStatusDetails {
     pub reachable: bool,
     pub url: Option<String>,
     pub api_reachable: bool,
+    pub inventory_reachable: bool,
+    pub inventory_url: Option<String>,
+    pub inventory_parts_count: Option<u64>,
+    pub inventory_locations_count: Option<u64>,
+    pub inventory_suppliers_count: Option<u64>,
+    pub inventory_boms_count: Option<u64>,
     pub wiki_dir: String,
     pub projects_dir: String,
     pub doc_count: usize,
@@ -585,6 +591,10 @@ pub async fn stop_wiki_service(cfg: &AppConfig) -> Result<HealthStatus, String> 
             .args(["/F", "/IM", "kodiak-projectswiki.exe", "/T"])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
+        let _ = Command::new("taskkill")
+            .args(["/F", "/IM", "benchbear.exe", "/T"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
         if wiki_server_py.exists() {
             let mut cmd = Command::new(resolve_python_cmd());
             cmd.arg(&wiki_server_py)
@@ -787,6 +797,27 @@ pub async fn get_detailed_wiki_status(cfg: &AppConfig) -> Result<WikiStatusDetai
         .map(|r| r.status().is_success())
         .unwrap_or(false);
 
+    let mut inventory_reachable = false;
+    let mut inventory_url = None;
+    let mut inventory_parts_count = None;
+    let mut inventory_locations_count = None;
+    let mut inventory_suppliers_count = None;
+    let mut inventory_boms_count = None;
+    if let Ok(resp) = client.get("http://127.0.0.1:8090/api/health").send().await {
+        if resp.status().is_success() {
+            if let Ok(val) = resp.json::<Value>().await {
+                inventory_reachable = true;
+                inventory_url = Some("http://127.0.0.1:8090".to_string());
+                if let Some(counts) = val.get("counts") {
+                    inventory_parts_count = counts.get("parts").and_then(|v| v.as_u64());
+                    inventory_locations_count = counts.get("locations").and_then(|v| v.as_u64());
+                    inventory_suppliers_count = counts.get("suppliers").and_then(|v| v.as_u64());
+                    inventory_boms_count = counts.get("boms").and_then(|v| v.as_u64());
+                }
+            }
+        }
+    }
+
     let wiki_dir = resolve_wiki_dir(cfg);
     let docs_dir = wiki_dir.join("docs");
     let mut doc_count = 0;
@@ -794,7 +825,7 @@ pub async fn get_detailed_wiki_status(cfg: &AppConfig) -> Result<WikiStatusDetai
         if let Ok(entries) = std::fs::read_dir(&docs_dir) {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().to_string();
-                if name.ends_with(".md") && name != "index.md" {
+                if name.ends_with(".md") && name != "index.md" && name != "inventory-hub.md" {
                     doc_count += 1;
                 }
             }
@@ -827,6 +858,12 @@ pub async fn get_detailed_wiki_status(cfg: &AppConfig) -> Result<WikiStatusDetai
         reachable: health.wiki_reachable,
         url: health.wiki_url,
         api_reachable,
+        inventory_reachable,
+        inventory_url,
+        inventory_parts_count,
+        inventory_locations_count,
+        inventory_suppliers_count,
+        inventory_boms_count,
         wiki_dir: wiki_dir.to_string_lossy().to_string(),
         projects_dir,
         doc_count,
@@ -1319,19 +1356,8 @@ pub async fn get_wiki_setup_info_service(cfg: &AppConfig) -> Result<WikiSetupInf
     let p_dir = resolve_projects_dir(cfg);
     let detected_projects = detect_projects_in_dir_service(&p_dir.to_string_lossy());
 
-    let hosts_path = if cfg!(windows) {
-        PathBuf::from(r"C:\Windows\System32\drivers\etc\hosts")
-    } else {
-        PathBuf::from("/etc/hosts")
-    };
-    let hosts_configured = if let Ok(content) = std::fs::read_to_string(&hosts_path) {
-        content.lines().any(|l| {
-            let t = l.trim();
-            !t.starts_with('#') && t.contains("wiki.local")
-        })
-    } else {
-        false
-    };
+    // RFC 6761 reserves .localhost names for loopback resolution on all platforms.
+    let hosts_configured = true;
 
     let port80_configured = if let Ok(val) = std::fs::read_to_string("/proc/sys/net/ipv4/ip_unprivileged_port_start") {
         val.trim().parse::<u32>().map(|p| p <= 80).unwrap_or(false)
@@ -1375,7 +1401,7 @@ pub async fn get_wiki_setup_info_service(cfg: &AppConfig) -> Result<WikiSetupInf
     })
 }
 
-/// Completes or skips the ProjectsWiki setup wizard, saving paths and updating whitelist if selected.
+/// Completes or skips the BenchBear setup wizard, saving paths and updating whitelist if selected.
 pub async fn complete_wiki_setup_service(
     cfg: &mut AppConfig,
     payload: WikiSetupPayload,
@@ -1422,7 +1448,7 @@ pub async fn complete_wiki_setup_service(
             if let Some(config_dir) = dirs::config_dir() {
                 let service_path = config_dir.join("systemd/user/projects-wiki.service");
                 let unit = format!(
-                    "[Unit]\nDescription=ProjectsWiki Local Server (http://wiki.local)\nAfter=network.target\n\n\
+                    "[Unit]\nDescription=BenchBear Local Server (http://benchbear.localhost)\nAfter=network.target\n\n\
                     [Service]\nType=simple\nWorkingDirectory={}\nExecStart={} daemon\nRestart=on-failure\nRestartSec=3\n\n\
                     [Install]\nWantedBy=default.target\n",
                     wiki_dir.display(),

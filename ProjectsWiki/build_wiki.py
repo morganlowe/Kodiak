@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-build_wiki.py - AI Documentation Generator for Kodiak ProjectsWiki.
+build_wiki.py - AI Documentation Generator for BenchBear.
 
 Synthesizes rich technical documentation pages for local project repositories
 using local Ollama models with zero cloud data transmission.
@@ -168,7 +168,7 @@ def sync_catalog():
     if os.path.exists(make_wiki_py):
         try:
             subprocess.run([sys.executable, make_wiki_py], cwd=WIKI_DIR, check=True)
-            print("[OK] Projects Wiki catalog and mkdocs.yml updated.")
+            print("[OK] BenchBear catalog and mkdocs.yml updated.")
         except Exception as e:
             print(f"[!] Warning: failed to refresh catalog via make_wiki.py: {e}")
 
@@ -179,7 +179,7 @@ def main():
     default_model = cfg["ollama_model"]
     default_ollama_url = cfg["ollama_url"]
 
-    parser = argparse.ArgumentParser(description="Projects Wiki AI Documentation Generator")
+    parser = argparse.ArgumentParser(description="BenchBear Documentation Generator")
     parser.add_argument("--project", "-p", help="Target a specific project folder by name")
     parser.add_argument("--projects-dir", "-d", default=default_projects_dir, help="Path to Projects directory")
     parser.add_argument("--model", "-m", default=default_model, help=f"Ollama model (default: {default_model})")
@@ -196,8 +196,8 @@ def main():
         print(f"[!] Projects directory does not exist: {projects_dir}")
         sys.exit(1)
 
-    print(f":: [ProjectsWiki] Active projects root: {projects_dir}")
-    print(f":: [ProjectsWiki] Target model: {args.model}")
+    print(f":: [BenchBear] Active projects root: {projects_dir}")
+    print(f":: [BenchBear] Target model: {args.model}")
 
     success_count = 0
     failure_count = 0

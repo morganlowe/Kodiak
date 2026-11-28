@@ -6,7 +6,7 @@ pkgver=$(sed -n 's/.*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "${startdir}/src-
 pkgrel=1
 pkgdesc="Local-First AI Task Delegation Workbench"
 arch=('x86_64')
-url="https://wiki.local"
+url="https://github.com/morganlowe/Kodiak"
 license=('Apache-2.0')
 makedepends=(
   'rust'
@@ -28,6 +28,7 @@ build() {
   fi
   npm run build
   RUSTFLAGS="--remap-path-prefix=${startdir}=/usr/src/kodiak" cargo build --release --manifest-path src-tauri/Cargo.toml
+  RUSTFLAGS="--remap-path-prefix=${startdir}=/usr/src/kodiak" cargo build --release --manifest-path ProjectsWiki/Cargo.toml
 }
 
 package_kodiak() {
@@ -45,8 +46,8 @@ package_kodiak() {
     'hicolor-icon-theme'
   )
   optdepends=(
-    'kodiak-projectswiki: Local Projects Wiki and AI documentation hub component'
-    'python-mkdocs-material: Material theme rendering for Projects Wiki'
+    'kodiak-projectswiki: BenchBear project wiki and hardware inventory companion'
+    'python-mkdocs-material: Material theme rendering for BenchBear'
   )
 
   cd "${startdir}"
@@ -83,29 +84,40 @@ EOF
 }
 
 package_kodiak-projectswiki() {
-  pkgdesc="Local Projects Wiki and AI documentation hub component for Kodiak"
-  arch=('any')
-  depends=('python')
+  license=('Apache-2.0' 'GPL-3.0-only')
+  pkgdesc="BenchBear project wiki and hardware inventory companion for Kodiak"
+  arch=('x86_64')
+  depends=('python' 'gcc-libs' 'glibc')
   optdepends=(
     'python-mkdocs-material: Fast local rendering with Material for MkDocs'
+    'zbar: Optional 1D barcode image decoding'
   )
 
   cd "${startdir}"
 
   local dest="${pkgdir}/usr/share/kodiak/projectswiki"
   install -dm755 "${dest}"
-  cp -r --no-preserve=ownership "ProjectsWiki/." "${dest}/"
-  rm -rf "${dest}/venv" \
-         "${dest}/__pycache__" \
-         "${dest}/.archive_duplicates" \
-         "${dest}/site" \
-         "${dest}/projects_inventory.json" \
-         "${dest}/docs/projects.json" \
-         "${dest}/project_overrides.json"
-  find "${dest}/docs" -type f -name "*.md" ! -name "index.md" ! -name "demo-project.md" -delete
+  tar -C "ProjectsWiki" \
+    --exclude=target \
+    --exclude=venv \
+    --exclude=__pycache__ \
+    --exclude=.archive_duplicates \
+    --exclude=site \
+    --exclude=data \
+    --exclude=inventory \
+    --exclude=projects \
+    --exclude=docs/inventory \
+    --exclude=docs/projects \
+    --exclude=projects_inventory.json \
+    --exclude=docs/projects.json \
+    --exclude=project_overrides.json \
+    -cf - . | tar -C "${dest}" --no-same-owner -xf -
+  find "${dest}/docs" -type f -name "*.md" ! -name "index.md" ! -name "demo-project.md" ! -name "inventory-hub.md" -delete
+
+  install -Dm755 "ProjectsWiki/target/release/benchbear" "${dest}/benchbear"
 
   chmod +x "${dest}/wiki.sh"
-  chmod +x "${dest}"/*.py 2>/dev/null || true
+  chmod +x "${dest}"/*.py "${dest}/app/wiki_app.py" "${dest}/mcp/server.py" 2>/dev/null || true
 
   # CLI wrapper in /usr/bin/wiki
   install -dm755 "${pkgdir}/usr/bin"
@@ -115,7 +127,7 @@ package_kodiak-projectswiki() {
   install -dm755 "${pkgdir}/usr/lib/systemd/user"
   cat > "${pkgdir}/usr/lib/systemd/user/projects-wiki.service" << 'EOF'
 [Unit]
-Description=ProjectsWiki Local Server (http://wiki.local)
+Description=BenchBear Local Server (http://benchbear.localhost)
 After=network.target
 
 [Service]

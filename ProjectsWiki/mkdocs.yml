@@ -1,5 +1,5 @@
-site_name: Projects Wiki
-site_description: Interactive hardware, electronics, embedded systems, and software documentation hub
+site_name: BenchBear
+site_description: Local-first project wiki, hardware inventory, bins, suppliers, and barcode labels
 theme:
   name: material
   logo: Bear-built-logo.png
@@ -43,5 +43,7 @@ markdown_extensions:
 
 nav:
   - Explorer: index.md
+  - 'Inventory & Parts':
+      - 'Live Inventory & Barcodes': inventory-hub.md
   - 'Hardware & Electronics':
       - 'demo-project': demo-project.md

@@ -39,3 +39,8 @@ jobs:
 
       - name: Run Cargo check
         run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Run ProjectsWiki Cargo check & test
+        run: |
+          cargo check --manifest-path ProjectsWiki/Cargo.toml
+          cargo test --manifest-path ProjectsWiki/Cargo.toml

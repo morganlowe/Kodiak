@@ -31,9 +31,11 @@ dev:
 
 check:
 	cargo check --manifest-path src-tauri/Cargo.toml
+	cargo check --manifest-path ProjectsWiki/Cargo.toml
 
 test:
 	cargo test --manifest-path src-tauri/Cargo.toml
+	cargo test --manifest-path ProjectsWiki/Cargo.toml
 
 clean:
 	rm -rf pkg/ kodiak-*.pkg.tar.* foreman-*.pkg.tar.* dist/

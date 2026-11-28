@@ -30,15 +30,23 @@ history.json
 # ProjectsWiki runtime & local virtualenvs
 ProjectsWiki/venv/
 ProjectsWiki/__pycache__/
+ProjectsWiki/**/__pycache__/
 ProjectsWiki/.archive_duplicates/
 ProjectsWiki/site/
+ProjectsWiki/target/
+ProjectsWiki/data/
+ProjectsWiki/inventory/
+ProjectsWiki/projects/
 ProjectsWiki/*.log
 ProjectsWiki/projects_inventory.json
 ProjectsWiki/docs/projects.json
 ProjectsWiki/project_overrides.json
+ProjectsWiki/docs/inventory/
+ProjectsWiki/docs/projects/
 ProjectsWiki/docs/*.md
 !ProjectsWiki/docs/index.md
 !ProjectsWiki/docs/demo-project.md
+!ProjectsWiki/docs/inventory-hub.md
 
 # Staged Windows resource bundles
 src-tauri/resources/ProjectsWiki/*.py
@@ -48,6 +56,7 @@ src-tauri/resources/ProjectsWiki/*.exe
 src-tauri/resources/ProjectsWiki/docs/*.md
 !src-tauri/resources/ProjectsWiki/docs/index.md
 !src-tauri/resources/ProjectsWiki/docs/demo-project.md
+!src-tauri/resources/ProjectsWiki/docs/inventory-hub.md
 
 # Internal development docs & proposals (local only)
 docs/internal/

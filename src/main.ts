@@ -346,6 +346,12 @@ interface WikiStatusDetails {
   reachable: boolean;
   url: string | null;
   api_reachable: boolean;
+  inventory_reachable?: boolean;
+  inventory_url?: string | null;
+  inventory_parts_count?: number | null;
+  inventory_locations_count?: number | null;
+  inventory_suppliers_count?: number | null;
+  inventory_boms_count?: number | null;
   wiki_dir: string;
   projects_dir: string;
   doc_count: number;
@@ -2102,7 +2108,7 @@ function renderHeader(): string {
         ${
           cfg?.wiki_enabled !== false
             ? `<button type="button" class="nav-tab ${state.tab === "wiki" ? "is-active" : ""}" data-nav="wiki">
-                <span>Projects Wiki</span>
+                <span>BenchBear</span>
                 ${state.health?.wiki_reachable ? `<span class="nav-tab__badge" style="background:var(--wiki-accent); color:#fff;">Live</span>` : ""}
               </button>`
             : ""
@@ -2229,7 +2235,7 @@ function renderHealthStrip(): string {
         }
         ${
           h.active_project && cfg.wiki_enabled !== false
-            ? `<button type="button" class="btn btn--sm quick-wiki-btn" title="View or document active project in Projects Wiki" style="padding:0.15rem 0.5rem; font-size:0.75rem; margin-inline-start:0.35rem;">Wiki</button>`
+            ? `<button type="button" class="btn btn--sm quick-wiki-btn" title="View or document active project in BenchBear" style="padding:0.15rem 0.5rem; font-size:0.75rem; margin-inline-start:0.35rem;">Wiki</button>`
             : ""
         }
       </span>
@@ -2238,7 +2244,7 @@ function renderHealthStrip(): string {
         cfg.wiki_enabled !== false
           ? `<span class="health-item">
               <span class="${h.wiki_reachable ? "status-dot is-ok" : "status-dot is-warn"}"></span>
-              <span>Projects Wiki: <strong>${h.wiki_reachable ? "Live" : "Offline"}</strong></span>
+              <span>BenchBear: <strong>${h.wiki_reachable ? "Live" : "Offline"}</strong></span>
             </span>`
           : ""
       }
@@ -2343,7 +2349,7 @@ function renderWorkbenchTab(): string {
         }
         ${
           cfg.active_project && cfg.wiki_enabled !== false
-            ? `<button type="button" class="btn btn--sm quick-wiki-btn" title="View or document this project in Projects Wiki">
+            ? `<button type="button" class="btn btn--sm quick-wiki-btn" title="View or document this project in BenchBear">
                 Wiki
               </button>`
             : ""
@@ -2409,8 +2415,8 @@ function renderWorkbenchTab(): string {
       !cfg.wiki_configured
         ? `<div class="stage-alert" style="background:var(--wiki-surface); border:1px solid var(--wiki-accent); border-radius:var(--wiki-radius-sm); padding:0.75rem 1rem; margin-block-end:1rem; display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
             <div style="display:flex; flex-direction:column; gap:0.25rem;">
-              <strong style="color:var(--wiki-accent); font-size:0.95rem;">Projects Wiki & AI Documentation Hub Available</strong>
-              <span class="muted" style="font-size:0.82rem;">Would you like to set up the Projects Wiki for your repositories or skip it? You can always change this in Settings.</span>
+              <strong style="color:var(--wiki-accent); font-size:0.95rem;">BenchBear & AI Documentation Hub Available</strong>
+              <span class="muted" style="font-size:0.82rem;">Would you like to set up BenchBear for your repositories or skip it? You can always change this in Settings.</span>
             </div>
             <div class="row-inline" style="gap:0.5rem;">
               <button type="button" id="banner-open-wizard-btn" class="btn btn--sm btn--primary">Set Up Wiki</button>
@@ -3995,7 +4001,7 @@ function renderWikiSetupWizard(): string {
       stepBodyHtml = `
         <div style="display:flex; flex-direction:column; gap:1rem;">
           <p class="muted" style="font-size:0.88rem; line-height:1.45; margin:0;">
-            Kodiak now features a unified <strong>Projects Wiki & Knowledge Hub</strong>.
+            Kodiak now features a unified <strong>BenchBear & Knowledge Hub</strong>.
             It provides fast local browsing with MkDocs Material, hardware asset indexing (PDF datasheets, schematics, manuals),
             and offline AI documentation generation powered by local Ollama (e.g. <code>qwen2.5-coder:7b</code>) with zero cloud tokens.
           </p>
@@ -4004,13 +4010,13 @@ function renderWikiSetupWizard(): string {
             <div style="background:var(--wiki-surface); border:2px solid var(--wiki-accent); border-radius:var(--wiki-radius); padding:1rem; display:flex; flex-direction:column; gap:0.5rem;">
               <div class="row-inline" style="gap:0.4rem; align-items:center;">
                 
-                <strong style="color:var(--wiki-accent);">Set Up Projects Wiki</strong>
+                <strong style="color:var(--wiki-accent);">Set Up BenchBear</strong>
               </div>
               <p class="muted" style="font-size:0.8rem; margin:0; flex:1;">
                 Point Kodiak to your projects folder, automatically discover your repositories, sync the whitelist, and enable the full local wiki hub.
               </p>
               <button type="button" id="wizard-next-step1-btn" class="btn btn--primary" style="margin-top:0.5rem;">
-                Set Up Projects Wiki →
+                Set Up BenchBear →
               </button>
             </div>
 
@@ -4020,7 +4026,7 @@ function renderWikiSetupWizard(): string {
                 <strong>Skip for Now</strong>
               </div>
               <p class="muted" style="font-size:0.8rem; margin:0; flex:1;">
-                Skip wiki setup and hide the "Projects Wiki" navigation tab. You can rerun this wizard or re-enable the wiki anytime in Settings.
+                Skip wiki setup and hide the "BenchBear" navigation tab. You can rerun this wizard or re-enable the wiki anytime in Settings.
               </p>
               <button type="button" id="wizard-skip-step1-btn" class="btn btn--danger" style="margin-top:0.5rem;">
                 Skip & Hide Wiki Button
@@ -4051,7 +4057,7 @@ function renderWikiSetupWizard(): string {
         <div style="display:flex; flex-direction:column; gap:1rem;">
           <p class="muted" style="font-size:0.85rem; margin:0;">
             Specify the folder containing your local coding repositories and projects.
-            Both Kodiak's task supervisor and the Projects Wiki catalog will use this directory.
+            Both Kodiak's task supervisor and the BenchBear catalog will use this directory.
           </p>
 
           <div class="form-field">
@@ -4124,12 +4130,12 @@ function renderWikiSetupWizard(): string {
       stepBodyHtml = `
         <div style="display:flex; flex-direction:column; gap:1rem;">
           <p class="muted" style="font-size:0.85rem; margin:0;">
-            Configure your local network domain and background daemon options for the Projects Wiki.
+            Configure your local network domain and background daemon options for the BenchBear.
           </p>
 
           <div style="background:var(--wiki-surface); border:1px solid var(--wiki-border); border-radius:var(--wiki-radius); padding:0.85rem; display:flex; flex-direction:column; gap:0.6rem;">
             <div class="row-between" style="align-items:center;">
-              <strong style="font-size:0.9rem;">Local Domain Resolution (<code>wiki.local</code>)</strong>
+              <strong style="font-size:0.9rem;">Local Domain Resolution (<code>benchbear.localhost</code>)</strong>
               ${
                 isHostsConfigured
                   ? `<span class="badge badge--good">Configured</span>`
@@ -4139,12 +4145,12 @@ function renderWikiSetupWizard(): string {
             ${
               isHostsConfigured
                 ? `<p class="muted" style="font-size:0.8rem; margin:0;">
-                    Your hosts file contains an entry for <code>127.0.0.1 wiki.local</code>.
-                    ${port80Configured ? "Binding to port 80 allows clean URL <code>http://wiki.local</code>." : "MkDocs will serve at <code>http://wiki.local:8000</code> or <code>http://127.0.0.1:8000</code>."}
+                    <code>benchbear.localhost</code> resolves to loopback automatically; no hosts-file entry is required.
+                    ${port80Configured ? "The site is available at <code>http://benchbear.localhost</code>." : "MkDocs serves at <code>http://benchbear.localhost:8000</code> or <code>http://127.0.0.1:8000</code>."}
                   </p>`
                 : `<div style="font-size:0.8rem; display:flex; flex-direction:column; gap:0.4rem;">
-                    <span class="muted">To resolve <code>http://wiki.local</code> seamlessly in any browser without ports, add this line to your <code>${isWindows ? "C:\\Windows\\System32\\drivers\\etc\\hosts" : "/etc/hosts"}</code>:</span>
-                    <pre class="mono" style="background:rgba(0,0,0,0.3); padding:0.4rem 0.6rem; border-radius:4px; margin:0;">127.0.0.1 wiki.local</pre>
+                    <span class="muted">To resolve <code>http://benchbear.localhost</code> seamlessly in any browser without ports, add this line to your <code>${isWindows ? "C:\\Windows\\System32\\drivers\\etc\\hosts" : "/etc/hosts"}</code>:</span>
+                    <pre class="mono" style="background:rgba(0,0,0,0.3); padding:0.4rem 0.6rem; border-radius:4px; margin:0;">127.0.0.1 benchbear.localhost</pre>
                     <span class="muted" style="font-size:0.75rem;">No administrator rights required right now — Kodiak connects to <code>http://127.0.0.1:8000</code> automatically.</span>
                   </div>`
             }
@@ -4177,7 +4183,7 @@ function renderWikiSetupWizard(): string {
               />
               <div>
                 <label for="wizard-start-now-cb" style="font-weight:600; font-size:0.85rem; cursor:pointer;">
-                  Start Projects Wiki Server Immediately
+                  Start BenchBear Server Immediately
                 </label>
                 <div class="muted" style="font-size:0.78rem;">
                   Launches MkDocs Material server and the Sync API daemon immediately upon finishing setup.
@@ -4200,7 +4206,7 @@ function renderWikiSetupWizard(): string {
         <div style="display:flex; flex-direction:column; gap:1rem;">
           <p class="muted" style="font-size:0.85rem; margin:0;">
             Review your configuration below. Clicking <strong>Complete Setup</strong> will save your settings,
-            sync your catalog, and open the Projects Wiki tab in Kodiak.
+            sync your catalog, and open the BenchBear tab in Kodiak.
           </p>
 
           <div style="background:var(--wiki-surface); border:1px solid var(--wiki-border); border-radius:var(--wiki-radius); padding:0.85rem; display:flex; flex-direction:column; gap:0.5rem; font-size:0.82rem;">
@@ -4218,7 +4224,7 @@ function renderWikiSetupWizard(): string {
             </div>
             <div class="row-between">
               <span class="muted">Access URL:</span>
-              <span class="mono">${info?.hosts_configured ? "http://wiki.local" : "http://127.0.0.1:8000"}</span>
+              <span class="mono">${info?.hosts_configured ? "http://benchbear.localhost" : "http://127.0.0.1:8000"}</span>
             </div>
             <div class="row-between">
               <span class="muted">systemd Service Autostart:</span>
@@ -4254,7 +4260,7 @@ function renderWikiSetupWizard(): string {
           <div style="display:flex; align-items:center; gap:0.5rem;">
             
             <div>
-              <strong style="font-size:1.05rem;">Projects Wiki Setup Wizard</strong>
+              <strong style="font-size:1.05rem;">BenchBear Setup Wizard</strong>
               <div class="muted" style="font-size:0.75rem;">Step ${currentStep} of 4</div>
             </div>
           </div>
@@ -4314,7 +4320,7 @@ function renderWikiAiModal(): string {
 
         <p class="muted" style="font-size: 0.85rem; margin-block-end: 1rem;">
           Kodiak utilizes your local Ollama models (such as <code>qwen2.5-coder:7b</code>) to inspect project code,
-          hardware architecture, pinouts, and assets to write comprehensive Markdown documentation for the Projects Wiki.
+          hardware architecture, pinouts, and assets to write comprehensive Markdown documentation for the BenchBear.
         </p>
 
         <div style="display:flex; flex-direction:column; gap:0.75rem; margin-block-end: 1rem;">
@@ -4386,12 +4392,12 @@ function renderWikiTab(): string {
     return `
       <section class="panel-card" style="margin:1.25rem;">
         <div class="panel-header">
-          <h2 class="panel-title">Projects Wiki & AI Documentation Hub</h2>
+          <h2 class="panel-title"><img src="${bearBuiltLogoUrl}" alt="BenchBear" style="height:1.6rem; width:auto; vertical-align:middle; margin-inline-end:0.5rem;" />BenchBear Project Wiki &amp; Inventory Hub</h2>
           <span class="badge badge--bad">MkDocs & Sync API Offline</span>
         </div>
         <p class="muted">
-          Kodiak includes the Projects Wiki and local AI documentation generator directly at <code>${escapeHtml(wd?.wiki_dir || cfg.wiki_dir || "./ProjectsWiki")}</code>.
-          The background MkDocs Material server and Sync API (port 8765) are currently stopped.
+          Kodiak includes the BenchBear and local AI documentation generator directly at <code>${escapeHtml(wd?.wiki_dir || cfg.wiki_dir || "./ProjectsWiki")}</code>.
+          The background MkDocs Material server, Sync API (port 8765), and BenchBear Inventory &amp; Barcode Hub (port 8090) are currently stopped.
         </p>
         <div class="row-inline" style="gap:0.75rem; margin-top:1rem; flex-wrap:wrap;">
           <button
@@ -4400,7 +4406,7 @@ function renderWikiTab(): string {
             class="btn btn--primary"
             ${state.startingWiki ? "disabled" : ""}
           >
-            ${state.startingWiki ? "Starting Projects Wiki..." : "Start Projects Wiki Server"}
+            ${state.startingWiki ? "Starting BenchBear..." : "Start BenchBear Server"}
           </button>
           <button
             type="button"
@@ -4431,11 +4437,21 @@ function renderWikiTab(): string {
           <span class="badge badge--good" title="MkDocs HTTP Live">Wiki Live</span>
           <code class="mono" style="font-size:0.8rem;">${escapeHtml(h.wiki_url)}</code>
           ${wd?.api_reachable ? `<span class="badge badge--neutral" title="Sync & Asset API on port 8765">API :8765</span>` : ""}
+          ${
+            wd?.inventory_reachable
+              ? `<span class="badge badge--good" title="${escapeHtml(
+                  `BenchBear Inventory Hub live on port 8090 (${wd.inventory_parts_count ?? 0} SKUs, ${wd.inventory_locations_count ?? 0} bins, ${wd.inventory_suppliers_count ?? 0} suppliers, ${wd.inventory_boms_count ?? 0} BOMs)`
+                )}">Inventory :8090${wd.inventory_parts_count != null ? ` (${wd.inventory_parts_count})` : ""}</span>`
+              : ""
+          }
           <span class="badge badge--neutral" title="Cataloged Project Docs">${escapeHtml(docCountStr)} • ${escapeHtml(catalogCountStr)}</span>
         </div>
         <div class="row-inline" style="gap:0.4rem; align-items:center;">
           <button type="button" id="open-wiki-ai-modal-btn" class="btn btn--sm btn--primary" title="Generate or refresh project docs with Ollama">
             AI Build Doc
+          </button>
+          <button type="button" id="open-wiki-inventory-btn" class="btn btn--sm" title="Open BenchBear Inventory, Locations, Suppliers & Barcodes in iframe">
+            Inventory Hub
           </button>
           <button type="button" id="sync-wiki-btn" class="btn btn--sm" ${state.syncingWiki ? "disabled" : ""} title="Refresh catalog and mkdocs navigation">
             ${state.syncingWiki ? "Syncing..." : "Sync Catalog"}
@@ -4445,6 +4461,11 @@ function renderWikiTab(): string {
           </button>
           <button type="button" id="reload-wiki-iframe-btn" class="btn btn--sm" title="Reload embedded iframe">Reload</button>
           <button type="button" id="stop-wiki-btn" class="btn btn--sm btn--danger" ${state.stoppingWiki ? "disabled" : ""} title="Stop background server">Stop</button>
+          ${
+            wd?.inventory_reachable && wd.inventory_url
+              ? `<a href="${escapeHtml(wd.inventory_url)}" target="_blank" rel="noopener noreferrer" class="btn btn--sm" title="Open BenchBear Inventory Hub directly in system browser" style="text-decoration:none;">Hub :8090</a>`
+              : ""
+          }
           <a href="${escapeHtml(h.wiki_url)}" target="_blank" rel="noopener noreferrer" class="btn btn--sm" title="Open in system browser" style="text-decoration:none;">External</a>
         </div>
       </div>
@@ -4452,7 +4473,7 @@ function renderWikiTab(): string {
         id="projects-wiki-iframe"
         class="wiki-iframe"
         src="${escapeHtml(h.wiki_url)}"
-        title="Projects Wiki"
+        title="BenchBear"
       ></iframe>
     </div>
     ${renderWikiAiModal()}
@@ -4635,8 +4656,8 @@ function renderSettingsTab(): string {
       !cfg.wiki_configured
         ? `<div class="stage-alert" style="background:var(--wiki-surface); border:1px solid var(--wiki-accent); border-radius:var(--wiki-radius-sm); padding:0.75rem 1rem; margin-block-end:1rem; display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
             <div style="display:flex; flex-direction:column; gap:0.25rem;">
-              <strong style="color:var(--wiki-accent); font-size:0.95rem;">Projects Wiki & AI Documentation Hub Available</strong>
-              <span class="muted" style="font-size:0.82rem;">Would you like to set up the Projects Wiki for your repositories or skip it? You can always change this in Settings.</span>
+              <strong style="color:var(--wiki-accent); font-size:0.95rem;">BenchBear & AI Documentation Hub Available</strong>
+              <span class="muted" style="font-size:0.82rem;">Would you like to set up BenchBear for your repositories or skip it? You can always change this in Settings.</span>
             </div>
             <div class="row-inline" style="gap:0.5rem;">
               <button type="button" id="banner-open-wizard-btn" class="btn btn--sm btn--primary">Set Up Wiki</button>
@@ -4736,7 +4757,7 @@ function renderSettingsTab(): string {
                          hasCompanionWikiAsset
                            ? `<label class="row-inline" style="font-size:0.82rem; cursor:pointer;">
                                 <input type="checkbox" id="update-include-wiki-toggle" ${state.updateIncludeWiki ? "checked" : ""} />
-                                <span>Include companion <code>kodiak-projectswiki</code> package</span>
+                                <span>Include companion <code>kodiak-projectswiki</code> package (BenchBear)</span>
                               </label>`
                            : ""
                        }
@@ -4864,11 +4885,11 @@ function renderSettingsTab(): string {
       </div>
     </section>
 
-    <!-- Projects Wiki & AI Documentation Hub Integration -->
+    <!-- BenchBear & AI Documentation Hub Integration -->
     <section class="panel-card">
       <div class="panel-header">
         <div class="row-inline">
-          <h2 class="panel-title">Projects Wiki & AI Documentation Hub</h2>
+          <h2 class="panel-title"><img src="${bearBuiltLogoUrl}" alt="BenchBear" style="height:1.6rem; width:auto; vertical-align:middle; margin-inline-end:0.5rem;" />BenchBear Project Wiki &amp; Inventory Hub</h2>
           ${
             cfg.wiki_enabled !== false
               ? `<span class="badge badge--good">Enabled</span>`
@@ -4890,8 +4911,8 @@ function renderSettingsTab(): string {
             <p class="muted" style="margin:0.25rem 0 0 0; font-size:0.8rem;">
               ${
                 cfg.wiki_enabled !== false
-                  ? "The Projects Wiki tab is active in Kodiak's top navigation bar."
-                  : "The Projects Wiki tab is hidden. Enabling it restores the navigation tab and background services."
+                  ? "The BenchBear tab is active in Kodiak's top navigation bar."
+                  : "The BenchBear tab is hidden. Enabling it restores the navigation tab and background services."
               }
             </p>
           </div>
@@ -5414,7 +5435,7 @@ function renderSettingsTab(): string {
         </div>
 
         <div class="form-field">
-          <label class="form-label" for="cfg-wiki-dir">Projects Wiki On-Disk Directory</label>
+          <label class="form-label" for="cfg-wiki-dir">BenchBear On-Disk Directory</label>
           <input type="text" id="cfg-wiki-dir" class="form-input" value="${escapeHtml(cfg.wiki_dir)}" />
         </div>
       </div>
@@ -5608,7 +5629,7 @@ function renderDashboardTab(): string {
                 ` : ""}
                 <button type="button" class="btn btn--sm open-workbench-project-btn" data-project-path="${escapeHtml(p.path)}" title="Open this project in the Workbench">Open Workbench →</button>
                 ${p.wiki_doc_exists ? `
-                  <button type="button" class="btn btn--sm open-wiki-project-btn" data-project-name="${escapeHtml(p.name)}" title="View this project in ProjectsWiki">Wiki</button>
+                  <button type="button" class="btn btn--sm open-wiki-project-btn" data-project-name="${escapeHtml(p.name)}" title="View this project in BenchBear">Wiki</button>
                 ` : ""}
                 ${p.pending_approval_count > 0 ? `
                   <button type="button" class="btn btn--sm btn--primary open-inbox-project-btn" title="Review pending cards in the Unified Inbox">Review (${p.pending_approval_count})</button>
@@ -5660,7 +5681,7 @@ function renderAboutTab(): string {
         <div style="flex:1; min-width:240px;">
           <div class="row-inline" style="gap:0.75rem; align-items:center; flex-wrap:wrap;">
             <h1 style="margin:0; font-size:1.8rem; font-weight:700; color:var(--md-default-fg-color);">Kodiak</h1>
-            <span class="badge badge--ok" style="font-size:0.85rem;">v1.2.1</span>
+            <span class="badge badge--ok" style="font-size:0.85rem;">v1.3.0</span>
             <button type="button" id="about-check-updates-btn" class="btn btn--sm" ${state.updateChecking ? "disabled" : ""}>
               ${state.updateChecking ? "Checking Updates..." : "Check for Updates"}
             </button>
@@ -5789,7 +5810,7 @@ function renderAboutTab(): string {
             <span><strong>Brand Asset:</strong> Morninglion Industries</span>
           </div>
           <div class="row-inline muted">
-            <span>Kodiak Task Delegation System (v1.2.1)</span>
+            <span>Kodiak Task Delegation System (v1.3.0)</span>
           </div>
         </div>
         <div style="text-align:center; padding-top:1.5rem; border-top:1px solid var(--wiki-border); margin-top:1.25rem;">
@@ -6299,7 +6320,7 @@ async function skipWikiSetup(): Promise<void> {
     if (state.tab === "wiki") {
       state.tab = "workbench";
     }
-    state.uiBannerInfo = "Projects Wiki skipped. The navigation tab has been hidden. You can enable it anytime in Settings.";
+    state.uiBannerInfo = "BenchBear skipped. The navigation tab has been hidden. You can enable it anytime in Settings.";
     await refreshAllState();
   } catch (err) {
     state.uiBannerError = `Failed to skip wiki: ${String(err)}`;
@@ -6336,7 +6357,7 @@ async function completeWikiWizard(): Promise<void> {
     state.config = updated;
     state.wikiWizardOpen = false;
     state.tab = "wiki";
-    state.uiBannerInfo = "Projects Wiki setup complete! Repositories cataloged and wiki started.";
+    state.uiBannerInfo = "BenchBear setup complete! Repositories cataloged and wiki started.";
     await refreshAllState();
   } catch (err) {
     state.uiBannerError = `Wiki setup error: ${String(err)}`;
@@ -6356,8 +6377,8 @@ async function toggleWikiFeature(): Promise<void> {
       state.tab = "workbench";
     }
     state.uiBannerInfo = target
-      ? "Projects Wiki enabled. The navigation tab is now restored."
-      : "Projects Wiki disabled. The navigation tab has been hidden.";
+      ? "BenchBear enabled. The navigation tab is now restored."
+      : "BenchBear disabled. The navigation tab has been hidden.";
     await refreshAllState();
   } catch (err) {
     state.uiBannerError = `Failed to toggle wiki: ${String(err)}`;
@@ -7820,7 +7841,7 @@ function bindEvents(): void {
     renderApp();
     try {
       const msg = await invoke<string>("sync_wiki_catalog");
-      state.uiBannerInfo = msg || "Projects Wiki catalog synced.";
+      state.uiBannerInfo = msg || "BenchBear catalog synced.";
       await refreshAllState();
       const iframe = document.getElementById("projects-wiki-iframe") as HTMLIFrameElement | null;
       if (iframe && state.health?.wiki_url) {
@@ -7866,6 +7887,13 @@ function bindEvents(): void {
     const iframe = document.getElementById("projects-wiki-iframe") as HTMLIFrameElement | null;
     if (iframe && state.health?.wiki_url) {
       iframe.src = state.health.wiki_url;
+    }
+  });
+
+  document.getElementById("open-wiki-inventory-btn")?.addEventListener("click", () => {
+    const iframe = document.getElementById("projects-wiki-iframe") as HTMLIFrameElement | null;
+    if (iframe && state.health?.wiki_url) {
+      iframe.src = `${state.health.wiki_url.replace(/\/$/, "")}/inventory-hub/`;
     }
   });
 

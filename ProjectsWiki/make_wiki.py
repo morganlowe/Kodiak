@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-make_wiki.py - Dynamic Catalog & Navigation Generator for Kodiak ProjectsWiki.
+make_wiki.py - Dynamic Catalog & Navigation Generator for Projects & Parts Wiki.
 
 Scans the configured projects directory, extracts metadata, builds projects.json,
-and generates mkdocs.yml navigation without personal hardcoded paths or taxonomies.
+and generates mkdocs.yml navigation including the Inventory & Parts section.
 """
 import datetime
 import json
 import os
 import re
-from typing import Dict, Any, List
+from typing import Dict, List
 
 from wiki_config import load_wiki_config, load_overrides
 
@@ -23,6 +23,7 @@ VALID_EXTENSIONS = (
 
 SKIP_DOCS = {
     "index.md",
+    "inventory-hub.md",
 }
 
 TAG_KEYWORDS = [
@@ -41,8 +42,7 @@ TAG_KEYWORDS = [
 
 
 def _write_file_if_changed(filepath: str, content: str) -> bool:
-    """Writes content to filepath only if the file does not exist or content differs.
-    Preserves mtime and prevents spurious MkDocs live-reload cascades when content is unchanged."""
+    """Writes content to filepath only if the file does not exist or content differs."""
     if os.path.exists(filepath):
         try:
             with open(filepath, "r", encoding="utf-8") as f:
@@ -63,8 +63,7 @@ def classify_project(slug_lower: str, text_lower: str, categories: Dict[str, Lis
                 continue
             if pat in slug_lower or re.search(r"\b" + re.escape(pat) + r"\b", text_lower):
                 return category
-    
-    # Return first category with empty match list or default fallback
+
     for category, keywords in categories.items():
         if not keywords:
             return category
@@ -204,8 +203,48 @@ def extract_metadata(doc_path: str, project_name: str, doc_filename: str, projec
     }
 
 
+def _title_from_slug(stem: str) -> str:
+    return " ".join(w.capitalize() for w in re.split(r"[-_]+", stem) if w)
+
+
+def _build_inventory_nav_block() -> str:
+    lines = ["  - 'Inventory & Parts':"]
+    if os.path.isfile(os.path.join(WIKI_DOCS_DIR, "inventory-hub.md")):
+        lines.append("      - 'Live Inventory & Barcodes': inventory-hub.md")
+
+    inv_dir = os.path.join(WIKI_DOCS_DIR, "inventory")
+    if os.path.isdir(inv_dir):
+        priority = ["valuation.md", "locations.md", "suppliers.md"]
+        for fname in priority:
+            if os.path.isfile(os.path.join(inv_dir, fname)):
+                label = {
+                    "valuation.md": "Valuation & Reorder",
+                    "locations.md": "Locations & Bins",
+                    "suppliers.md": "Suppliers & Vendors",
+                }[fname]
+                lines.append(f"      - '{label}': inventory/{fname}")
+
+        for fname in sorted(os.listdir(inv_dir)):
+            if not fname.endswith(".md") or fname in priority:
+                continue
+            label = _title_from_slug(fname[:-3])
+            lines.append(f"      - '{label}': inventory/{fname}")
+
+    proj_dir = os.path.join(WIKI_DOCS_DIR, "projects")
+    if os.path.isdir(proj_dir):
+        proj_files = sorted(f for f in os.listdir(proj_dir) if f.endswith(".md"))
+        if proj_files:
+            lines.append("      - 'Project BOMs':")
+            for fname in proj_files:
+                label = _title_from_slug(fname[:-3])
+                lines.append(f"          - '{label}': projects/{fname}")
+
+    return "\n".join(lines) + "\n"
+
+
 def main():
     cfg = load_wiki_config()
+    site_name = cfg.get("site_name", "BenchBear")
     projects_dir = cfg["projects_dir"]
     categories = cfg["categories"]
     overrides = load_overrides(cfg)
@@ -213,9 +252,10 @@ def main():
     project_files = []
     seen_docs = set()
 
-    # 1. Collect all existing documentation pages in docs/
+    # 1. Collect top-level documentation pages in docs/ (excluding index, inventory-hub, and subdirs)
     for fname in sorted(os.listdir(WIKI_DOCS_DIR)):
-        if fname.endswith(".md") and fname not in SKIP_DOCS:
+        full = os.path.join(WIKI_DOCS_DIR, fname)
+        if os.path.isfile(full) and fname.endswith(".md") and fname not in SKIP_DOCS:
             proj_name = fname[:-3].replace("_", " ")
             project_files.append((proj_name, fname))
             seen_docs.add(fname)
@@ -238,11 +278,14 @@ def main():
             if os.path.exists(doc_path):
                 continue
 
-            print(f":: [ProjectsWiki] Analyzing new project: {project_name}...")
+            print(f":: [BenchBear] Analyzing new project: {project_name}...")
             code_snippet = ""
             all_files = []
             for root, dirs, files in os.walk(project_path):
-                dirs[:] = [d for d in sorted(dirs) if not d.startswith(".") and d not in {"node_modules", "__pycache__", "venv", ".venv", "build", "dist", "target", ".git"}]
+                dirs[:] = [
+                    d for d in sorted(dirs)
+                    if not d.startswith(".") and d not in {"node_modules", "__pycache__", "venv", ".venv", "build", "dist", "target", ".git"}
+                ]
                 rel_root = os.path.relpath(root, project_path)
                 for file in sorted(files):
                     if file.startswith("."):
@@ -258,7 +301,6 @@ def main():
                             pass
 
             if not code_snippet.strip():
-                # Non-code directory (manuals, photos, CAD, PDFs)
                 file_bullets = "\n".join(f"- `{p}`" for p in all_files[:60]) or "- *(Empty folder)*"
                 doc_content = (
                     f"# {project_name}\n\n"
@@ -283,9 +325,9 @@ def main():
                         data=json.dumps({
                             "model": cfg["ollama_model"],
                             "messages": [{"role": "user", "content": prompt}],
-                            "stream": False
+                            "stream": False,
                         }).encode("utf-8"),
-                        headers={"Content-Type": "application/json"}
+                        headers={"Content-Type": "application/json"},
                     )
                     with urllib.request.urlopen(req, timeout=30) as resp:
                         res_data = json.loads(resp.read().decode("utf-8"))
@@ -295,7 +337,6 @@ def main():
 
             _write_file_if_changed(doc_path, doc_content)
 
-    # Build catalog metadata
     catalog = []
     by_category = {}
     for proj_name, doc_filename in project_files:
@@ -314,8 +355,8 @@ def main():
         if cat not in category_order:
             category_order.append(cat)
 
-    nav_yaml = """site_name: Projects Wiki
-site_description: Interactive hardware, electronics, embedded systems, and software documentation hub
+    nav_yaml = f"""site_name: {site_name}
+site_description: Interactive hardware, electronics, embedded systems, inventory, and barcode hub
 theme:
   name: material
   logo: Bear-built-logo.png
@@ -360,6 +401,8 @@ markdown_extensions:
 nav:
   - Explorer: index.md
 """
+    nav_yaml += _build_inventory_nav_block()
+
     for cat in category_order:
         items = by_category.get(cat, [])
         if not items:
@@ -371,7 +414,7 @@ nav:
 
     _write_file_if_changed(os.path.join(WIKI_DIR, "mkdocs.yml"), nav_yaml)
 
-    print(f":: [ProjectsWiki] Generated projects.json ({len(catalog)} projects) and mkdocs.yml successfully.")
+    print(f":: [BenchBear] Generated projects.json ({len(catalog)} projects) and mkdocs.yml successfully.")
 
 
 if __name__ == "__main__":

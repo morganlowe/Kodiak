@@ -1,0 +1,36 @@
+[package]
+name = "benchbear"
+version = "1.0.0"
+authors = ["Aureus K'Tharr"]
+repository = "https://github.com/morganlowe/BenchBear"
+readme = "README.md"
+keywords = ["inventory", "barcode", "labels", "wiki", "electronics"]
+edition = "2021"
+license = "GPL-3.0-only"
+description = "BenchBear - Local-first hardware projects wiki, parts inventory, bin locations, suppliers, costs, and 1D/2D thermal barcode label engine"
+
+[[bin]]
+name = "benchbear"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+axum = { version = "0.7", features = ["multipart"] }
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }
+image = "0.25"
+qrcode = "0.14"
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+rqrr = "0.9"
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+toml = "0.8"
+tower-http = { version = "0.6", features = ["cors", "fs"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"

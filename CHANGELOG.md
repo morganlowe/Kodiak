@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-11-27
+
+### Added
+
+- **BenchBear v1.0.0 Rust Inventory, Locations, Suppliers, Costs & Barcode Engine Integration ([github.com/morganlowe/BenchBear](https://github.com/morganlowe/BenchBear), `ProjectsWiki/`)**:
+  - Integrated the standalone **BenchBear** (`benchbear v1.0.0`) Rust engine into `ProjectsWiki/` (`ProjectsWiki/Cargo.toml`, `ProjectsWiki/Cargo.lock`, `ProjectsWiki/src/`, `ProjectsWiki/docs/inventory-hub.md`, `ProjectsWiki/docs/extra.js`, `ProjectsWiki/docs/extra.css`, `ProjectsWiki/app/wiki_app.py`, `ProjectsWiki/mcp/server.py`, `ProjectsWiki/mcp/README.md`).
+  - **Portable SQLite Inventory & Markdown Sync**: `inventory.db` configured in `DELETE` journal mode with `FULL` synchronous writes, atomic `snapshot.json` mirroring, and regenerated category/location/supplier/valuation Markdown tables (`inventory/` and `docs/inventory/`).
+  - **Locations, Suppliers, Costs & BOMs**: Structured bins (`area`, `rack`, `drawer`, `BIN:` barcodes), seeded and custom vendors, multi-supplier quotes, inventory valuation rollups, supplier-grouped low-stock reorder sheets, URL product scraper with packs/final-cost calculator and photo/pinout gallery picker, clickable part detail modals, and atomic project BOM stock deduction.
+  - **1D/2D Thermal Labels & Barcode Scanning**: Pure-Rust Code 128 and QR generation (`2x1`, `2.25x1.25`, Brother QL `ql62x29`/`ql62x42`, Phomemo sizes, and custom dimensions) in SVG, vector PDF, 203-DPI PNG, and driverless Phomemo ESC/POS `.phomemo` raster output, plus USB keyboard-wedge, camera, image upload, and DigiKey/Mouser/LCSC 2D bag barcode resolution.
+  - **18-Tool Stdio MCP Server**: `benchbear mcp` and `ProjectsWiki/mcp/server.py` wrapper exposing inventory, bin, supplier, valuation, reorder, BOM, label, and scan tools.
+- **BenchBear Branding**: Rebranded Kodiak’s companion navigation, setup wizard, Settings, embedded inventory hub, wiki site, and documentation as BenchBear, using the current BenchBear logo while preserving existing Kodiak companion package names and user data paths.
+- **Kodiak Wiki Tab Inventory Hub Surface (`src-tauri/src/pipeline.rs`, `src/main.ts`)**:
+  - Extended `WikiStatusDetails` and `get_detailed_wiki_status` to probe `http://127.0.0.1:8090/api/health`, track `inventory_reachable`, `inventory_url`, and live SKU/bin/supplier/BOM counts, and exclude `inventory-hub.md` from `doc_count`.
+  - Added the live `Inventory :8090` badge, `Inventory Hub` iframe button (`#open-wiki-inventory-btn`), and direct `Hub :8090` external link to the Projects Wiki toolbar, plus `benchbear.exe` cleanup in Windows `stop_wiki_service`.
+
+### Changed
+
+- **Packaged & Read-Only Deployment Hardening (`ProjectsWiki/wiki_config.py`, `ProjectsWiki/wiki_server.py`, `ProjectsWiki/wiki.sh`, `ProjectsWiki/src/main.rs`)**:
+  - Added writable-directory detection (`_default_data_dir()`) falling back to `~/.local/share/kodiak/projectswiki-data` (Linux/macOS) or `%LOCALAPPDATA%\kodiak\projectswiki-data` (Windows) when `ProjectsWiki` lives under a read-only system install.
+  - Updated `wiki_server.py` to resolve `WIKI_DIR` next to `sys.executable` when PyInstaller-frozen, guard `cargo build --release` on writable directories, pass `CREATE_NO_WINDOW` to `benchbear` on Windows, and clean up `inv_proc` cleanly when frozen `mkdocs.commands.serve` exits.
+  - Updated `wiki.sh` `run_daemon_foreground()` to avoid calling `systemctl --user stop projects-wiki.service` inside systemd `ExecStart`, and made Markdown export errors non-fatal during `benchbear serve` when `ProjectsWiki` is read-only.
+- Updated package versions, UI labels, `README.md` (with links to `https://github.com/morganlowe/BenchBear`), and `CHANGELOG.md` to `v1.3.0`.
+
+### Packaging & CI
+
+- Updated `PKGBUILD`, `scripts/build_deb.sh`, `scripts/build_windows_wiki.py`, `Makefile`, `.gitignore`, and `.github/workflows/ci.yml` to compile, test, and package `benchbear` (`kodiak-projectswiki` switched to `x86_64` on Arch and `amd64` on Debian, and Windows `with-wiki` installer bundles both `kodiak-projectswiki.exe` and `benchbear.exe`).
+
 ## [1.2.1] — 2026-11-27
 
 ### Added
@@ -309,7 +336,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Split Arch `PKGBUILD` producing `kodiak` and `kodiak-projectswiki` packages with dependency hooks (`python-mkdocs-material`, `python-requests`, `python-toml`).
 - Debian/Ubuntu `.deb` binary packages with `apt` dependency resolution.
 
-[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/morganlowe/Kodiak/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/morganlowe/Kodiak/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/morganlowe/Kodiak/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/morganlowe/Kodiak/compare/v1.1.9...v1.2.0
 [1.1.9]: https://github.com/morganlowe/Kodiak/compare/v1.1.8...v1.1.9

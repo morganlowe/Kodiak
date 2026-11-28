@@ -85,27 +85,39 @@ cp -f "$DIST_DIR/kodiak_${VERSION}-${RELEASE}_amd64.deb" "$BUNDLE_DEB_DIR/"
 echo ":: [Debian Build] Built $DIST_DIR/kodiak_${VERSION}-${RELEASE}_amd64.deb"
 
 # ------------------------------------------------------------------------------
-# 2. Package: kodiak-projectswiki (all)
+# 2. Package: kodiak-projectswiki (amd64)
 # ------------------------------------------------------------------------------
-WIKI_STAGE="$BUILD_TMP/kodiak-projectswiki_${VERSION}-${RELEASE}_all"
+echo ":: [Debian Build] Building BenchBear inventory engine..."
+cargo build --release --manifest-path "$ROOT_DIR/ProjectsWiki/Cargo.toml"
+
+WIKI_STAGE="$BUILD_TMP/kodiak-projectswiki_${VERSION}-${RELEASE}_amd64"
 mkdir -p "$WIKI_STAGE/DEBIAN" \
          "$WIKI_STAGE/usr/bin" \
          "$WIKI_STAGE/usr/lib/systemd/user" \
          "$WIKI_STAGE/usr/share/doc/kodiak-projectswiki" \
          "$WIKI_STAGE/usr/share/kodiak/projectswiki"
 
-cp -r --no-preserve=ownership "$ROOT_DIR/ProjectsWiki/." "$WIKI_STAGE/usr/share/kodiak/projectswiki/"
-rm -rf "$WIKI_STAGE/usr/share/kodiak/projectswiki/venv" \
-       "$WIKI_STAGE/usr/share/kodiak/projectswiki/__pycache__" \
-       "$WIKI_STAGE/usr/share/kodiak/projectswiki/.archive_duplicates" \
-       "$WIKI_STAGE/usr/share/kodiak/projectswiki/site" \
-       "$WIKI_STAGE/usr/share/kodiak/projectswiki/projects_inventory.json" \
-       "$WIKI_STAGE/usr/share/kodiak/projectswiki/docs/projects.json" \
-       "$WIKI_STAGE/usr/share/kodiak/projectswiki/project_overrides.json"
-find "$WIKI_STAGE/usr/share/kodiak/projectswiki/docs" -type f -name "*.md" ! -name "index.md" ! -name "demo-project.md" -delete
+tar -C "$ROOT_DIR/ProjectsWiki" \
+    --exclude=target \
+    --exclude=venv \
+    --exclude=__pycache__ \
+    --exclude=.archive_duplicates \
+    --exclude=site \
+    --exclude=data \
+    --exclude=inventory \
+    --exclude=projects \
+    --exclude=docs/inventory \
+    --exclude=docs/projects \
+    --exclude=projects_inventory.json \
+    --exclude=docs/projects.json \
+    --exclude=project_overrides.json \
+    -cf - . | tar -C "$WIKI_STAGE/usr/share/kodiak/projectswiki" --no-same-owner -xf -
+find "$WIKI_STAGE/usr/share/kodiak/projectswiki/docs" -type f -name "*.md" ! -name "index.md" ! -name "demo-project.md" ! -name "inventory-hub.md" -delete
+
+install -Dm755 "$ROOT_DIR/ProjectsWiki/target/release/benchbear" "$WIKI_STAGE/usr/share/kodiak/projectswiki/benchbear"
 
 chmod +x "$WIKI_STAGE/usr/share/kodiak/projectswiki/wiki.sh"
-chmod +x "$WIKI_STAGE/usr/share/kodiak/projectswiki"/*.py 2>/dev/null || true
+chmod +x "$WIKI_STAGE/usr/share/kodiak/projectswiki"/*.py "$WIKI_STAGE/usr/share/kodiak/projectswiki/app/wiki_app.py" "$WIKI_STAGE/usr/share/kodiak/projectswiki/mcp/server.py" 2>/dev/null || true
 
 # Symlink CLI wrapper
 ln -sf "/usr/share/kodiak/projectswiki/wiki.sh" "$WIKI_STAGE/usr/bin/wiki"
@@ -113,7 +125,7 @@ ln -sf "/usr/share/kodiak/projectswiki/wiki.sh" "$WIKI_STAGE/usr/bin/wiki"
 # Systemd user unit (shipped, not enabled by maintainer scripts)
 cat > "$WIKI_STAGE/usr/lib/systemd/user/projects-wiki.service" << 'EOF'
 [Unit]
-Description=ProjectsWiki Local Server (http://wiki.local)
+Description=BenchBear Local Server (http://benchbear.localhost)
 After=network.target
 
 [Service]
@@ -136,24 +148,25 @@ Package: kodiak-projectswiki
 Version: ${VERSION}-${RELEASE}
 Section: doc
 Priority: optional
-Architecture: all
+Architecture: amd64
 Maintainer: Morgan Lowe <morgan@local>
-Depends: python3
+Depends: python3, libc6, libgcc-s1
 Recommends: python3-yaml
-Suggests: kodiak
-Description: Local Projects Wiki and AI documentation hub component for Kodiak
- Interactive MkDocs Material documentation hub, project explorer, and local
- Ollama-powered documentation builder component for Kodiak.
+Suggests: kodiak, zbar-tools
+Description: Local BenchBear project wiki and hardware inventory companion for Kodiak
+ Interactive MkDocs Material documentation hub, project explorer, BenchBear
+ inventory/barcode engine, and local Ollama-powered documentation builder.
 EOF
 
 # Fix permissions
 find "$WIKI_STAGE" -type d -exec chmod 755 {} +
 chmod 755 "$WIKI_STAGE/usr/share/kodiak/projectswiki/wiki.sh"
-chmod 755 "$WIKI_STAGE/usr/share/kodiak/projectswiki"/*.py 2>/dev/null || true
+chmod 755 "$WIKI_STAGE/usr/share/kodiak/projectswiki/benchbear"
+chmod 755 "$WIKI_STAGE/usr/share/kodiak/projectswiki"/*.py "$WIKI_STAGE/usr/share/kodiak/projectswiki/app/wiki_app.py" "$WIKI_STAGE/usr/share/kodiak/projectswiki/mcp/server.py" 2>/dev/null || true
 chmod 755 "$WIKI_STAGE/DEBIAN"
-dpkg-deb --build --root-owner-group "$WIKI_STAGE" "$DIST_DIR/kodiak-projectswiki_${VERSION}-${RELEASE}_all.deb"
-cp -f "$DIST_DIR/kodiak-projectswiki_${VERSION}-${RELEASE}_all.deb" "$BUNDLE_DEB_DIR/"
-echo ":: [Debian Build] Built $DIST_DIR/kodiak-projectswiki_${VERSION}-${RELEASE}_all.deb"
+dpkg-deb --build --root-owner-group "$WIKI_STAGE" "$DIST_DIR/kodiak-projectswiki_${VERSION}-${RELEASE}_amd64.deb"
+cp -f "$DIST_DIR/kodiak-projectswiki_${VERSION}-${RELEASE}_amd64.deb" "$BUNDLE_DEB_DIR/"
+echo ":: [Debian Build] Built $DIST_DIR/kodiak-projectswiki_${VERSION}-${RELEASE}_amd64.deb"
 
 # Clean build temporary folder
 rm -rf "$BUILD_TMP"

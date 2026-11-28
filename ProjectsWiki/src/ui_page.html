@@ -1,0 +1,2214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>BenchBear — Projects, Parts, Locations &amp; Barcodes</title>
+<style>
+:root {
+  --header-bg: #a42600;
+  --header-dark: #7a1c00;
+  --bg: #171a21;
+  --surface: #1f2022;
+  --surface-2: #26282c;
+  --border: rgba(140,145,155,0.22);
+  --text: #e2e4e9;
+  --muted: #9aa0aa;
+  --accent: #e06338;
+  --accent-soft: #f07449;
+  --accent-fill: #a82800;
+  --accent-fill-hover: #bf3000;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --bad: #f87171;
+  --sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15.5px;line-height:1.5;font-variant-numeric:tabular-nums}
+a{color:var(--accent-soft);text-decoration:none}
+a:hover{text-decoration:underline}
+.topbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:14px;padding:10px 24px;background:var(--header-bg);color:#f0eeeb;border-bottom:1px solid rgba(0,0,0,0.25);box-shadow:0 2px 10px rgba(0,0,0,0.35)}
+.brand{display:flex;align-items:center;gap:12px}
+.brand-logo{height:38px;width:auto;filter:brightness(0) invert(0.95);display:block}
+.brand h1{margin:0;font-size:1.55rem;font-weight:800;letter-spacing:-0.02em;color:#f5f3f0;line-height:1.1}
+.brand small{color:rgba(240,238,235,0.82);display:block;font-size:.8rem;margin-top:2px}
+.stats-pills{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pill{background:var(--header-dark);border:1px solid rgba(255,255,255,0.16);color:#f0eeeb;border-radius:999px;padding:5px 12px;font-size:.84rem;font-weight:600}
+.pill b{color:#fff}
+.pill.warn b{color:#fecaca}
+.topbar .btn,.topbar button{background:var(--header-dark);border-color:rgba(255,255,255,0.22);color:#f0eeeb}
+.topbar .btn:hover,.topbar button:hover{background:#8a2000;border-color:#fff;color:#fff}
+.embed-strip{display:none;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:12px;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px}
+.embed-strip .pill{background:var(--surface-2);border-color:var(--border);color:var(--text)}
+.embed-strip .pill.warn b{color:var(--bad)}
+body.embedded .topbar{display:none}
+body.embedded .embed-strip{display:flex}
+body.embedded .container{max-width:100%;padding:8px 4px}
+.container{max-width:1560px;margin:0 auto;padding:18px 24px}
+.scan-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px}
+.scan-bar input[type="text"]{flex:1;min-width:240px}
+input,select,textarea{background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-family:var(--sans);font-size:.93rem}
+input:focus,select:focus,textarea:focus{outline:1px solid var(--accent)}
+button,.btn{background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-family:var(--sans);font-size:.92rem;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:border-color .15s ease,background .15s ease}
+button:hover,.btn:hover{border-color:var(--accent-soft);color:#fff}
+.btn-primary{background:var(--accent-fill);border-color:var(--accent-fill);color:#f5f3f0}
+.btn-primary:hover{background:var(--accent-fill-hover);border-color:var(--accent-soft);color:#fff}
+.btn-sm{padding:4px 9px;font-size:.82rem}
+.btn-danger{border-color:#7f1d1d;color:var(--bad)}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:8px}
+.tab-btn{background:transparent;border:1px solid transparent;padding:9px 16px;border-radius:6px;color:var(--muted);font-size:.96rem}
+.tab-btn.active{background:var(--surface-2);border-color:var(--border);color:#fff;box-shadow:inset 0 -2px 0 var(--accent)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px}
+.grid-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.grid-4{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px}
+.kpi .label{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.kpi .val{font-size:1.65rem;font-weight:700;color:#fff;margin-top:4px}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
+table{width:100%;border-collapse:collapse;font-size:.95rem}
+th,td{border-bottom:1px solid var(--border);padding:10px 12px;text-align:left;vertical-align:middle}
+th{background:var(--surface-2);color:#b5bac4;font-size:.82rem;text-transform:uppercase;letter-spacing:.03em;position:sticky;top:0}
+tr:hover td{background:rgba(224,99,56,0.06)}
+.mono{font-family:var(--mono)}
+.badge{display:inline-block;padding:3px 8px;border-radius:999px;font-size:.78rem;font-weight:700;background:var(--surface-2);border:1px solid var(--border)}
+.badge-ok{color:var(--ok);border-color:#065f46;background:#064e3b44}
+.badge-bad{color:var(--bad);border-color:#7f1d1d;background:#7f1d1d44}
+.badge-warn{color:var(--warn);border-color:#78350f;background:#78350f44}
+.toast{position:fixed;bottom:18px;right:18px;z-index:9999;background:#1f2937;border:1px solid var(--accent);color:#fff;padding:11px 16px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.45);display:none;max-width:460px;font-size:.92rem}
+.cam-box{display:none;margin-top:10px;padding:12px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;align-items:center;gap:12px}
+.cam-box.open{display:flex;flex-wrap:wrap}
+video{max-width:300px;border-radius:6px;border:1px solid var(--border);background:#000}
+dialog{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:0;max-width:920px;width:96vw;max-height:calc(100vh - 20px);overflow:hidden;margin:auto}
+dialog[open]{display:flex;flex-direction:column}
+dialog>form{display:flex;flex-direction:column;min-height:0;flex:1 1 auto;overflow:hidden}
+dialog::backdrop{background:rgba(0,0,0,.74)}
+.dialog-header{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--border);flex:0 0 auto}
+.dialog-header h3{margin:0;font-size:1.15rem;color:#f5f3f0}
+.dialog-body{flex:1 1 auto;min-height:0;overflow-y:auto;padding:12px 18px}
+.dialog-footer{flex:0 0 auto;background:var(--surface-2);padding:10px 18px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;z-index:2}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(195px,1fr));gap:8px;margin:8px 0}
+dialog .field input,dialog .field select,dialog .field textarea{padding:6px 9px;font-size:.88rem}
+.field label{display:block;font-size:.8rem;color:var(--muted);margin-bottom:4px}
+.field input,.field select,.field textarea{width:100%}
+.label-stage{background:#f3f4f6;padding:20px;border-radius:8px;display:flex;align-items:center;justify-content:center;min-height:200px;border:1px dashed #6b7280}
+.label-stage svg{box-shadow:0 4px 16px rgba(0,0,0,.25);max-width:100%;height:auto}
+.hidden{display:none}
+.name-cell{display:flex;align-items:center;gap:10px}
+.part-thumb{width:44px;height:44px;object-fit:contain;background:#0e1015;border:1px solid var(--border);border-radius:6px;flex:0 0 auto;cursor:zoom-in}
+.img-slots{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin:8px 0}
+.img-slot{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:9px;display:flex;flex-direction:column;gap:6px}
+.img-slot-head{display:flex;align-items:center;justify-content:space-between;font-size:.8rem;color:var(--muted);font-weight:600}
+.img-preview-box{height:124px;background:#0e1015;border:1px dashed var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;color:var(--muted);font-size:.8rem;text-align:center;padding:4px}
+.img-preview-box img{max-width:100%;max-height:100%;object-fit:contain;cursor:zoom-in}
+.img-slot-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:.78rem}
+.gallery-box{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:9px;margin:8px 0}
+.gallery-strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(138px,1fr));gap:8px;max-height:245px;overflow-y:auto;margin-top:6px}
+.gallery-card{background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:6px;display:flex;flex-direction:column;gap:5px}
+.gallery-card.is-photo{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.gallery-card.is-pinout{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok)}
+.gallery-card img{width:100%;height:94px;object-fit:contain;background:#0e1015;border-radius:5px;cursor:zoom-in}
+.pinout-badge{display:inline-block;padding:2px 6px;border-radius:999px;font-size:.68rem;font-weight:700;background:#064e3b88;color:#34d399;border:1px solid #065f46;align-self:flex-start}
+#imgLightbox{max-width:1060px}
+#imgLightbox img{max-width:100%;max-height:76vh;object-fit:contain;display:block;margin:0 auto;background:#0b0d11;border-radius:6px;border:1px solid var(--border)}
+.desc-snippet{font-size:.78rem;color:var(--muted);max-width:340px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.date-meta{font-size:.72rem;color:var(--muted);display:block;margin-top:2px}
+.cost-calc-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+.cost-calc-field{display:flex;flex-direction:column;gap:2px}
+.cost-calc-field label{font-size:.74rem;color:var(--muted)}
+.cost-calc-field input{padding:5px 8px;font-size:.86rem}
+.cost-calc-summary{font-size:.8rem;color:var(--ok);margin-left:auto;align-self:center}
+.part-click{cursor:pointer}
+.part-click:hover .part-title{color:var(--accent);text-decoration:underline}
+.detail-media{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:12px}
+.detail-media-card{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center}
+.detail-media-card .k{font-size:.76rem;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.03em;font-weight:600}
+.detail-media-card img{max-width:100%;max-height:240px;object-fit:contain;background:#0e1015;border-radius:6px;cursor:zoom-in;border:1px solid var(--border)}
+.detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:8px;margin-bottom:12px}
+.detail-kv{background:var(--surface-2);border:1px solid var(--border);border-radius:7px;padding:8px 10px}
+.detail-kv .k{font-size:.74rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+.detail-kv .v{font-size:.92rem;font-weight:600;margin-top:2px;word-break:break-word}
+.detail-text-box{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:10px;white-space:pre-wrap;font-size:.88rem;line-height:1.45}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <img src="/assets/logo.png" alt="BenchBear" class="brand-logo" />
+    <div>
+      <h1>BenchBear</h1>
+      <small>Inventory, Bin Locations, Suppliers, BOM Costs &amp; Thermal Barcodes</small>
+    </div>
+  </div>
+  <div class="stats-pills">
+    <span class="pill" id="statSkus">SKUs: <b>-</b></span>
+    <span class="pill" id="statUnits">Units: <b>-</b></span>
+    <span class="pill" id="statValue">Value: <b>$-</b></span>
+    <span class="pill warn" id="statLow">Low Stock: <b>-</b></span>
+    <a class="btn" id="wikiHomeLink" href="#">Project Explorer</a>
+    <button type="button" id="checkUpdateBtn" onclick="openUpdateCheck(true)">Updates</button>
+    <button type="button" onclick="triggerExport()">Sync Markdown</button>
+  </div>
+</header>
+
+<main class="container">
+  <div class="embed-strip" aria-label="Inventory summary">
+    <div class="stats-pills" id="embedStatsPills">
+      <span class="pill" id="eStatSkus">SKUs: <b>-</b></span>
+      <span class="pill" id="eStatUnits">Units: <b>-</b></span>
+      <span class="pill" id="eStatValue">Value: <b>$-</b></span>
+      <span class="pill warn" id="eStatLow">Low Stock: <b>-</b></span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button type="button" id="embedUpdateBtn" onclick="openUpdateCheck(true)">Updates</button>
+      <button type="button" onclick="triggerExport()">Sync Markdown</button>
+      <a class="btn" id="embedOpenFullLink" href="/" target="_blank" rel="noopener">Open Fullscreen</a>
+    </div>
+  </div>
+  <section class="scan-bar" aria-label="Barcode scanner and quick lookup">
+    <strong>Scanner:</strong>
+    <select id="scanMode">
+      <option value="lookup">Lookup / Jump</option>
+      <option value="checkin">Check-In (+1)</option>
+      <option value="checkout">Check-Out (-1)</option>
+      <option value="move">Move to Bin</option>
+      <option value="inspect">Inspect Bin</option>
+    </select>
+    <select id="scanMoveTarget" class="hidden" aria-label="Target bin for move mode"></select>
+    <input type="text" id="scanInput" placeholder="Scan 1D/2D barcode (SKU:..., BIN:..., DigiKey/LCSC bag) or type SKU/MPN and press Enter..." autofocus />
+    <button type="button" class="btn-primary" onclick="handleScanSubmit()">Go</button>
+    <button type="button" onclick="toggleCamera()">Camera Scan</button>
+    <label class="btn" style="margin:0">
+      Scan Image
+      <input type="file" id="scanImageFile" accept="image/*" style="display:none" onchange="handleScanFile(event)" />
+    </label>
+  </section>
+
+  <div id="camBox" class="cam-box">
+    <video id="camVideo" autoplay playsinline muted></video>
+    <div>
+      <div id="camStatus" style="font-size:.85rem;color:var(--muted)">Initializing camera...</div>
+      <div style="margin-top:8px;display:flex;gap:8px">
+        <button type="button" onclick="captureFrameNow()">Capture Frame</button>
+        <button type="button" class="btn-danger" onclick="stopCamera()">Stop Camera</button>
+      </div>
+    </div>
+  </div>
+
+  <nav class="tabs" role="tablist">
+    <button type="button" class="tab-btn active" data-tab="inventory" onclick="switchTab('inventory')">Inventory</button>
+    <button type="button" class="tab-btn" data-tab="locations" onclick="switchTab('locations')">Locations &amp; Bins</button>
+    <button type="button" class="tab-btn" data-tab="suppliers" onclick="switchTab('suppliers')">Suppliers &amp; Costs</button>
+    <button type="button" class="tab-btn" data-tab="boms" onclick="switchTab('boms')">Project BOMs</button>
+    <button type="button" class="tab-btn" data-tab="labels" onclick="switchTab('labels')">Label Studio</button>
+  </nav>
+
+  <!-- TAB 1: INVENTORY -->
+  <section id="tab-inventory" class="tab-panel">
+    <div class="card">
+      <div class="toolbar">
+        <input type="text" id="invSearch" placeholder="Filter by SKU, name, spec, description, MPN, location, supplier..." oninput="onFilterChanged()" style="flex:1;min-width:220px" />
+        <button type="button" id="invClearBtn" class="btn-sm" onclick="clearInventoryFilters()" title="Clear search and filters">Clear</button>
+        <select id="invCatFilter" onchange="onFilterChanged()"><option value="">All Categories</option></select>
+        <select id="invLocFilter" onchange="onFilterChanged()"><option value="">All Locations</option></select>
+        <select id="invSupFilter" onchange="onFilterChanged()"><option value="">All Suppliers</option></select>
+        <select id="invSort" onchange="onFilterChanged()" aria-label="Sort parts">
+          <option value="">Sort: Category / SKU</option>
+          <option value="created_desc">Date Added (Newest)</option>
+          <option value="created_asc">Date Added (Oldest)</option>
+          <option value="updated_desc">Date Modified (Newest)</option>
+          <option value="updated_asc">Date Modified (Oldest)</option>
+          <option value="sku_asc">SKU (A-Z)</option>
+          <option value="name_asc">Name (A-Z)</option>
+          <option value="qty_asc">Qty (Low to High)</option>
+          <option value="qty_desc">Qty (High to Low)</option>
+          <option value="value_desc">Value (High to Low)</option>
+        </select>
+        <label style="display:flex;align-items:center;gap:5px;font-size:.84rem">
+          <input type="checkbox" id="invLowOnly" onchange="onFilterChanged()" /> Low Stock Only
+        </label>
+        <button type="button" class="btn-primary" onclick="openPartModal(null)">+ Add Part</button>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>SKU</th><th>Part &amp; Spec</th><th>Pkg</th><th>Qty</th><th>Min</th>
+              <th>Unit Cost</th><th>Value</th><th>Location</th><th>Supplier / MPN</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="invTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 2: LOCATIONS & BINS -->
+  <section id="tab-locations" class="tab-panel hidden">
+    <div class="card">
+      <div class="toolbar">
+        <strong style="margin-right:auto">Storage Locations &amp; Bins</strong>
+        <button type="button" onclick="printSelectedBinLabels()">Print Selected Bin Labels (PDF)</button>
+        <button type="button" class="btn-primary" onclick="openLocModal(null)">+ Add Location</button>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th><input type="checkbox" id="locSelectAll" onclick="toggleAllBinChecks(this.checked)" /></th>
+              <th>Code</th><th>Name</th><th>Area / Rack / Drawer</th><th>Barcode</th>
+              <th>SKUs</th><th>Units</th><th>Bin Value</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="locTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 3: SUPPLIERS & COSTS -->
+  <section id="tab-suppliers" class="tab-panel hidden">
+    <div class="grid-4" id="valKpis"></div>
+    <div class="grid-2">
+      <div class="card">
+        <h3 style="margin-top:0">Value by Category</h3>
+        <table><thead><tr><th>Category</th><th>SKUs</th><th>Units</th><th>Value</th><th>Low</th></tr></thead><tbody id="valCatBody"></tbody></table>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">Value by Location</h3>
+        <table><thead><tr><th>Location</th><th>SKUs</th><th>Units</th><th>Value</th></tr></thead><tbody id="valLocBody"></tbody></table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="toolbar">
+        <strong style="margin-right:auto">Suppliers &amp; Vendors</strong>
+        <button type="button" class="btn-primary" onclick="openSupplierModal(null)">+ Add Supplier</button>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>Name</th><th>Currency</th><th>Lead Time</th><th>SKUs</th><th>Stock Value</th><th>Website</th><th>Shipping Notes</th><th>Actions</th></tr></thead>
+          <tbody id="supTbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Low-Stock Reorder Sheet (Grouped by Supplier)</h3>
+      <div id="reorderBox"></div>
+    </div>
+  </section>
+
+  <!-- TAB 4: PROJECT BOMS -->
+  <section id="tab-boms" class="tab-panel hidden">
+    <div class="toolbar">
+      <strong style="margin-right:auto">Project Bills of Materials &amp; Cost Rollup</strong>
+      <button type="button" class="btn-primary" onclick="openBomModal()">+ Create / Update BOM</button>
+    </div>
+    <div id="bomsContainer"></div>
+  </section>
+
+  <!-- TAB 5: LABEL STUDIO -->
+  <section id="tab-labels" class="tab-panel hidden">
+    <div class="grid-2">
+      <div class="card">
+        <h3 style="margin-top:0">Thermal Label Designer</h3>
+        <div class="form-grid">
+          <div class="field">
+            <label>Label Kind</label>
+            <select id="lblKind" onchange="populateLabelTargets(); updateLabelPreview()">
+              <option value="part">Part / SKU Label</option>
+              <option value="bin">Bin / Location Label</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Target Item</label>
+            <select id="lblTarget" onchange="updateLabelPreview()"></select>
+          </div>
+          <div class="field">
+            <label>Barcode Type</label>
+            <select id="lblBarcode" onchange="updateLabelPreview()">
+              <option value="combo">Combo (QR + Code 128)</option>
+              <option value="code128">Code 128 (1D)</option>
+              <option value="qr">QR Code (2D)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Thermal Roll Size</label>
+            <select id="lblPreset" onchange="onLabelPresetChanged()"></select>
+          </div>
+        </div>
+        <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:8px">
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
+            <div class="field" style="min-width:95px">
+              <label>Size Unit</label>
+              <select id="lblUnit" onchange="onLabelUnitChanged()">
+                <option value="mm">mm</option>
+                <option value="in">inches</option>
+              </select>
+            </div>
+            <div class="field" style="width:105px">
+              <label id="lblWidthLabel">Width (mm)</label>
+              <input id="lblWidth" type="number" step="0.1" min="0.5" value="50.8" oninput="onCustomLabelSizeInput()" />
+            </div>
+            <div class="field" style="width:105px">
+              <label id="lblHeightLabel">Height (mm)</label>
+              <input id="lblHeight" type="number" step="0.1" min="0.5" value="25.4" oninput="onCustomLabelSizeInput()" />
+            </div>
+            <span id="lblDimSummary" style="font-size:.8rem;color:var(--muted);align-self:center;margin-left:auto"></span>
+          </div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
+          <button type="button" class="btn-primary" onclick="printCurrentLabel()">Print Thermal Label</button>
+          <button type="button" onclick="downloadCurrentLabelPdf()">Download Vector PDF</button>
+          <button type="button" onclick="downloadCurrentLabelSvg()">Download SVG</button>
+          <button type="button" onclick="downloadCurrentLabelPng()">Download 203-DPI PNG</button>
+        </div>
+        <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <strong style="font-size:.9rem">Direct Phomemo M110 / M120 / M200 / M220 Print (Driverless)</strong>
+            <button type="button" class="btn-sm" onclick="scanPhomemoDevices()">Scan Printers</button>
+          </div>
+          <div class="form-grid" style="margin:0 0 8px 0">
+            <div class="field">
+              <label>Device Path (Linux / macOS / Windows)</label>
+              <input id="phomemoDevice" list="phomemoDevList" value="/dev/usb/lp0" placeholder="/dev/usb/lp0, /dev/cu.PhomemoM110, or COM3" onchange="saveLabelPrefs()" />
+              <datalist id="phomemoDevList"></datalist>
+            </div>
+            <div class="field">
+              <label>Darkness (1-15)</label>
+              <input id="phomemoDensity" type="number" min="1" max="15" value="10" onchange="saveLabelPrefs()" />
+            </div>
+            <div class="field">
+              <label>Media Type</label>
+              <select id="phomemoMedia" onchange="saveLabelPrefs()">
+                <option value="gap">Gap / Die-Cut Roll</option>
+                <option value="continuous">Continuous Tape</option>
+                <option value="black_mark">Black Mark</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Copies</label>
+              <input id="phomemoCopies" type="number" min="1" max="50" value="1" />
+            </div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+            <button type="button" class="btn-primary" onclick="printToPhomemo()">Print to Phomemo</button>
+            <button type="button" onclick="downloadCurrentPhomemoRaw()">Download Raw .phomemo</button>
+            <span id="phomemoStatus" style="font-size:.82rem;color:var(--muted)"></span>
+          </div>
+          <div style="font-size:.76rem;color:var(--muted);margin-top:6px">
+            Linux: <code>/dev/usb/lp0</code> or <code>/dev/rfcomm0</code> &nbsp;|&nbsp; macOS: <code>/dev/cu.Phomemo*</code> &nbsp;|&nbsp; Windows: <code>COM3</code>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">Live 1:1 Vector Preview</h3>
+        <div id="lblPreviewStage" class="label-stage">Select a part or bin to preview...</div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- PART MODAL -->
+<dialog id="partDialog">
+  <div class="dialog-header">
+    <h3 id="partModalTitle">Add / Edit Part</h3>
+    <button type="button" class="btn-sm" onclick="document.getElementById('partDialog').close()" aria-label="Close">Close</button>
+  </div>
+  <form id="partForm" onsubmit="savePartForm(event)">
+    <div class="dialog-body">
+      <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:10px">
+        <label style="display:block;font-size:.78rem;color:var(--muted);margin-bottom:4px">Import from Product URL (Amazon, Adafruit, SparkFun, LCSC, DigiKey, etc.)</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="pfImportUrl" type="url" placeholder="https://www.amazon.com/.../dp/... or store link" style="flex:1" />
+          <button type="button" id="pfImportBtn" class="btn-primary" onclick="fetchPartFromUrl()">Fetch Info</button>
+        </div>
+        <div id="pfImportStatus" style="font-size:.82rem;color:var(--muted);margin-top:4px"></div>
+        <div class="cost-calc-bar">
+          <div class="cost-calc-field">
+            <label>Packs</label>
+            <input id="pfPacks" type="number" min="1" value="1" style="width:74px" oninput="onPacksChanged()" />
+          </div>
+          <div class="cost-calc-field">
+            <label>Final Qty</label>
+            <input id="pfFinalQty" type="number" min="1" placeholder="e.g. 6" style="width:105px" oninput="recalcUnitCostFromFinal()" />
+          </div>
+          <div class="cost-calc-field">
+            <label>Final Cost ($ incl. tax)</label>
+            <input id="pfFinalCost" type="number" step="0.01" min="0" placeholder="e.g. 40.25" style="width:130px" oninput="recalcUnitCostFromFinal()" />
+          </div>
+          <span id="pfCalcSummary" class="cost-calc-summary"></span>
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="field"><label>SKU *</label><input name="sku" id="pfSku" required /></div>
+        <div class="field"><label>Category *</label><input name="category" id="pfCat" value="microcontrollers" list="catList" required /></div>
+        <div class="field"><label>Part Name *</label><input name="name" id="pfName" required /></div>
+        <div class="field"><label>Value / Spec</label><input name="spec" id="pfSpec" /></div>
+        <div class="field"><label>Package / Footprint</label><input name="package" id="pfPkg" /></div>
+        <div class="field"><label>Quantity</label><input name="qty" id="pfQty" type="number" min="0" value="1" /></div>
+        <div class="field"><label>Min Stock</label><input name="min_qty" id="pfMin" type="number" min="0" value="1" /></div>
+        <div class="field"><label>Unit Cost ($)</label><input name="unit_cost" id="pfCost" type="number" step="0.01" min="0" value="0.00" /></div>
+        <div class="field"><label>Location / Bin</label><input name="location_code" id="pfLoc" list="locList" placeholder="e.g. BIN-A1" /></div>
+        <div class="field"><label>Primary Supplier</label><input name="supplier_name" id="pfSup" list="supList" placeholder="e.g. DigiKey" /></div>
+        <div class="field"><label>MPN (Manufacturer Part #)</label><input name="mpn" id="pfMpn" /></div>
+        <div class="field"><label>Supplier SKU</label><input name="supplier_sku" id="pfSupSku" /></div>
+        <div class="field"><label>Product URL</label><input name="product_url" id="pfUrl" /></div>
+        <div class="field"><label>Datasheet URL</label><input name="datasheet_url" id="pfDsUrl" /></div>
+        <div class="field"><label>Projects</label><input name="projects_tags" id="pfProj" value="-" /></div>
+        <div class="field"><label>Custom Barcode (optional)</label><input name="barcode_value" id="pfBarcode" placeholder="Defaults to SKU:<SKU>" /></div>
+      </div>
+      <div class="field"><label>Description (scraped / searchable &amp; used by Kodiak)</label><textarea name="description" id="pfDesc" rows="3" placeholder="Key specs, features, interfaces, pin details..."></textarea></div>
+      <div class="field"><label>Notes</label><textarea name="notes" id="pfNotes" rows="1"></textarea></div>
+      <div class="img-slots">
+        <div class="img-slot">
+          <div class="img-slot-head">
+            <span>Part Photo</span>
+            <button type="button" class="btn-sm" onclick="clearPartImageSlot('part')">Clear</button>
+          </div>
+          <div class="img-preview-box" id="pfPartPreview">No photo selected</div>
+          <div class="img-slot-actions">
+            <label class="btn-sm" style="cursor:pointer;display:inline-block;background:var(--surface);border:1px solid var(--border)">
+              Upload File<input type="file" id="pfPartFile" accept="image/*" style="display:none" onchange="onPartFilePicked('part', this)" />
+            </label>
+            <span id="pfPartCaption" style="color:var(--muted)"></span>
+          </div>
+        </div>
+        <div class="img-slot">
+          <div class="img-slot-head">
+            <span>Pinout / Wiring Diagram</span>
+            <button type="button" class="btn-sm" onclick="clearPartImageSlot('pinout')">Clear</button>
+          </div>
+          <div class="img-preview-box" id="pfPinoutPreview">No pinout selected</div>
+          <div class="img-slot-actions">
+            <label class="btn-sm" style="cursor:pointer;display:inline-block;background:var(--surface);border:1px solid var(--border)">
+              Upload File<input type="file" id="pfPinoutFile" accept="image/*" style="display:none" onchange="onPartFilePicked('pinout', this)" />
+            </label>
+            <span id="pfPinoutCaption" style="color:var(--muted)"></span>
+          </div>
+        </div>
+      </div>
+      <div class="gallery-box hidden" id="pfGalleryBox">
+        <div class="img-slot-head">
+          <span>Product Gallery Candidates (click any image to zoom and check pin labels)</span>
+          <span id="pfGalleryCount"></span>
+        </div>
+        <div class="gallery-strip" id="pfGalleryStrip"></div>
+      </div>
+    </div>
+    <div class="dialog-footer">
+      <button type="button" onclick="document.getElementById('partDialog').close()">Cancel</button>
+      <button type="submit" class="btn-primary">Save Part</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- LOCATION MODAL -->
+<dialog id="locDialog">
+  <div class="dialog-header">
+    <h3 id="locModalTitle">Add / Edit Location</h3>
+    <button type="button" class="btn-sm" onclick="document.getElementById('locDialog').close()" aria-label="Close">Close</button>
+  </div>
+  <form onsubmit="saveLocForm(event)">
+    <div class="dialog-body">
+      <div class="form-grid">
+        <div class="field"><label>Code *</label><input id="lfCode" required placeholder="BIN-A1" /></div>
+        <div class="field"><label>Display Name</label><input id="lfName" placeholder="Bin A1" /></div>
+        <div class="field"><label>Area</label><input id="lfArea" placeholder="Parts Rack" /></div>
+        <div class="field"><label>Rack / Cabinet</label><input id="lfRack" placeholder="Rack 1" /></div>
+        <div class="field"><label>Drawer / Shelf</label><input id="lfDrawer" placeholder="Shelf A" /></div>
+        <div class="field"><label>Barcode Value</label><input id="lfBarcode" placeholder="Auto BIN:<CODE>" /></div>
+      </div>
+      <div class="field"><label>Description</label><textarea id="lfDesc" rows="2"></textarea></div>
+    </div>
+    <div class="dialog-footer">
+      <button type="button" onclick="document.getElementById('locDialog').close()">Cancel</button>
+      <button type="submit" class="btn-primary">Save Location</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- SUPPLIER MODAL -->
+<dialog id="supDialog">
+  <div class="dialog-header">
+    <h3 id="supModalTitle">Add / Edit Supplier</h3>
+    <button type="button" class="btn-sm" onclick="document.getElementById('supDialog').close()" aria-label="Close">Close</button>
+  </div>
+  <form onsubmit="saveSupForm(event)">
+    <input type="hidden" id="sfId" />
+    <div class="dialog-body">
+      <div class="form-grid">
+        <div class="field"><label>Supplier Name *</label><input id="sfName" required /></div>
+        <div class="field"><label>Website</label><input id="sfWeb" placeholder="https://..." /></div>
+        <div class="field"><label>Order/Account URL</label><input id="sfAcct" placeholder="https://..." /></div>
+        <div class="field"><label>Currency</label><input id="sfCurr" value="USD" /></div>
+        <div class="field"><label>Lead Time (days)</label><input id="sfLead" type="number" min="0" value="3" /></div>
+        <div class="field"><label>Shipping Notes</label><input id="sfShip" /></div>
+      </div>
+      <div class="field"><label>Notes</label><textarea id="sfNotes" rows="2"></textarea></div>
+    </div>
+    <div class="dialog-footer">
+      <button type="button" onclick="document.getElementById('supDialog').close()">Cancel</button>
+      <button type="submit" class="btn-primary">Save Supplier</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- BOM MODAL -->
+<dialog id="bomDialog">
+  <div class="dialog-header">
+    <h3>Create / Update Project BOM</h3>
+    <button type="button" class="btn-sm" onclick="document.getElementById('bomDialog').close()" aria-label="Close">Close</button>
+  </div>
+  <form onsubmit="saveBomForm(event)">
+    <div class="dialog-body">
+      <div class="form-grid">
+        <div class="field"><label>Project Slug *</label><input id="bfSlug" required placeholder="rover-v2" /></div>
+        <div class="field"><label>Title</label><input id="bfTitle" placeholder="Autonomous Rover V2" /></div>
+      </div>
+      <div class="field">
+        <label>Items (one per line: <code>SKU xQTY</code>, e.g. <code>MCU-001 x1</code>)</label>
+        <textarea id="bfItems" rows="6" class="mono" placeholder="MCU-001 x1&#10;SEN-002 x2"></textarea>
+      </div>
+    </div>
+    <div class="dialog-footer">
+      <button type="button" onclick="document.getElementById('bomDialog').close()">Cancel</button>
+      <button type="submit" class="btn-primary">Save BOM</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- IMAGE LIGHTBOX MODAL -->
+<dialog id="imgLightbox">
+  <div class="dialog-header">
+    <h3 id="lightboxTitle">Image Preview</h3>
+    <button type="button" class="btn-sm" onclick="document.getElementById('imgLightbox').close()" aria-label="Close">Close</button>
+  </div>
+  <div class="dialog-body" style="text-align:center">
+    <img id="lightboxImg" alt="Preview" />
+    <div id="lightboxMeta" style="margin-top:8px;font-size:.82rem;color:var(--muted)"></div>
+  </div>
+  <div class="dialog-footer">
+    <a id="lightboxNewTab" class="btn" target="_blank" rel="noopener">Open Full Image</a>
+    <button type="button" class="btn-primary" onclick="document.getElementById('imgLightbox').close()">Close</button>
+  </div>
+</dialog>
+
+<!-- UPDATES MODAL -->
+<dialog id="updateDialog" style="max-width:640px">
+  <div class="dialog-header">
+    <h3>BenchBear Updates</h3>
+    <button type="button" class="btn-sm" onclick="document.getElementById('updateDialog').close()" aria-label="Close">Close</button>
+  </div>
+  <div class="dialog-body" id="updateDialogBody">
+    <p style="color:var(--muted)">Ready to check GitHub for updates.</p>
+  </div>
+  <div class="dialog-footer">
+    <button type="button" onclick="openUpdateCheck(true)">Re-check Now</button>
+    <a id="updateReleaseLink" class="btn" href="https://github.com/morganlowe/BenchBear/releases" target="_blank" rel="noopener">Open GitHub Releases</a>
+    <button type="button" class="btn-primary" onclick="document.getElementById('updateDialog').close()">Close</button>
+  </div>
+</dialog>
+
+<!-- PART DETAIL MODAL -->
+<dialog id="partDetailDialog" style="max-width:860px">
+  <div class="dialog-header">
+    <h3 id="detailTitle">Part Details</h3>
+    <button type="button" class="btn-sm" onclick="document.getElementById('partDetailDialog').close()" aria-label="Close">Close</button>
+  </div>
+  <div class="dialog-body" id="detailBody">
+    <p style="color:var(--muted)">Loading part details...</p>
+  </div>
+  <div class="dialog-footer" id="detailFooter">
+    <button type="button" onclick="document.getElementById('partDetailDialog').close()">Close</button>
+  </div>
+</dialog>
+
+<datalist id="catList"></datalist>
+<datalist id="locList"></datalist>
+<datalist id="supList"></datalist>
+<div id="toast" class="toast"></div>
+
+<script>
+const DEFAULT_PRESET = "__DEFAULT_PRESET__";
+const WIKI_PORT = "__WIKI_PORT__";
+let state = {
+  parts: [],
+  locations: [],
+  suppliers: [],
+  boms: [],
+  valuation: null,
+  reorder: [],
+  presets: []
+};
+let camStream = null;
+let camTimer = null;
+const UI_STATE_KEY = "benchbear_inv_ui_v1";
+let pendingRestoredFilters = { cat: "", loc: "", sup: "" };
+
+function saveUiState() {
+  try {
+    const activeTabBtn = document.querySelector(".tab-btn.active");
+    const payload = {
+      q: document.getElementById("invSearch").value,
+      cat: pendingRestoredFilters.cat || document.getElementById("invCatFilter").value,
+      loc: pendingRestoredFilters.loc || document.getElementById("invLocFilter").value,
+      sup: pendingRestoredFilters.sup || document.getElementById("invSupFilter").value,
+      lowOnly: document.getElementById("invLowOnly").checked,
+      sort: document.getElementById("invSort").value,
+      tab: activeTabBtn ? activeTabBtn.dataset.tab : "inventory"
+    };
+    sessionStorage.setItem(UI_STATE_KEY, JSON.stringify(payload));
+  } catch (_) {}
+}
+
+function restoreUiState() {
+  try {
+    const raw = sessionStorage.getItem(UI_STATE_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    if (!saved || typeof saved !== "object") return;
+    if (typeof saved.q === "string") document.getElementById("invSearch").value = saved.q;
+    if (typeof saved.lowOnly === "boolean") document.getElementById("invLowOnly").checked = saved.lowOnly;
+    if (typeof saved.sort === "string") document.getElementById("invSort").value = saved.sort;
+    pendingRestoredFilters = {
+      cat: typeof saved.cat === "string" ? saved.cat : "",
+      loc: typeof saved.loc === "string" ? saved.loc : "",
+      sup: typeof saved.sup === "string" ? saved.sup : ""
+    };
+    if (saved.tab && saved.tab !== "inventory") {
+      document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === saved.tab));
+      document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("hidden", p.id !== "tab-" + saved.tab));
+    }
+  } catch (_) {}
+}
+
+function onFilterChanged() {
+  pendingRestoredFilters = { cat: "", loc: "", sup: "" };
+  saveUiState();
+  renderInventoryTable();
+}
+
+function clearInventoryFilters() {
+  pendingRestoredFilters = { cat: "", loc: "", sup: "" };
+  document.getElementById("invSearch").value = "";
+  document.getElementById("invCatFilter").value = "";
+  document.getElementById("invLocFilter").value = "";
+  document.getElementById("invSupFilter").value = "";
+  document.getElementById("invLowOnly").checked = false;
+  saveUiState();
+  renderInventoryTable();
+}
+
+document.getElementById("wikiHomeLink").href =
+  window.location.protocol + "//" + window.location.hostname + ":" + WIKI_PORT + "/";
+if (new URLSearchParams(window.location.search).get("embed") === "1") {
+  document.body.classList.add("embedded");
+}
+
+document.getElementById("scanMode").addEventListener("change", () => {
+  const mode = document.getElementById("scanMode").value;
+  document.getElementById("scanMoveTarget").classList.toggle("hidden", mode !== "move");
+});
+
+document.getElementById("scanInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    handleScanSubmit();
+  }
+});
+
+document.getElementById("pfImportUrl").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    fetchPartFromUrl();
+  }
+});
+
+function showToast(msg, isErr = false) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.style.borderColor = isErr ? "var(--bad)" : "var(--accent)";
+  t.style.display = "block";
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.style.display = "none"; }, 4200);
+}
+
+function esc(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+async function api(url, opts = {}) {
+  const res = await fetch(url, opts);
+  const ct = res.headers.get("content-type") || "";
+  if (!res.ok) {
+    let msg = "HTTP " + res.status;
+    if (ct.includes("json")) {
+      const j = await res.json();
+      msg = j.error || msg;
+    } else {
+      msg = await res.text();
+    }
+    throw new Error(msg);
+  }
+  if (ct.includes("json")) return res.json();
+  return res;
+}
+
+async function refreshAll() {
+  try {
+    const [parts, locations, suppliers, boms, valuation, reorder, presets] = await Promise.all([
+      api("/api/parts"),
+      api("/api/locations"),
+      api("/api/suppliers"),
+      api("/api/boms"),
+      api("/api/valuation"),
+      api("/api/reorder"),
+      api("/api/labels/presets")
+    ]);
+    state = { parts, locations, suppliers, boms, valuation, reorder, presets };
+    updateHeaderStats();
+    populateSelects();
+    renderInventoryTable();
+    renderLocationsTable();
+    renderSuppliersAndCosts();
+    renderBoms();
+    populateLabelTargets();
+    updateLabelPreview();
+  } catch (err) {
+    showToast("Failed to load data: " + err.message, true);
+  }
+}
+
+function updateHeaderStats() {
+  const v = state.valuation;
+  if (!v) return;
+  document.getElementById("statSkus").innerHTML = "SKUs: <b>" + v.total_skus + "</b>";
+  document.getElementById("statUnits").innerHTML = "Units: <b>" + v.total_units + "</b>";
+  document.getElementById("statValue").innerHTML = "Value: <b>$" + v.total_value.toFixed(2) + "</b>";
+  document.getElementById("statLow").innerHTML = "Low Stock: <b>" + v.low_stock_skus + "</b>";
+  const eS = document.getElementById("eStatSkus");
+  if (eS) {
+    eS.innerHTML = "SKUs: <b>" + v.total_skus + "</b>";
+    document.getElementById("eStatUnits").innerHTML = "Units: <b>" + v.total_units + "</b>";
+    document.getElementById("eStatValue").innerHTML = "Value: <b>$" + v.total_value.toFixed(2) + "</b>";
+    document.getElementById("eStatLow").innerHTML = "Low Stock: <b>" + v.low_stock_skus + "</b>";
+  }
+}
+
+function populateSelects() {
+  const cats = [...new Set(state.parts.map(p => p.category))].sort();
+  const catSel = document.getElementById("invCatFilter");
+  const prevCat = pendingRestoredFilters.cat || catSel.value;
+  catSel.innerHTML = "<option value=''>All Categories</option>" + cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  if (cats.includes(prevCat)) {
+    catSel.value = prevCat;
+    pendingRestoredFilters.cat = "";
+  }
+  document.getElementById("catList").innerHTML = cats.map(c => `<option value="${esc(c)}">`).join("");
+
+  const locSel = document.getElementById("invLocFilter");
+  const prevLoc = pendingRestoredFilters.loc || locSel.value;
+  locSel.innerHTML = "<option value=''>All Locations</option>" + state.locations.map(l => `<option value="${esc(l.code)}">${esc(l.code)} (${esc(l.name)})</option>`).join("");
+  if (state.locations.some(l => l.code === prevLoc)) {
+    locSel.value = prevLoc;
+    pendingRestoredFilters.loc = "";
+  }
+  document.getElementById("locList").innerHTML = state.locations.map(l => `<option value="${esc(l.code)}">`).join("");
+
+  const moveSel = document.getElementById("scanMoveTarget");
+  const prevMove = moveSel.value;
+  moveSel.innerHTML = state.locations.map(l => `<option value="${esc(l.code)}">${esc(l.code)}</option>`).join("");
+  if (prevMove) moveSel.value = prevMove;
+
+  const supSel = document.getElementById("invSupFilter");
+  const prevSup = pendingRestoredFilters.sup || supSel.value;
+  supSel.innerHTML = "<option value=''>All Suppliers</option>" + state.suppliers.map(s => `<option value="${esc(s.name)}">${esc(s.name)}</option>`).join("");
+  if (state.suppliers.some(s => s.name === prevSup)) {
+    supSel.value = prevSup;
+    pendingRestoredFilters.sup = "";
+  }
+  document.getElementById("supList").innerHTML = state.suppliers.map(s => `<option value="${esc(s.name)}">`).join("");
+
+  const presetSel = document.getElementById("lblPreset");
+  if (!presetSel.options.length && state.presets.length) {
+    presetSel.innerHTML =
+      state.presets.map(p => `<option value="${esc(p.id)}">${esc(p.name)} (${p.width_mm}x${p.height_mm}mm)</option>`).join("") +
+      `<option value="custom">Custom Size (mm or in below)</option>`;
+    presetSel.value = DEFAULT_PRESET;
+    restoreLabelPrefs();
+  }
+}
+
+function switchTab(name) {
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("hidden", p.id !== "tab-" + name));
+  saveUiState();
+}
+
+function renderInventoryTable() {
+  const q = document.getElementById("invSearch").value.trim().toLowerCase();
+  const tokens = q ? q.split(/\s+/).filter(Boolean) : [];
+  const cat = document.getElementById("invCatFilter").value.toLowerCase();
+  const loc = document.getElementById("invLocFilter").value.toLowerCase();
+  const sup = document.getElementById("invSupFilter").value.toLowerCase();
+  const lowOnly = document.getElementById("invLowOnly").checked;
+  const sortMode = document.getElementById("invSort").value;
+
+  const filtered = state.parts.filter(p => {
+    if (lowOnly && !p.low_stock) return false;
+    if (cat && p.category.toLowerCase() !== cat) return false;
+    if (loc && (p.location_code || "").toLowerCase() !== loc) return false;
+    if (sup && (p.primary_supplier_name || "").toLowerCase() !== sup) return false;
+    if (tokens.length) {
+      const hay = [
+        p.sku, p.category, p.name, p.spec, p.description, p.notes,
+        p.package, p.location_code, p.primary_supplier_name, p.mpn, p.supplier_sku, p.projects_tags
+      ].join(" ").toLowerCase();
+      if (!tokens.every(t => hay.includes(t))) return false;
+    }
+    return true;
+  });
+
+  if (sortMode) {
+    filtered.sort((a, b) => {
+      switch (sortMode) {
+        case "created_desc":
+          return (b.created_at || "").localeCompare(a.created_at || "") || (b.id - a.id);
+        case "created_asc":
+          return (a.created_at || "").localeCompare(b.created_at || "") || (a.id - b.id);
+        case "updated_desc":
+          return (b.updated_at || "").localeCompare(a.updated_at || "") || (b.id - a.id);
+        case "updated_asc":
+          return (a.updated_at || "").localeCompare(b.updated_at || "") || (a.id - b.id);
+        case "sku_asc":
+          return a.sku.localeCompare(b.sku);
+        case "name_asc":
+          return a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.sku.localeCompare(b.sku);
+        case "qty_asc":
+          return (a.qty - b.qty) || a.sku.localeCompare(b.sku);
+        case "qty_desc":
+          return (b.qty - a.qty) || a.sku.localeCompare(b.sku);
+        case "value_desc":
+          return (b.extended_value - a.extended_value) || a.sku.localeCompare(b.sku);
+        default:
+          return 0;
+      }
+    });
+  }
+
+  const tbody = document.getElementById("invTbody");
+  if (!filtered.length) {
+    tbody.innerHTML = "<tr><td colspan='10' style='color:var(--muted)'>No parts match the current filter.</td></tr>";
+    return;
+  }
+  tbody.innerHTML = filtered.map(p => {
+    const qtyClass = p.low_stock ? "style='color:var(--bad);font-weight:700'" : "";
+    const locBtn = p.location_code
+      ? `<button type="button" class="btn-sm mono" onclick="filterByLocation('${esc(p.location_code)}')">${esc(p.location_code)}</button>`
+      : "-";
+    const supInfo = [p.primary_supplier_name, p.mpn].filter(Boolean).join(" / ") || "-";
+    const thumbHtml = p.image_path
+      ? `<img class="part-thumb" src="/api/images/${encodeURIComponent(p.image_path)}" alt="${esc(p.name)}" onclick="event.stopPropagation(); openLightbox('/api/images/${encodeURIComponent(p.image_path)}', '${esc(p.sku + ' — ' + p.name)}')" />`
+      : "";
+    const pinoutBtn = p.pinout_image_path
+      ? `<button type="button" class="btn-sm" onclick="openLightbox('/api/images/${encodeURIComponent(p.pinout_image_path)}', '${esc(p.sku + ' — Pinout / Wiring Diagram')}')">Pinout</button>`
+      : "";
+    const descHtml = p.description
+      ? `<div class="desc-snippet" title="${esc(p.description)}">${esc(p.description)}</div>`
+      : "";
+    let dateBadge = "";
+    if (sortMode.startsWith("created_") && p.created_at) {
+      dateBadge = `<span class="date-meta">Added ${esc(p.created_at.slice(0, 10))}</span>`;
+    } else if (sortMode.startsWith("updated_") && p.updated_at) {
+      dateBadge = `<span class="date-meta">Mod ${esc(p.updated_at.slice(0, 10))}</span>`;
+    }
+    const dateTooltip = `Added: ${(p.created_at || "-").slice(0, 19).replace("T", " ")} UTC | Modified: ${(p.updated_at || "-").slice(0, 19).replace("T", " ")} UTC`;
+    return `<tr>
+      <td class="mono part-click" title="${esc(dateTooltip)}" onclick="openPartDetail('${esc(p.sku)}')"><b class="part-title">${esc(p.sku)}</b><br><small style="color:var(--muted)">${esc(p.category)}</small>${dateBadge}</td>
+      <td class="part-click" onclick="openPartDetail('${esc(p.sku)}')"><div class="name-cell">${thumbHtml}<div><b class="part-title">${esc(p.name)}</b><br><small style="color:var(--muted)">${esc(p.spec)}</small>${descHtml}</div></div></td>
+      <td>${esc(p.package)}</td>
+      <td ${qtyClass}>${p.qty}</td>
+      <td>${p.min_qty}</td>
+      <td>$${p.unit_cost.toFixed(2)}</td>
+      <td>$${p.extended_value.toFixed(2)}</td>
+      <td>${locBtn}</td>
+      <td>${esc(supInfo)}</td>
+      <td style="white-space:nowrap">
+        <button type="button" class="btn-sm" onclick="adjustStock('${esc(p.sku)}', -1)">-1</button>
+        <button type="button" class="btn-sm" onclick="adjustStock('${esc(p.sku)}', 1)">+1</button>
+        ${pinoutBtn}
+        <button type="button" class="btn-sm" onclick="openLabelFor('part','${esc(p.sku)}')">Label</button>
+        <button type="button" class="btn-sm" onclick="openPartModal('${esc(p.sku)}')">Edit</button>
+        <button type="button" class="btn-sm btn-danger" onclick="deletePart('${esc(p.sku)}')">Del</button>
+      </td>
+    </tr>`;
+  }).join("");
+}
+
+function filterByLocation(code) {
+  switchTab("inventory");
+  document.getElementById("invLocFilter").value = code;
+  onFilterChanged();
+}
+
+function renderPartDetailContent(p, movements = []) {
+  const mediaCards = [];
+  if (p.image_path) {
+    const src = "/api/images/" + encodeURIComponent(p.image_path);
+    mediaCards.push(`<div class="detail-media-card"><div class="k">Part Photo</div><img src="${esc(src)}" alt="${esc(p.name)}" onclick="openLightbox('${esc(src)}', '${esc(p.sku + " — " + p.name)}')" /></div>`);
+  }
+  if (p.pinout_image_path) {
+    const src = "/api/images/" + encodeURIComponent(p.pinout_image_path);
+    mediaCards.push(`<div class="detail-media-card"><div class="k">Pinout / Wiring Diagram</div><img src="${esc(src)}" alt="Pinout" onclick="openLightbox('${esc(src)}', '${esc(p.sku + " — Pinout / Wiring Diagram")}')" /></div>`);
+  }
+  const mediaHtml = mediaCards.length ? `<div class="detail-media">${mediaCards.join("")}</div>` : "";
+  const locHtml = p.location_code
+    ? `<button type="button" class="btn-sm mono" onclick="document.getElementById('partDetailDialog').close(); filterByLocation('${esc(p.location_code)}')">${esc(p.location_code)}</button>`
+    : "-";
+  const supParts = [p.primary_supplier_name, p.supplier_sku ? "SKU: " + p.supplier_sku : "", p.mpn ? "MPN: " + p.mpn : ""].filter(Boolean);
+  const linksHtml = [
+    p.product_url ? `<a class="btn" href="${esc(p.product_url)}" target="_blank" rel="noopener">Open Product Page</a>` : "",
+    p.datasheet_url ? `<a class="btn" href="${esc(p.datasheet_url)}" target="_blank" rel="noopener">Open Datasheet</a>` : ""
+  ].filter(Boolean).join(" ");
+  const descHtml = p.description
+    ? `<div style="margin-bottom:4px;font-size:.78rem;color:var(--muted);text-transform:uppercase">Description</div><div class="detail-text-box">${esc(p.description)}</div>`
+    : "";
+  const notesHtml = p.notes
+    ? `<div style="margin-bottom:4px;font-size:.78rem;color:var(--muted);text-transform:uppercase">Notes</div><div class="detail-text-box">${esc(p.notes)}</div>`
+    : "";
+  const movesHtml = movements.length
+    ? `<div style="margin:8px 0 4px;font-size:.78rem;color:var(--muted);text-transform:uppercase">Recent Stock History</div>
+       <table><thead><tr><th>When</th><th>Delta</th><th>Qty</th><th>Reason</th><th>Note</th></tr></thead><tbody>` +
+      movements.slice(0, 8).map(m => `<tr><td class="mono">${esc((m.created_at || "").slice(0, 16).replace("T", " "))}</td><td>${m.delta >= 0 ? "+" + m.delta : m.delta}</td><td>${m.new_qty}</td><td>${esc(m.reason)}</td><td>${esc(m.note)}</td></tr>`).join("") +
+      `</tbody></table>`
+    : "";
+
+  document.getElementById("detailTitle").textContent = `${p.sku} — ${p.name}`;
+  document.getElementById("detailBody").innerHTML = `
+    ${mediaHtml}
+    <div class="detail-grid">
+      <div class="detail-kv"><div class="k">SKU / Category</div><div class="v mono">${esc(p.sku)} (${esc(p.category)})</div></div>
+      <div class="detail-kv"><div class="k">Value / Spec</div><div class="v">${esc(p.spec || "-")}</div></div>
+      <div class="detail-kv"><div class="k">Package</div><div class="v">${esc(p.package || "-")}</div></div>
+      <div class="detail-kv"><div class="k">Stock / Min</div><div class="v" ${p.low_stock ? "style='color:var(--bad)'" : ""}>${p.qty} / ${p.min_qty}</div></div>
+      <div class="detail-kv"><div class="k">Unit Cost / Value</div><div class="v">$${Number(p.unit_cost).toFixed(2)} / $${Number(p.extended_value).toFixed(2)}</div></div>
+      <div class="detail-kv"><div class="k">Location / Bin</div><div class="v">${locHtml}</div></div>
+      <div class="detail-kv"><div class="k">Supplier / MPN</div><div class="v">${esc(supParts.join(" | ") || "-")}</div></div>
+      <div class="detail-kv"><div class="k">Added / Modified</div><div class="v mono" style="font-size:.78rem">${esc((p.created_at || "-").slice(0, 10))} / ${esc((p.updated_at || "-").slice(0, 10))}</div></div>
+    </div>
+    ${linksHtml ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${linksHtml}</div>` : ""}
+    ${descHtml}
+    ${notesHtml}
+    ${movesHtml}
+  `;
+  document.getElementById("detailFooter").innerHTML = `
+    <button type="button" onclick="adjustFromDetail('${esc(p.sku)}', -1)">-1 Stock</button>
+    <button type="button" onclick="adjustFromDetail('${esc(p.sku)}', 1)">+1 Stock</button>
+    <button type="button" onclick="document.getElementById('partDetailDialog').close(); openLabelFor('part','${esc(p.sku)}')">Print Label</button>
+    <button type="button" class="btn-primary" onclick="document.getElementById('partDetailDialog').close(); openPartModal('${esc(p.sku)}')">Edit Part</button>
+    <button type="button" onclick="document.getElementById('partDetailDialog').close()">Close</button>
+  `;
+}
+
+async function adjustFromDetail(sku, delta) {
+  await adjustStock(sku, delta, "detail_adjust");
+  const updated = state.parts.find(x => x.sku === sku);
+  if (updated && document.getElementById("partDetailDialog").open) {
+    openPartDetail(sku);
+  }
+}
+
+async function openPartDetail(sku) {
+  const dlg = document.getElementById("partDetailDialog");
+  const cached = state.parts.find(x => x.sku === sku);
+  if (cached) {
+    renderPartDetailContent(cached, []);
+  } else {
+    document.getElementById("detailTitle").textContent = sku;
+    document.getElementById("detailBody").innerHTML = "<p style='color:var(--muted)'>Loading part details...</p>";
+  }
+  if (!dlg.open) dlg.showModal();
+  try {
+    const detail = await api("/api/parts/" + encodeURIComponent(sku));
+    if (detail && detail.part) {
+      renderPartDetailContent(detail.part, detail.movements || []);
+    }
+  } catch (err) {
+    if (!cached) {
+      document.getElementById("detailBody").innerHTML = `<p style="color:var(--bad)">Failed to load part: ${esc(err.message)}</p>`;
+    }
+  }
+}
+
+async function adjustStock(sku, delta, reason = "adjust") {
+  try {
+    const p = await api("/api/parts/" + encodeURIComponent(sku) + "/adjust", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ delta, reason })
+    });
+    showToast(`${p.sku} stock updated to ${p.qty}`);
+    await refreshAll();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
+async function deletePart(sku) {
+  if (!confirm("Delete part " + sku + "?")) return;
+  try {
+    await api("/api/parts/" + encodeURIComponent(sku), { method: "DELETE" });
+    showToast("Deleted " + sku);
+    await refreshAll();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
+const imgModalState = {
+  selectedImgUrl: "",
+  selectedPinoutUrl: "",
+  clearPartImg: false,
+  clearPinoutImg: false,
+  pendingPartFile: null,
+  pendingPartObjectUrl: "",
+  pendingPinoutFile: null,
+  pendingPinoutObjectUrl: "",
+  existingPartPath: "",
+  existingPinoutPath: "",
+  galleryImages: []
+};
+
+function openLightbox(src, title) {
+  if (!src) return;
+  document.getElementById("lightboxTitle").textContent = title || "Image Preview";
+  document.getElementById("lightboxImg").src = src;
+  document.getElementById("lightboxNewTab").href = src;
+  document.getElementById("lightboxMeta").textContent = "";
+  document.getElementById("imgLightbox").showModal();
+}
+
+function renderImageSlots() {
+  const partBox = document.getElementById("pfPartPreview");
+  const partCap = document.getElementById("pfPartCaption");
+  let partSrc = "";
+  if (imgModalState.pendingPartObjectUrl) {
+    partSrc = imgModalState.pendingPartObjectUrl;
+    partCap.textContent = "Local file ready to upload";
+  } else if (imgModalState.selectedImgUrl) {
+    partSrc = "/api/proxy-image?url=" + encodeURIComponent(imgModalState.selectedImgUrl);
+    partCap.textContent = "From URL (downloads on Save)";
+  } else if (imgModalState.existingPartPath && !imgModalState.clearPartImg) {
+    partSrc = "/api/images/" + encodeURIComponent(imgModalState.existingPartPath) + "?t=" + Date.now();
+    partCap.textContent = "Saved locally";
+  } else {
+    partCap.textContent = imgModalState.clearPartImg ? "Will be cleared" : "";
+  }
+  partBox.innerHTML = partSrc
+    ? `<img src="${esc(partSrc)}" alt="Part Photo" onclick="openLightbox('${esc(partSrc)}', 'Part Photo Preview')" />`
+    : "No photo selected";
+
+  const pinBox = document.getElementById("pfPinoutPreview");
+  const pinCap = document.getElementById("pfPinoutCaption");
+  let pinSrc = "";
+  if (imgModalState.pendingPinoutObjectUrl) {
+    pinSrc = imgModalState.pendingPinoutObjectUrl;
+    pinCap.textContent = "Local file ready to upload";
+  } else if (imgModalState.selectedPinoutUrl) {
+    pinSrc = "/api/proxy-image?url=" + encodeURIComponent(imgModalState.selectedPinoutUrl);
+    pinCap.textContent = "From URL (downloads on Save)";
+  } else if (imgModalState.existingPinoutPath && !imgModalState.clearPinoutImg) {
+    pinSrc = "/api/images/" + encodeURIComponent(imgModalState.existingPinoutPath) + "?t=" + Date.now();
+    pinCap.textContent = "Saved locally";
+  } else {
+    pinCap.textContent = imgModalState.clearPinoutImg ? "Will be cleared" : "";
+  }
+  pinBox.innerHTML = pinSrc
+    ? `<img src="${esc(pinSrc)}" alt="Pinout Preview" onclick="openLightbox('${esc(pinSrc)}', 'Pinout / Wiring Diagram Preview')" />`
+    : "No pinout selected";
+}
+
+function renderGalleryStrip() {
+  const box = document.getElementById("pfGalleryBox");
+  const strip = document.getElementById("pfGalleryStrip");
+  const cnt = document.getElementById("pfGalleryCount");
+  const imgs = imgModalState.galleryImages || [];
+  if (!imgs.length) {
+    box.classList.add("hidden");
+    strip.innerHTML = "";
+    return;
+  }
+  box.classList.remove("hidden");
+  cnt.textContent = `${imgs.length} images found`;
+  strip.innerHTML = imgs.map((item, i) => {
+    const proxied = "/api/proxy-image?url=" + encodeURIComponent(item.url);
+    const isPhoto = imgModalState.selectedImgUrl === item.url;
+    const isPinout = imgModalState.selectedPinoutUrl === item.url;
+    const cls = ["gallery-card", isPhoto ? "is-photo" : "", isPinout ? "is-pinout" : ""].filter(Boolean).join(" ");
+    const badge = item.likely_pinout ? `<span class="pinout-badge">Possible Pinout</span>` : "";
+    return `<div class="${cls}">
+      <img src="${esc(proxied)}" alt="${esc(item.label || ('Image ' + (i + 1)))}" loading="lazy" onclick="openLightbox('${esc(proxied)}', '${esc(item.label || ('Candidate Image ' + (i + 1)))}')" />
+      ${badge}
+      <div style="display:flex;gap:4px;margin-top:auto">
+        <button type="button" class="btn-sm" style="flex:1" onclick="selectGalleryImage(${i}, 'part')">${isPhoto ? "Photo *" : "Photo"}</button>
+        <button type="button" class="btn-sm" style="flex:1" onclick="selectGalleryImage(${i}, 'pinout')">${isPinout ? "Pinout *" : "Pinout"}</button>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function selectGalleryImage(idx, kind) {
+  const item = (imgModalState.galleryImages || [])[idx];
+  if (!item) return;
+  if (kind === "part") {
+    imgModalState.selectedImgUrl = item.url;
+    imgModalState.clearPartImg = false;
+    imgModalState.pendingPartFile = null;
+    imgModalState.pendingPartObjectUrl = "";
+  } else {
+    imgModalState.selectedPinoutUrl = item.url;
+    imgModalState.clearPinoutImg = false;
+    imgModalState.pendingPinoutFile = null;
+    imgModalState.pendingPinoutObjectUrl = "";
+  }
+  renderImageSlots();
+  renderGalleryStrip();
+}
+
+function onPartFilePicked(kind, input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const objUrl = URL.createObjectURL(file);
+  if (kind === "part") {
+    imgModalState.pendingPartFile = file;
+    imgModalState.pendingPartObjectUrl = objUrl;
+    imgModalState.selectedImgUrl = "";
+    imgModalState.clearPartImg = false;
+  } else {
+    imgModalState.pendingPinoutFile = file;
+    imgModalState.pendingPinoutObjectUrl = objUrl;
+    imgModalState.selectedPinoutUrl = "";
+    imgModalState.clearPinoutImg = false;
+  }
+  renderImageSlots();
+  renderGalleryStrip();
+}
+
+function clearPartImageSlot(kind) {
+  if (kind === "part") {
+    imgModalState.selectedImgUrl = "";
+    imgModalState.pendingPartFile = null;
+    imgModalState.pendingPartObjectUrl = "";
+    imgModalState.clearPartImg = !!imgModalState.existingPartPath;
+    const f = document.getElementById("pfPartFile");
+    if (f) f.value = "";
+  } else {
+    imgModalState.selectedPinoutUrl = "";
+    imgModalState.pendingPinoutFile = null;
+    imgModalState.pendingPinoutObjectUrl = "";
+    imgModalState.clearPinoutImg = !!imgModalState.existingPinoutPath;
+    const f = document.getElementById("pfPinoutFile");
+    if (f) f.value = "";
+  }
+  renderImageSlots();
+  renderGalleryStrip();
+}
+
+const packCalcState = { basePackQty: 1, basePackPrice: 0 };
+
+function updateCalcSummary() {
+  const el = document.getElementById("pfCalcSummary");
+  if (!el) return;
+  const fq = parseInt(document.getElementById("pfFinalQty").value || document.getElementById("pfQty").value || "0", 10);
+  const fcRaw = document.getElementById("pfFinalCost").value.trim();
+  const fc = fcRaw === "" ? NaN : parseFloat(fcRaw);
+  if (fq > 0 && !Number.isNaN(fc) && fc > 0) {
+    const ea = (fc / fq).toFixed(2);
+    const prefix = packCalcState.basePackQty > 1 ? `Pack of ${packCalcState.basePackQty} | ` : "";
+    el.textContent = `${prefix}${fq} units -> $${ea}/ea`;
+    el.style.color = "var(--ok)";
+  } else {
+    el.textContent = "Enter final qty & total paid to divide unit cost.";
+    el.style.color = "var(--muted)";
+  }
+}
+
+function onPacksChanged() {
+  const packs = Math.max(1, parseInt(document.getElementById("pfPacks").value || "1", 10));
+  document.getElementById("pfFinalQty").value = String(packs * packCalcState.basePackQty);
+  if (packCalcState.basePackPrice > 0) {
+    document.getElementById("pfFinalCost").value = (packs * packCalcState.basePackPrice).toFixed(2);
+  }
+  recalcUnitCostFromFinal();
+}
+
+function recalcUnitCostFromFinal() {
+  const rawQty = document.getElementById("pfFinalQty").value.trim();
+  const rawCost = document.getElementById("pfFinalCost").value.trim();
+  if (rawQty !== "") {
+    const fq = parseInt(rawQty, 10);
+    if (fq > 0) document.getElementById("pfQty").value = String(fq);
+  }
+  const qty = parseInt(rawQty || document.getElementById("pfQty").value || "0", 10);
+  if (rawCost !== "") {
+    const fc = parseFloat(rawCost);
+    if (!Number.isNaN(fc) && fc >= 0 && qty > 0) {
+      document.getElementById("pfCost").value = (fc / qty).toFixed(2);
+    }
+  }
+  updateCalcSummary();
+}
+
+function openPartModal(sku) {
+  const dlg = document.getElementById("partDialog");
+  const p = sku ? state.parts.find(x => x.sku === sku) : null;
+  document.getElementById("partModalTitle").textContent = p ? "Edit Part " + p.sku : "Add New Part";
+  document.getElementById("pfSku").value = p ? p.sku : "";
+  document.getElementById("pfSku").readOnly = !!p;
+  document.getElementById("pfCat").value = p ? p.category : "microcontrollers";
+  document.getElementById("pfName").value = p ? p.name : "";
+  document.getElementById("pfSpec").value = p ? p.spec : "";
+  document.getElementById("pfPkg").value = p ? p.package : "";
+  document.getElementById("pfQty").value = p ? p.qty : 1;
+  document.getElementById("pfMin").value = p ? p.min_qty : 1;
+  document.getElementById("pfCost").value = p ? p.unit_cost.toFixed(2) : "0.00";
+  document.getElementById("pfLoc").value = p ? (p.location_code || "") : "";
+  document.getElementById("pfSup").value = p ? (p.primary_supplier_name || "") : "";
+  document.getElementById("pfMpn").value = p ? p.mpn : "";
+  document.getElementById("pfSupSku").value = p ? p.supplier_sku : "";
+  document.getElementById("pfUrl").value = p ? p.product_url : "";
+  document.getElementById("pfDsUrl").value = p ? p.datasheet_url : "";
+  document.getElementById("pfProj").value = p ? p.projects_tags : "-";
+  document.getElementById("pfBarcode").value = p ? p.barcode_value : "";
+  document.getElementById("pfDesc").value = p ? (p.description || "") : "";
+  document.getElementById("pfNotes").value = p ? p.notes : "";
+  document.getElementById("pfImportUrl").value = p ? p.product_url : "";
+  document.getElementById("pfImportStatus").textContent = "";
+
+  imgModalState.selectedImgUrl = "";
+  imgModalState.selectedPinoutUrl = "";
+  imgModalState.clearPartImg = false;
+  imgModalState.clearPinoutImg = false;
+  imgModalState.pendingPartFile = null;
+  imgModalState.pendingPartObjectUrl = "";
+  imgModalState.pendingPinoutFile = null;
+  imgModalState.pendingPinoutObjectUrl = "";
+  imgModalState.existingPartPath = p ? (p.image_path || "") : "";
+  imgModalState.existingPinoutPath = p ? (p.pinout_image_path || "") : "";
+  imgModalState.galleryImages = [];
+  packCalcState.basePackQty = 1;
+  packCalcState.basePackPrice = 0;
+  document.getElementById("pfPacks").value = "1";
+  document.getElementById("pfFinalQty").value = "";
+  document.getElementById("pfFinalCost").value = "";
+  updateCalcSummary();
+  const f1 = document.getElementById("pfPartFile"); if (f1) f1.value = "";
+  const f2 = document.getElementById("pfPinoutFile"); if (f2) f2.value = "";
+  renderImageSlots();
+  renderGalleryStrip();
+  dlg.showModal();
+}
+
+async function fetchPartFromUrl() {
+  const urlEl = document.getElementById("pfImportUrl");
+  const btn = document.getElementById("pfImportBtn");
+  const st = document.getElementById("pfImportStatus");
+  const url = urlEl.value.trim();
+  if (!url) {
+    st.textContent = "Paste a product URL first.";
+    return;
+  }
+  btn.disabled = true;
+  st.textContent = "Fetching product metadata...";
+  try {
+    const d = await api("/api/parts/fetch-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url })
+    });
+    const skuEl = document.getElementById("pfSku");
+    if (!skuEl.readOnly && !skuEl.value.trim() && d.suggested_sku) skuEl.value = d.suggested_sku;
+    if (d.category) document.getElementById("pfCat").value = d.category;
+    if (d.name) document.getElementById("pfName").value = d.name;
+    if (d.spec) document.getElementById("pfSpec").value = d.spec;
+    if (d.package) document.getElementById("pfPkg").value = d.package;
+    if (d.pack_qty > 1) document.getElementById("pfQty").value = d.pack_qty;
+    if (d.unit_cost > 0) document.getElementById("pfCost").value = Number(d.unit_cost).toFixed(2);
+    if (d.supplier_name) document.getElementById("pfSup").value = d.supplier_name;
+    if (d.mpn) document.getElementById("pfMpn").value = d.mpn;
+    if (d.supplier_sku) document.getElementById("pfSupSku").value = d.supplier_sku;
+    if (d.url) document.getElementById("pfUrl").value = d.url;
+    if (d.datasheet_url) document.getElementById("pfDsUrl").value = d.datasheet_url;
+    if (d.description) document.getElementById("pfDesc").value = d.description;
+
+    const packQty = Math.max(1, parseInt(d.pack_qty || 1, 10));
+    const totalPrice = Number(d.total_price || 0) > 0
+      ? Number(d.total_price)
+      : (Number(d.unit_cost || 0) > 0 ? Number(d.unit_cost) * packQty : 0);
+    packCalcState.basePackQty = packQty;
+    packCalcState.basePackPrice = totalPrice;
+    document.getElementById("pfPacks").value = "1";
+    document.getElementById("pfFinalQty").value = String(packQty);
+    document.getElementById("pfQty").value = String(packQty);
+    if (totalPrice > 0) {
+      document.getElementById("pfFinalCost").value = totalPrice.toFixed(2);
+      document.getElementById("pfCost").value = (totalPrice / packQty).toFixed(2);
+    } else {
+      document.getElementById("pfFinalCost").value = "";
+    }
+    updateCalcSummary();
+
+    imgModalState.galleryImages = Array.isArray(d.images) ? d.images : [];
+    if (!imgModalState.selectedImgUrl && !imgModalState.existingPartPath && !imgModalState.pendingPartFile && imgModalState.galleryImages.length) {
+      const firstPhoto = imgModalState.galleryImages.find(x => !x.likely_pinout) || imgModalState.galleryImages[0];
+      if (firstPhoto) imgModalState.selectedImgUrl = firstPhoto.url;
+    }
+    if (!imgModalState.selectedPinoutUrl && !imgModalState.existingPinoutPath && !imgModalState.pendingPinoutFile) {
+      const firstPinout = imgModalState.galleryImages.find(x => x.likely_pinout);
+      if (firstPinout) imgModalState.selectedPinoutUrl = firstPinout.url;
+    }
+    renderImageSlots();
+    renderGalleryStrip();
+
+    if (d.warning) {
+      st.textContent = d.warning;
+      st.style.color = d.blocked ? "var(--warn)" : "var(--ok)";
+    } else {
+      st.textContent = `Imported from ${d.supplier_name || "store"}${d.unit_cost > 0 ? " ($" + Number(d.unit_cost).toFixed(2) + ")" : ""}. Review fields, pick Photo/Pinout, and click Save Part.`;
+      st.style.color = "var(--ok)";
+    }
+  } catch (err) {
+    st.textContent = "Fetch failed: " + err.message;
+    st.style.color = "var(--bad)";
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function savePartForm(e) {
+  e.preventDefault();
+  const payload = {
+    sku: document.getElementById("pfSku").value.trim(),
+    category: document.getElementById("pfCat").value.trim(),
+    name: document.getElementById("pfName").value.trim(),
+    spec: document.getElementById("pfSpec").value.trim(),
+    package: document.getElementById("pfPkg").value.trim(),
+    qty: parseInt(document.getElementById("pfQty").value || "0", 10),
+    min_qty: parseInt(document.getElementById("pfMin").value || "1", 10),
+    unit_cost: parseFloat(document.getElementById("pfCost").value || "0"),
+    location_code: document.getElementById("pfLoc").value.trim() || null,
+    supplier_name: document.getElementById("pfSup").value.trim() || null,
+    mpn: document.getElementById("pfMpn").value.trim(),
+    supplier_sku: document.getElementById("pfSupSku").value.trim(),
+    product_url: document.getElementById("pfUrl").value.trim(),
+    datasheet_url: document.getElementById("pfDsUrl").value.trim(),
+    projects_tags: document.getElementById("pfProj").value.trim() || "-",
+    barcode_value: document.getElementById("pfBarcode").value.trim(),
+    description: document.getElementById("pfDesc").value.trim(),
+    notes: document.getElementById("pfNotes").value.trim(),
+    image_path: imgModalState.clearPartImg ? "__CLEAR__" : "",
+    pinout_image_path: imgModalState.clearPinoutImg ? "__CLEAR__" : "",
+    image_url: imgModalState.pendingPartFile ? "" : (imgModalState.selectedImgUrl || ""),
+    pinout_image_url: imgModalState.pendingPinoutFile ? "" : (imgModalState.selectedPinoutUrl || "")
+  };
+  try {
+    await api("/api/parts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    for (const [kind, file] of [["part", imgModalState.pendingPartFile], ["pinout", imgModalState.pendingPinoutFile]]) {
+      if (!file) continue;
+      const fd = new FormData();
+      fd.append("kind", kind);
+      fd.append("file", file);
+      const r = await fetch(`/api/parts/${encodeURIComponent(payload.sku)}/image`, { method: "POST", body: fd });
+      if (!r.ok) {
+        const msg = await r.text();
+        throw new Error(msg || `Image upload failed (${kind})`);
+      }
+    }
+    document.getElementById("partDialog").close();
+    showToast("Saved " + payload.sku);
+    await refreshAll();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
+function renderLocationsTable() {
+  const tbody = document.getElementById("locTbody");
+  tbody.innerHTML = state.locations.map(l => {
+    const zone = [l.area, l.rack, l.drawer].filter(Boolean).join(" / ") || "-";
+    return `<tr>
+      <td><input type="checkbox" class="bin-chk" value="${esc(l.code)}" /></td>
+      <td class="mono"><b>${esc(l.code)}</b></td>
+      <td>${esc(l.name)}</td>
+      <td>${esc(zone)}</td>
+      <td class="mono">${esc(l.barcode_value)}</td>
+      <td>${l.part_count}</td>
+      <td>${l.total_qty}</td>
+      <td>$${l.total_value.toFixed(2)}</td>
+      <td style="white-space:nowrap">
+        <button type="button" class="btn-sm" onclick="filterByLocation('${esc(l.code)}')">Parts</button>
+        <button type="button" class="btn-sm" onclick="openLabelFor('bin','${esc(l.code)}')">Label</button>
+        <a class="btn btn-sm" target="_blank" href="/api/labels/bin/${encodeURIComponent(l.code)}.pdf?preset=ql62x42&barcode=combo">PDF</a>
+        <button type="button" class="btn-sm" onclick="openLocModal('${esc(l.code)}')">Edit</button>
+      </td>
+    </tr>`;
+  }).join("");
+}
+
+function toggleAllBinChecks(checked) {
+  document.querySelectorAll(".bin-chk").forEach(c => { c.checked = checked; });
+}
+
+async function printSelectedBinLabels() {
+  const selected = [...document.querySelectorAll(".bin-chk:checked")].map(c => ({ kind: "bin", id: c.value, copies: 1 }));
+  if (!selected.length) {
+    showToast("Select one or more bins first", true);
+    return;
+  }
+  await openBatchPdf({ preset: "ql62x42", barcode: "combo", items: selected });
+}
+
+function openLocModal(code) {
+  const l = code ? state.locations.find(x => x.code === code) : null;
+  document.getElementById("locModalTitle").textContent = l ? "Edit Location " + l.code : "Add Location";
+  document.getElementById("lfCode").value = l ? l.code : "";
+  document.getElementById("lfName").value = l ? l.name : "";
+  document.getElementById("lfArea").value = l ? l.area : "";
+  document.getElementById("lfRack").value = l ? l.rack : "";
+  document.getElementById("lfDrawer").value = l ? l.drawer : "";
+  document.getElementById("lfBarcode").value = l ? l.barcode_value : "";
+  document.getElementById("lfDesc").value = l ? l.description : "";
+  document.getElementById("locDialog").showModal();
+}
+
+async function saveLocForm(e) {
+  e.preventDefault();
+  const payload = {
+    code: document.getElementById("lfCode").value.trim(),
+    name: document.getElementById("lfName").value.trim(),
+    area: document.getElementById("lfArea").value.trim(),
+    rack: document.getElementById("lfRack").value.trim(),
+    drawer: document.getElementById("lfDrawer").value.trim(),
+    barcode_value: document.getElementById("lfBarcode").value.trim(),
+    description: document.getElementById("lfDesc").value.trim()
+  };
+  try {
+    await api("/api/locations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    document.getElementById("locDialog").close();
+    showToast("Location saved");
+    await refreshAll();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
+function renderSuppliersAndCosts() {
+  const v = state.valuation;
+  if (v) {
+    document.getElementById("valKpis").innerHTML = [
+      ["Total SKUs", v.total_skus],
+      ["Total Units", v.total_units],
+      ["Inventory Value", "$" + v.total_value.toFixed(2)],
+      ["Est. Restock Cost", "$" + v.estimated_restock_cost.toFixed(2)]
+    ].map(([k, val]) => `<div class="kpi"><div class="label">${k}</div><div class="val">${val}</div></div>`).join("");
+
+    document.getElementById("valCatBody").innerHTML = v.by_category.map(c =>
+      `<tr><td>${esc(c.category)}</td><td>${c.sku_count}</td><td>${c.total_units}</td><td>$${c.total_value.toFixed(2)}</td><td>${c.low_stock_count}</td></tr>`
+    ).join("");
+    document.getElementById("valLocBody").innerHTML = v.by_location.map(l =>
+      `<tr><td class="mono">${esc(l.location_code)}</td><td>${l.sku_count}</td><td>${l.total_units}</td><td>$${l.total_value.toFixed(2)}</td></tr>`
+    ).join("");
+  }
+
+  document.getElementById("supTbody").innerHTML = state.suppliers.map(s => `<tr>
+    <td><b>${esc(s.name)}</b></td>
+    <td>${esc(s.currency)}</td>
+    <td>${s.lead_time_days}d</td>
+    <td>${s.part_count}</td>
+    <td>$${s.total_value.toFixed(2)}</td>
+    <td>${s.website ? `<a href="${esc(s.website)}" target="_blank" rel="noopener">Open</a>` : "-"}</td>
+    <td>${esc(s.shipping_notes || "-")}</td>
+    <td><button type="button" class="btn-sm" onclick="openSupplierModal(${s.id})">Edit</button></td>
+  </tr>`).join("");
+
+  const rBox = document.getElementById("reorderBox");
+  if (!state.reorder.length) {
+    rBox.innerHTML = "<p style='color:var(--ok)'>All parts are above minimum stock thresholds.</p>";
+  } else {
+    rBox.innerHTML = state.reorder.map(g => `
+      <div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <strong>${esc(g.supplier_name)} (${g.lead_time_days}d lead)</strong>
+          <span>Order Est: <b>$${g.group_total_cost.toFixed(2)}</b></span>
+        </div>
+        <table>
+          <thead><tr><th>SKU</th><th>Part</th><th>Have/Min</th><th>Order Qty</th><th>Unit</th><th>Est Cost</th><th>Supplier SKU / MPN</th></tr></thead>
+          <tbody>${g.items.map(i => `<tr>
+            <td class="mono">${esc(i.sku)}</td><td>${esc(i.part_name)}</td><td>${i.qty}/${i.min_qty}</td>
+            <td><b>${i.suggested_order_qty}</b></td><td>$${i.unit_cost.toFixed(2)}</td><td>$${i.est_order_cost.toFixed(2)}</td>
+            <td class="mono">${esc([i.supplier_sku, i.mpn].filter(Boolean).join(" / ") || "-")}</td>
+          </tr>`).join("")}</tbody>
+        </table>
+      </div>
+    `).join("");
+  }
+}
+
+function openSupplierModal(id) {
+  const s = id ? state.suppliers.find(x => x.id === id) : null;
+  document.getElementById("supModalTitle").textContent = s ? "Edit Supplier " + s.name : "Add Supplier";
+  document.getElementById("sfId").value = s ? s.id : "";
+  document.getElementById("sfName").value = s ? s.name : "";
+  document.getElementById("sfWeb").value = s ? s.website : "";
+  document.getElementById("sfAcct").value = s ? s.account_url : "";
+  document.getElementById("sfCurr").value = s ? s.currency : "USD";
+  document.getElementById("sfLead").value = s ? s.lead_time_days : 3;
+  document.getElementById("sfShip").value = s ? s.shipping_notes : "";
+  document.getElementById("sfNotes").value = s ? s.notes : "";
+  document.getElementById("supDialog").showModal();
+}
+
+async function saveSupForm(e) {
+  e.preventDefault();
+  const id = document.getElementById("sfId").value;
+  const payload = {
+    name: document.getElementById("sfName").value.trim(),
+    website: document.getElementById("sfWeb").value.trim(),
+    account_url: document.getElementById("sfAcct").value.trim(),
+    currency: document.getElementById("sfCurr").value.trim() || "USD",
+    lead_time_days: parseInt(document.getElementById("sfLead").value || "3", 10),
+    shipping_notes: document.getElementById("sfShip").value.trim(),
+    notes: document.getElementById("sfNotes").value.trim()
+  };
+  try {
+    await api(id ? "/api/suppliers/" + id : "/api/suppliers", {
+      method: id ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    document.getElementById("supDialog").close();
+    showToast("Supplier saved");
+    await refreshAll();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
+function renderBoms() {
+  const el = document.getElementById("bomsContainer");
+  if (!state.boms.length) {
+    el.innerHTML = "<div class='card'>No project BOMs found yet.</div>";
+    return;
+  }
+  el.innerHTML = state.boms.map(b => `
+    <div class="card">
+      <div class="toolbar">
+        <strong style="font-size:1rem">${esc(b.title)} <small class="mono" style="color:var(--muted)">(${esc(b.slug)})</small></strong>
+        <span class="badge ${b.ready ? "badge-ok" : "badge-bad"}">${b.ready ? "READY" : "SHORTAGE"}</span>
+        <span style="margin-left:auto">BOM Cost: <b>$${b.total_cost.toFixed(2)}</b>${b.shortage_cost > 0 ? ` | Shortage: <b style="color:var(--bad)">$${b.shortage_cost.toFixed(2)}</b>` : ""}</span>
+        <button type="button" class="btn-sm" onclick="printBomLabels('${esc(b.slug)}')">Print BOM Labels (PDF)</button>
+        <button type="button" class="btn-sm btn-primary" onclick="deductBom('${esc(b.slug)}')">Deduct 1 Build</button>
+      </div>
+      <table>
+        <thead><tr><th>SKU</th><th>Part</th><th>Need</th><th>Have</th><th>Bin</th><th>Supplier</th><th>Line Cost</th><th>Status</th></tr></thead>
+        <tbody>${b.items.map(i => `<tr>
+          <td class="mono">${esc(i.sku)}</td><td>${esc(i.part_name)}</td><td>${i.need}</td><td>${i.have}</td>
+          <td class="mono">${esc(i.location_code)}</td><td>${esc(i.supplier_name)}</td>
+          <td>$${i.line_cost.toFixed(2)}</td>
+          <td><span class="badge ${i.ok ? "badge-ok" : "badge-bad"}">${i.ok ? "OK" : "SHORT " + i.shortage}</span></td>
+        </tr>`).join("")}</tbody>
+      </table>
+    </div>
+  `).join("");
+}
+
+function openBomModal() {
+  document.getElementById("bfSlug").value = "";
+  document.getElementById("bfTitle").value = "";
+  document.getElementById("bfItems").value = "";
+  document.getElementById("bomDialog").showModal();
+}
+
+async function saveBomForm(e) {
+  e.preventDefault();
+  const lines = document.getElementById("bfItems").value.split("\n");
+  const items = [];
+  for (const raw of lines) {
+    const m = raw.trim().match(/^([A-Za-z0-9_-]+)\s*[xX* ]\s*(\d+)$/);
+    if (m) items.push({ sku: m[1].toUpperCase(), qty_needed: parseInt(m[2], 10), notes: "" });
+  }
+  try {
+    await api("/api/boms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        slug: document.getElementById("bfSlug").value.trim(),
+        title: document.getElementById("bfTitle").value.trim(),
+        status: "active",
+        notes: "",
+        items
+      })
+    });
+    document.getElementById("bomDialog").close();
+    showToast("BOM saved");
+    await refreshAll();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
+async function deductBom(slug) {
+  if (!confirm("Deduct 1x BOM stock for " + slug + "?")) return;
+  try {
+    await api("/api/boms/" + encodeURIComponent(slug) + "/deduct", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ multiplier: 1 })
+    });
+    showToast("Deducted BOM " + slug);
+    await refreshAll();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
+async function printBomLabels(slug) {
+  const b = state.boms.find(x => x.slug === slug);
+  if (!b) return;
+  const items = b.items.map(i => ({ kind: "part", id: i.sku, copies: 1 }));
+  await openBatchPdf({ preset: DEFAULT_PRESET, barcode: "combo", items });
+}
+
+async function openBatchPdf(payload) {
+  try {
+    const res = await fetch("/api/labels/batch.pdf", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const blob = await res.blob();
+    window.open(URL.createObjectURL(blob), "_blank");
+  } catch (err) {
+    showToast("Batch PDF failed: " + err.message, true);
+  }
+}
+
+function populateLabelTargets() {
+  const kind = document.getElementById("lblKind").value;
+  const sel = document.getElementById("lblTarget");
+  const prev = sel.value;
+  if (kind === "bin") {
+    sel.innerHTML = state.locations.map(l => `<option value="${esc(l.code)}">${esc(l.code)} - ${esc(l.name)}</option>`).join("");
+  } else {
+    sel.innerHTML = state.parts.map(p => `<option value="${esc(p.sku)}">${esc(p.sku)} - ${esc(p.name)}</option>`).join("");
+  }
+  if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+}
+
+function openLabelFor(kind, id) {
+  switchTab("labels");
+  document.getElementById("lblKind").value = kind;
+  populateLabelTargets();
+  document.getElementById("lblTarget").value = id;
+  if (kind === "bin") {
+    document.getElementById("lblPreset").value = "ql62x42";
+    syncLabelSizeInputsFromPreset();
+  }
+  updateLabelPreview();
+}
+
+const LABEL_PREFS_KEY = "benchbear_label_prefs_v1";
+
+function saveLabelPrefs() {
+  try {
+    const unit = document.getElementById("lblUnit").value;
+    const { wMm, hMm } = getLabelDimensionsMm();
+    localStorage.setItem(LABEL_PREFS_KEY, JSON.stringify({
+      preset: document.getElementById("lblPreset").value,
+      unit,
+      w_mm: wMm,
+      h_mm: hMm,
+      phomemoDev: document.getElementById("phomemoDevice").value,
+      phomemoDensity: document.getElementById("phomemoDensity").value,
+      phomemoMedia: document.getElementById("phomemoMedia").value
+    }));
+  } catch (_) {}
+}
+
+function restoreLabelPrefs() {
+  try {
+    const raw = localStorage.getItem(LABEL_PREFS_KEY);
+    if (!raw) {
+      syncLabelSizeInputsFromPreset();
+      return;
+    }
+    const p = JSON.parse(raw);
+    if (p.unit === "in" || p.unit === "mm") document.getElementById("lblUnit").value = p.unit;
+    if (p.phomemoDev) document.getElementById("phomemoDevice").value = p.phomemoDev;
+    if (p.phomemoDensity) document.getElementById("phomemoDensity").value = p.phomemoDensity;
+    if (p.phomemoMedia) document.getElementById("phomemoMedia").value = p.phomemoMedia;
+    const presetSel = document.getElementById("lblPreset");
+    if (p.preset && [...presetSel.options].some(o => o.value === p.preset)) {
+      presetSel.value = p.preset;
+    }
+    if (presetSel.value === "custom" && p.w_mm > 0 && p.h_mm > 0) {
+      setLabelInputsFromMm(p.w_mm, p.h_mm);
+    } else {
+      syncLabelSizeInputsFromPreset();
+    }
+  } catch (_) {
+    syncLabelSizeInputsFromPreset();
+  }
+}
+
+function setLabelInputsFromMm(wMm, hMm) {
+  const unit = document.getElementById("lblUnit").value;
+  const isIn = unit === "in";
+  document.getElementById("lblWidthLabel").textContent = isIn ? "Width (in)" : "Width (mm)";
+  document.getElementById("lblHeightLabel").textContent = isIn ? "Height (in)" : "Height (mm)";
+  document.getElementById("lblWidth").step = isIn ? "0.05" : "0.5";
+  document.getElementById("lblHeight").step = isIn ? "0.05" : "0.5";
+  document.getElementById("lblWidth").value = isIn ? (wMm / 25.4).toFixed(2) : Number(wMm).toFixed(1);
+  document.getElementById("lblHeight").value = isIn ? (hMm / 25.4).toFixed(2) : Number(hMm).toFixed(1);
+  document.getElementById("lblDimSummary").textContent = `${Number(wMm).toFixed(1)} x ${Number(hMm).toFixed(1)} mm (${(wMm / 25.4).toFixed(2)}" x ${(hMm / 25.4).toFixed(2)}")`;
+}
+
+function getLabelDimensionsMm() {
+  const unit = document.getElementById("lblUnit").value;
+  const wVal = parseFloat(document.getElementById("lblWidth").value || "0");
+  const hVal = parseFloat(document.getElementById("lblHeight").value || "0");
+  if (unit === "in") {
+    return { wMm: wVal * 25.4, hMm: hVal * 25.4 };
+  }
+  return { wMm: wVal, hMm: hVal };
+}
+
+function syncLabelSizeInputsFromPreset() {
+  const presetId = document.getElementById("lblPreset").value;
+  const info = state.presets.find(p => p.id === presetId);
+  if (info) {
+    setLabelInputsFromMm(info.width_mm, info.height_mm);
+  }
+}
+
+function onLabelPresetChanged() {
+  const presetId = document.getElementById("lblPreset").value;
+  if (presetId !== "custom") {
+    syncLabelSizeInputsFromPreset();
+  }
+  saveLabelPrefs();
+  updateLabelPreview();
+}
+
+function onLabelUnitChanged() {
+  const prevIsIn = document.getElementById("lblWidthLabel").textContent.includes("(in)");
+  const newIsIn = document.getElementById("lblUnit").value === "in";
+  if (prevIsIn !== newIsIn) {
+    const wRaw = parseFloat(document.getElementById("lblWidth").value || "0");
+    const hRaw = parseFloat(document.getElementById("lblHeight").value || "0");
+    const wMm = prevIsIn ? wRaw * 25.4 : wRaw;
+    const hMm = prevIsIn ? hRaw * 25.4 : hRaw;
+    if (wMm > 0 && hMm > 0) setLabelInputsFromMm(wMm, hMm);
+  }
+  saveLabelPrefs();
+}
+
+function onCustomLabelSizeInput() {
+  document.getElementById("lblPreset").value = "custom";
+  const { wMm, hMm } = getLabelDimensionsMm();
+  if (wMm > 0 && hMm > 0) {
+    document.getElementById("lblDimSummary").textContent = `${wMm.toFixed(1)} x ${hMm.toFixed(1)} mm (${(wMm / 25.4).toFixed(2)}" x ${(hMm / 25.4).toFixed(2)}")`;
+  }
+  saveLabelPrefs();
+  updateLabelPreview();
+}
+
+function currentLabelUrl(ext, extra = "") {
+  const kind = document.getElementById("lblKind").value;
+  const target = document.getElementById("lblTarget").value;
+  const barcode = document.getElementById("lblBarcode").value;
+  const preset = document.getElementById("lblPreset").value || DEFAULT_PRESET;
+  if (!target) return null;
+  let sizeQ = `preset=${encodeURIComponent(preset)}`;
+  if (preset === "custom") {
+    const { wMm, hMm } = getLabelDimensionsMm();
+    if (wMm > 0 && hMm > 0) {
+      sizeQ += `&w_mm=${encodeURIComponent(wMm.toFixed(2))}&h_mm=${encodeURIComponent(hMm.toFixed(2))}`;
+    }
+  }
+  return `/api/labels/${kind}/${encodeURIComponent(target)}.${ext}?barcode=${encodeURIComponent(barcode)}&${sizeQ}${extra}`;
+}
+
+async function updateLabelPreview() {
+  const url = currentLabelUrl("svg");
+  const stage = document.getElementById("lblPreviewStage");
+  if (!url) {
+    stage.textContent = "No parts or locations available.";
+    return;
+  }
+  try {
+    const res = await fetch(url);
+    stage.innerHTML = await res.text();
+  } catch (err) {
+    stage.textContent = "Error: " + err.message;
+  }
+}
+
+function printCurrentLabel() {
+  const url = currentLabelUrl("html", "&print=1");
+  if (url) window.open(url, "_blank");
+}
+
+function downloadCurrentLabelPdf() {
+  const url = currentLabelUrl("pdf");
+  if (url) window.open(url, "_blank");
+}
+
+function downloadCurrentLabelSvg() {
+  const url = currentLabelUrl("svg");
+  if (url) window.open(url, "_blank");
+}
+
+function downloadCurrentLabelPng() {
+  const url = currentLabelUrl("png");
+  if (url) window.open(url, "_blank");
+}
+
+function downloadCurrentPhomemoRaw() {
+  const d = encodeURIComponent(document.getElementById("phomemoDensity").value || "10");
+  const m = encodeURIComponent(document.getElementById("phomemoMedia").value || "gap");
+  const c = encodeURIComponent(document.getElementById("phomemoCopies").value || "1");
+  const url = currentLabelUrl("phomemo", `&density=${d}&media=${m}&copies=${c}`);
+  if (url) window.open(url, "_blank");
+}
+
+async function scanPhomemoDevices(silent = false) {
+  const st = document.getElementById("phomemoStatus");
+  try {
+    const data = await api("/api/printers/phomemo/devices");
+    const dl = document.getElementById("phomemoDevList");
+    const devs = data.devices || [];
+    dl.innerHTML = devs.map(d => `<option value="${esc(d.path)}">${esc(d.transport)}${d.writable ? "" : " (check permissions)"}</option>`).join("");
+    const inp = document.getElementById("phomemoDevice");
+    if (devs.length && (!inp.value.trim() || inp.value === "/dev/usb/lp0")) {
+      const firstWritable = devs.find(d => d.writable) || devs[0];
+      if (firstWritable) inp.value = firstWritable.path;
+    }
+    if (!silent) {
+      st.textContent = devs.length
+        ? `Found ${devs.length} device(s): ${devs.map(d => d.path).join(", ")}`
+        : "No /dev/usb/lp* or /dev/rfcomm* device found.";
+      st.style.color = devs.length ? "var(--ok)" : "var(--warn)";
+    }
+  } catch (err) {
+    if (!silent) {
+      st.textContent = "Scan failed: " + err.message;
+      st.style.color = "var(--bad)";
+    }
+  }
+}
+
+async function rasterizeSvgToPngBase64(svgText, wMm, hMm) {
+  const pxW = Math.min(384, Math.max(64, Math.round((wMm / 25.4) * 203)));
+  const pxH = Math.max(48, Math.round((hMm / 25.4) * 203 * (pxW / Math.max(1, (wMm / 25.4) * 203))));
+  const blob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
+  const blobUrl = URL.createObjectURL(blob);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = reject;
+      el.src = blobUrl;
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = pxW;
+    canvas.height = pxH;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, pxW, pxH);
+    ctx.drawImage(img, 0, 0, pxW, pxH);
+    return canvas.toDataURL("image/png");
+  } finally {
+    URL.revokeObjectURL(blobUrl);
+  }
+}
+
+async function printToPhomemo() {
+  const st = document.getElementById("phomemoStatus");
+  const devicePath = document.getElementById("phomemoDevice").value.trim();
+  const kind = document.getElementById("lblKind").value;
+  const id = document.getElementById("lblTarget").value;
+  if (!id) {
+    showToast("Select a part or bin first.", true);
+    return;
+  }
+  if (!devicePath) {
+    st.textContent = "Enter a printer device path (/dev/usb/lp0 or /dev/rfcomm0).";
+    st.style.color = "var(--warn)";
+    return;
+  }
+  st.textContent = "Rasterizing & sending to Phomemo...";
+  st.style.color = "var(--muted)";
+  let imageBase64 = "";
+  const { wMm, hMm } = getLabelDimensionsMm();
+  const svgEl = document.querySelector("#lblPreviewStage svg");
+  if (svgEl && wMm > 0 && hMm > 0) {
+    try {
+      imageBase64 = await rasterizeSvgToPngBase64(svgEl.outerHTML, wMm, hMm);
+    } catch (_) {
+      imageBase64 = "";
+    }
+  }
+  const preset = document.getElementById("lblPreset").value || DEFAULT_PRESET;
+  const payload = {
+    device_path: devicePath,
+    kind,
+    id,
+    preset,
+    w_mm: preset === "custom" && wMm > 0 ? wMm : null,
+    h_mm: preset === "custom" && hMm > 0 ? hMm : null,
+    barcode: document.getElementById("lblBarcode").value,
+    density: parseInt(document.getElementById("phomemoDensity").value || "10", 10),
+    media_type: document.getElementById("phomemoMedia").value || "gap",
+    copies: parseInt(document.getElementById("phomemoCopies").value || "1", 10),
+    image_base64: imageBase64
+  };
+  try {
+    const res = await api("/api/printers/phomemo/print", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    st.textContent = `Printed ${res.copies}x (${res.width_dots}x${res.height_dots} dots, ${res.bytes_sent} bytes) -> ${res.device_path}`;
+    st.style.color = "var(--ok)";
+    showToast(`Printed ${id} to Phomemo`);
+    saveLabelPrefs();
+  } catch (err) {
+    st.textContent = err.message;
+    st.style.color = "var(--bad)";
+    showToast(err.message, true);
+  }
+}
+
+async function handleScanSubmit() {
+  const raw = document.getElementById("scanInput").value.trim();
+  if (!raw) return;
+  await processScannedCode(raw);
+}
+
+async function processScannedCode(raw) {
+  try {
+    const res = await api("/api/barcodes/resolve?code=" + encodeURIComponent(raw));
+    const mode = document.getElementById("scanMode").value;
+    if (res.match_kind === "location" && res.location) {
+      filterByLocation(res.location.code);
+      showToast(`Bin ${res.location.code}: ${res.location.part_count} SKUs ($${res.location.total_value.toFixed(2)})`);
+      return;
+    }
+    if (res.match_kind === "part" && res.part) {
+      const sku = res.part.sku;
+      if (mode === "checkin") {
+        await adjustStock(sku, res.parsed_qty || 1, "scan_in");
+      } else if (mode === "checkout") {
+        await adjustStock(sku, -1, "scan_out");
+      } else if (mode === "move") {
+        const dest = document.getElementById("scanMoveTarget").value;
+        await api("/api/parts/" + encodeURIComponent(sku) + "/move", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ location_code: dest, note: "Scanned move" })
+        });
+        showToast(`Moved ${sku} -> ${dest}`);
+        await refreshAll();
+      } else {
+        switchTab("inventory");
+        document.getElementById("invSearch").value = sku;
+        renderInventoryTable();
+        showToast(`Found ${sku}: ${res.part.name} (Qty ${res.part.qty}, Bin ${res.part.location_code || "-"})`);
+      }
+      return;
+    }
+    showToast(`Unmatched barcode '${raw}'${res.parsed_mpn ? " (MPN: " + res.parsed_mpn + ")" : ""}`, true);
+  } catch (err) {
+    showToast("Lookup failed: " + err.message, true);
+  }
+}
+
+async function handleScanFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append("file", file);
+  try {
+    const res = await api("/api/barcodes/decode", { method: "POST", body: fd });
+    if (!res.barcodes.length) {
+      showToast("No barcode detected in image", true);
+      return;
+    }
+    const first = res.barcodes[0];
+    document.getElementById("scanInput").value = first.raw_text;
+    showToast(`Decoded ${first.format} via ${first.engine}: ${first.raw_text}`);
+    await processScannedCode(first.raw_text);
+  } catch (err) {
+    showToast("Decode failed: " + err.message, true);
+  } finally {
+    e.target.value = "";
+  }
+}
+
+async function toggleCamera() {
+  if (camStream) {
+    stopCamera();
+    return;
+  }
+  const box = document.getElementById("camBox");
+  const video = document.getElementById("camVideo");
+  const status = document.getElementById("camStatus");
+  box.classList.add("open");
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    video.srcObject = camStream;
+    if ("BarcodeDetector" in window) {
+      status.textContent = "Live BarcodeDetector active...";
+      const detector = new BarcodeDetector({ formats: ["qr_code", "code_128", "ean_13", "data_matrix", "code_39"] });
+      camTimer = setInterval(async () => {
+        try {
+          const hits = await detector.detect(video);
+          if (hits.length) {
+            document.getElementById("scanInput").value = hits[0].rawValue;
+            await processScannedCode(hits[0].rawValue);
+          }
+        } catch {}
+      }, 450);
+    } else {
+      status.textContent = "Using server-side frame decoder (zbar/rqrr)...";
+      camTimer = setInterval(captureFrameNow, 900);
+    }
+  } catch (err) {
+    status.textContent = "Camera unavailable: " + err.message;
+  }
+}
+
+async function captureFrameNow() {
+  const video = document.getElementById("camVideo");
+  if (!video.videoWidth) return;
+  const c = document.createElement("canvas");
+  c.width = video.videoWidth;
+  c.height = video.videoHeight;
+  c.getContext("2d").drawImage(video, 0, 0);
+  const dataUrl = c.toDataURL("image/png");
+  try {
+    const res = await api("/api/barcodes/decode", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image_base64: dataUrl })
+    });
+    if (res.barcodes.length) {
+      const hit = res.barcodes[0];
+      document.getElementById("scanInput").value = hit.raw_text;
+      await processScannedCode(hit.raw_text);
+    }
+  } catch {}
+}
+
+function stopCamera() {
+  clearInterval(camTimer);
+  camTimer = null;
+  if (camStream) {
+    camStream.getTracks().forEach(t => t.stop());
+    camStream = null;
+  }
+  document.getElementById("camBox").classList.remove("open");
+}
+
+async function triggerExport() {
+  try {
+    await api("/api/export", { method: "POST" });
+    showToast("Exported snapshot.json & Markdown tables");
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
+function renderUpdateButtonState(info) {
+  const btns = [document.getElementById("checkUpdateBtn"), document.getElementById("embedUpdateBtn")].filter(Boolean);
+  btns.forEach(btn => {
+    if (info && info.update_available && info.latest_tag) {
+      btn.textContent = `Update Available (${info.latest_tag})`;
+      btn.style.borderColor = "var(--accent)";
+      btn.style.color = "#fff";
+    } else if (info && info.current_version) {
+      btn.textContent = `Updates (v${info.current_version})`;
+      btn.style.borderColor = "";
+      btn.style.color = "";
+    }
+  });
+}
+
+async function openUpdateCheck(force = true) {
+  const dlg = document.getElementById("updateDialog");
+  const body = document.getElementById("updateDialogBody");
+  const link = document.getElementById("updateReleaseLink");
+  body.innerHTML = "<p style='color:var(--muted)'>Checking GitHub for updates...</p>";
+  if (!dlg.open) dlg.showModal();
+  try {
+    const info = await api(`/api/updates/check${force ? "?force=1" : ""}`);
+    renderUpdateButtonState(info);
+    if (info.release_url) link.href = info.release_url;
+    const commitPart = info.local_commit ? ` <span class="mono" style="color:var(--muted)">(${esc(info.local_commit)})</span>` : "";
+    const latestTxt = info.latest_tag || (info.latest_version ? "v" + info.latest_version : "Not published");
+    let statusBadge = `<span class="badge badge-ok">Up to Date</span>`;
+    if (info.error) {
+      statusBadge = `<span class="badge badge-warn">Check Failed</span>`;
+    } else if (info.update_available) {
+      statusBadge = `<span class="badge badge-warn">Update Available</span>`;
+    }
+    const notesHtml = info.release_notes
+      ? `<div style="margin-top:10px"><div style="font-size:.8rem;color:var(--muted);margin-bottom:4px">Release Notes</div><pre style="white-space:pre-wrap;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:.82rem;max-height:200px;overflow-y:auto;margin:0">${esc(info.release_notes)}</pre></div>`
+      : "";
+    const errHtml = info.error
+      ? `<p style="color:var(--warn);font-size:.88rem;margin:8px 0 0">${esc(info.error)}</p>`
+      : "";
+    body.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px">
+          <div style="font-size:.76rem;color:var(--muted)">Current Version</div>
+          <div style="font-size:1.05rem;font-weight:700">v${esc(info.current_version)}${commitPart}</div>
+        </div>
+        <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px">
+          <div style="font-size:.76rem;color:var(--muted)">Latest on GitHub (${esc(info.repo)})</div>
+          <div style="font-size:1.05rem;font-weight:700">${esc(latestTxt)} ${statusBadge}</div>
+        </div>
+      </div>
+      ${errHtml}
+      ${notesHtml}
+      <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:10px">
+        <div style="font-size:.78rem;color:var(--muted);margin-bottom:4px">Update &amp; Restart Command</div>
+        <code class="mono" style="font-size:.86rem">${esc(info.update_command || "./wiki.sh update")}</code>
+      </div>
+    `;
+  } catch (err) {
+    body.innerHTML = `<p style="color:var(--bad)">Failed to check updates: ${esc(err.message)}</p>`;
+  }
+}
+
+restoreUiState();
+refreshAll();
+scanPhomemoDevices(true);
+fetch("/api/updates/check").then(r => r.ok ? r.json() : null).then(d => { if (d) renderUpdateButtonState(d); }).catch(() => {});
+</script>
+</body>
+</html>
