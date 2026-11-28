@@ -9,9 +9,9 @@ import os
 import re
 import sys
 
-from wiki_config import load_wiki_config
+from wiki_config import load_wiki_config, ensure_workspace_ready
 
-WIKI_DIR = os.path.dirname(os.path.abspath(__file__))
+WIKI_DIR = str(ensure_workspace_ready())
 OUT_PATH = os.path.join(WIKI_DIR, "projects_inventory.json")
 
 EMOJI_PATTERN = re.compile(

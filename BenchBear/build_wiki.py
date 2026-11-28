@@ -13,9 +13,10 @@ import sys
 import urllib.request
 from typing import List, Optional
 
-from wiki_config import load_wiki_config
+from wiki_config import load_wiki_config, ensure_workspace_ready
 
-WIKI_DIR = os.path.dirname(os.path.abspath(__file__))
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+WIKI_DIR = str(ensure_workspace_ready())
 WIKI_DOCS_DIR = os.path.join(WIKI_DIR, "docs")
 
 VALID_EXTENSIONS = (
@@ -164,10 +165,10 @@ def build_doc_for_project(
 
 def sync_catalog():
     """Runs make_wiki.py to refresh the MkDocs navigation and catalog."""
-    make_wiki_py = os.path.join(WIKI_DIR, "make_wiki.py")
+    make_wiki_py = os.path.join(APP_DIR, "make_wiki.py")
     if os.path.exists(make_wiki_py):
         try:
-            subprocess.run([sys.executable, make_wiki_py], cwd=WIKI_DIR, check=True)
+            subprocess.run([sys.executable, make_wiki_py], cwd=APP_DIR, check=True)
             print("[OK] BenchBear catalog and mkdocs.yml updated.")
         except Exception as e:
             print(f"[!] Warning: failed to refresh catalog via make_wiki.py: {e}")

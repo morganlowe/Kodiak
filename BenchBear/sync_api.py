@@ -22,13 +22,14 @@ import urllib.parse
 import urllib.request
 from typing import Dict, Any
 
-from wiki_config import load_wiki_config, load_overrides, save_overrides
+from wiki_config import load_wiki_config, load_overrides, save_overrides, ensure_workspace_ready
 
 WIKI_DIR = os.path.dirname(os.path.abspath(__file__))
+WORKSPACE_DIR = str(ensure_workspace_ready())
 MAKE_WIKI_SCRIPT = os.path.join(WIKI_DIR, "make_wiki.py")
 BUILD_WIKI_SCRIPT = os.path.join(WIKI_DIR, "build_wiki.py")
-PROJECTS_JSON = os.path.join(WIKI_DIR, "docs", "projects.json")
-INV_PATH = os.path.join(WIKI_DIR, "projects_inventory.json")
+PROJECTS_JSON = os.path.join(WORKSPACE_DIR, "docs", "projects.json")
+INV_PATH = os.path.join(WORKSPACE_DIR, "projects_inventory.json")
 SERVICE_FILE = os.path.expanduser("~/.config/systemd/user/benchbear.service")
 
 _sync_lock = threading.Lock()
@@ -288,7 +289,7 @@ class SyncAPIHandler(http.server.BaseHTTPRequestHandler):
 
     def _handle_project_meta(self, proj_name: str):
         clean_name = proj_name.replace(" ", "_")
-        doc_path = os.path.join(WIKI_DIR, "docs", f"{clean_name}.md")
+        doc_path = os.path.join(WORKSPACE_DIR, "docs", f"{clean_name}.md")
         title, overview, _ = extract_doc_parts(doc_path, proj_name)
         catalog = load_json_file(PROJECTS_JSON, [])
         cfg = load_wiki_config()
@@ -326,7 +327,7 @@ class SyncAPIHandler(http.server.BaseHTTPRequestHandler):
             default_cat = valid_cats[0] if valid_cats else "General & Prototypes"
 
             clean_name = proj_name.replace(" ", "_")
-            doc_path = os.path.join(WIKI_DIR, "docs", f"{clean_name}.md")
+            doc_path = os.path.join(WORKSPACE_DIR, "docs", f"{clean_name}.md")
             cur_title, cur_overview, assets_tail = extract_doc_parts(doc_path, proj_name)
 
             mode = body.get("mode", "manual")

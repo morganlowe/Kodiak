@@ -143,7 +143,17 @@ pub fn gather_dashboard_data(
         let wiki_doc_exists = p_path.join("README.md").exists()
             || Path::new("BenchBear/docs/projects")
                 .join(format!("{name}.md"))
-                .exists();
+                .exists()
+            || dirs::data_local_dir()
+                .map(|d| {
+                    d.join("kodiak")
+                        .join("benchbear-workspace")
+                        .join("docs")
+                        .join("projects")
+                        .join(format!("{name}.md"))
+                        .exists()
+                })
+                .unwrap_or(false);
 
         projects.push(ProjectDashboardCard {
             path: entry.path.clone(),

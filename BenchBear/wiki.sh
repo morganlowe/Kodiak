@@ -4,22 +4,27 @@
 # ==============================================================================
 set -euo pipefail
 
-WIKI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WIKI_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
 # Load configuration from wiki_config.py
 if [[ -f "$WIKI_DIR/wiki_config.py" ]]; then
-    eval "$(/usr/bin/python3 -c '
-import sys
-sys.path.insert(0, "'"$WIKI_DIR"'")
-from wiki_config import load_wiki_config
+    eval "$(/usr/bin/python3 -B -c '
+import shlex, sys
+sys.path.insert(0, sys.argv[1])
+from wiki_config import load_wiki_config, ensure_workspace_ready
 cfg = load_wiki_config()
-print(f"export PROJECTS_DIR=\"{cfg[\"projects_dir\"]}\"")
-print(f"export HOST_NAME=\"{cfg[\"site_domain\"]}\"")
-print(f"export PORT_WEB=\"{cfg[\"port_web\"]}\"")
-print(f"export PORT_API=\"{cfg[\"port_api\"]}\"")
-print(f"export PORT_INV=\"{cfg[\"port_inventory\"]}\"")
-print(f"export DATA_DIR=\"{cfg[\"data_dir\"]}\"")
-' 2>/dev/null || true)"
+ws = str(ensure_workspace_ready())
+for k, v in (
+    ("PROJECTS_DIR", cfg["projects_dir"]),
+    ("HOST_NAME", cfg["site_domain"]),
+    ("PORT_WEB", cfg["port_web"]),
+    ("PORT_API", cfg["port_api"]),
+    ("PORT_INV", cfg["port_inventory"]),
+    ("DATA_DIR", cfg["data_dir"]),
+    ("WORKSPACE_DIR", ws),
+):
+    print(f"export {k}={shlex.quote(str(v))}")
+' "$WIKI_DIR" 2>/dev/null || true)"
 fi
 
 export PROJECTS_DIR="${PROJECTS_DIR:-$HOME/Projects}"
@@ -28,6 +33,7 @@ PORT_WEB="${PORT_WEB:-8000}"
 PORT_API="${PORT_API:-8765}"
 PORT_INV="${PORT_INV:-8090}"
 DATA_DIR="${DATA_DIR:-$WIKI_DIR/data}"
+WORKSPACE_DIR="${WORKSPACE_DIR:-$WIKI_DIR}"
 
 LOCAL_VENV="$HOME/.local/share/benchbear/venv"
 KODIAK_VENV="$HOME/.local/share/kodiak/benchbear-venv"
@@ -168,8 +174,7 @@ install_shell_integration() {
     fi
 }
 
-stop_all() {
-    systemctl --user stop benchbear.service 2>/dev/null || true
+stop_processes() {
     if [[ -f "$PID_FILE" ]]; then
         while read -r pid; do
             [[ -n "$pid" ]] && kill "$pid" 2>/dev/null || true
@@ -182,12 +187,17 @@ stop_all() {
     sleep 0.5
 }
 
+stop_all() {
+    systemctl --user stop benchbear.service 2>/dev/null || true
+    stop_processes
+}
+
 sync_catalog() {
     local python_bin
     python_bin="$(find_python)"
-    cd "$WIKI_DIR"
+    cd "$WORKSPACE_DIR"
     if [[ -x "$RUST_BIN" ]]; then
-        "$RUST_BIN" --wiki-root "$WIKI_DIR" --data-dir "$DATA_DIR" export >/dev/null || true
+        "$RUST_BIN" --wiki-root "$WORKSPACE_DIR" --data-dir "$DATA_DIR" export >/dev/null || true
     fi
     "$python_bin" "$WIKI_DIR/make_wiki.py" >/dev/null
 }
@@ -246,7 +256,7 @@ start_background() {
     sync_catalog
     resolve_runtime_urls
 
-    cd "$WIKI_DIR"
+    cd "$WORKSPACE_DIR"
     : > "$LOG_FILE"
 
     nohup env WIKI_REDIRECT_8000="$REDIRECT_8000" WIKI_SYNC_PORT="$PORT_API" "$python_bin" "$WIKI_DIR/sync_api.py" >> "$LOG_FILE" 2>&1 &
@@ -254,7 +264,7 @@ start_background() {
 
     local inv_pid=""
     if [[ -x "$RUST_BIN" ]]; then
-        nohup "$RUST_BIN" --wiki-root "$WIKI_DIR" --data-dir "$DATA_DIR" serve --host 127.0.0.1 --port "$PORT_INV" >> "$LOG_FILE" 2>&1 &
+        nohup "$RUST_BIN" --wiki-root "$WORKSPACE_DIR" --data-dir "$DATA_DIR" serve --host 127.0.0.1 --port "$PORT_INV" >> "$LOG_FILE" 2>&1 &
         inv_pid=$!
     fi
 
@@ -293,17 +303,17 @@ run_daemon_foreground() {
     local python_bin
     python_bin="$(find_python)"
 
-    stop_all
+    stop_processes
     sync_catalog
     resolve_runtime_urls
 
-    cd "$WIKI_DIR"
+    cd "$WORKSPACE_DIR"
     env WIKI_REDIRECT_8000="$REDIRECT_8000" WIKI_SYNC_PORT="$PORT_API" "$python_bin" "$WIKI_DIR/sync_api.py" &
     local api_pid=$!
 
     local inv_pid=""
     if [[ -x "$RUST_BIN" ]]; then
-        "$RUST_BIN" --wiki-root "$WIKI_DIR" --data-dir "$DATA_DIR" serve --host 127.0.0.1 --port "$PORT_INV" &
+        "$RUST_BIN" --wiki-root "$WORKSPACE_DIR" --data-dir "$DATA_DIR" serve --host 127.0.0.1 --port "$PORT_INV" &
         inv_pid=$!
     fi
 
@@ -356,11 +366,11 @@ case "$cmd" in
         ;;
     labels)
         ensure_rust_binary
-        "$RUST_BIN" --wiki-root "$WIKI_DIR" --data-dir "$DATA_DIR" label "${@:2}"
+        "$RUST_BIN" --wiki-root "$WORKSPACE_DIR" --data-dir "$DATA_DIR" label "${@:2}"
         ;;
     check-update)
         if [[ -x "$RUST_BIN" ]]; then
-            "$RUST_BIN" --wiki-root "$WIKI_DIR" --data-dir "$DATA_DIR" check-update "${@:2}"
+            "$RUST_BIN" --wiki-root "$WORKSPACE_DIR" --data-dir "$DATA_DIR" check-update "${@:2}"
         else
             echo ":: [BenchBear] Binary not built yet; run './wiki.sh build-rust' or check https://github.com/morganlowe/BenchBear/releases"
         fi

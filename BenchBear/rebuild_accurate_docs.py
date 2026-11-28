@@ -11,9 +11,9 @@ import sys
 import urllib.parse
 from typing import Dict, Any
 
-from wiki_config import load_wiki_config, load_overrides
+from wiki_config import load_wiki_config, load_overrides, ensure_workspace_ready
 
-WIKI_DIR = os.path.dirname(os.path.abspath(__file__))
+WIKI_DIR = str(ensure_workspace_ready())
 DOCS_DIR = os.path.join(WIKI_DIR, "docs")
 INV_PATH = os.path.join(WIKI_DIR, "projects_inventory.json")
 

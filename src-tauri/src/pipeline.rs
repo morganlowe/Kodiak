@@ -2,7 +2,7 @@
 
 use crate::config::{
     cloud_debug_file_path, data_dir_path, expand_tilde, journal_file_path, resolve_projects_dir,
-    resolve_wiki_dir, AppConfig, GrantLevel, WhitelistEntry,
+    resolve_wiki_dir, resolve_wiki_workspace_dir, AppConfig, GrantLevel, WhitelistEntry,
 };
 use crate::enforcer::{
     check_command_deny_list, check_path_deny_list, evaluate_action, get_pipeline_generated_files,
@@ -819,7 +819,8 @@ pub async fn get_detailed_wiki_status(cfg: &AppConfig) -> Result<WikiStatusDetai
     }
 
     let wiki_dir = resolve_wiki_dir(cfg);
-    let docs_dir = wiki_dir.join("docs");
+    let workspace_dir = resolve_wiki_workspace_dir(cfg);
+    let docs_dir = workspace_dir.join("docs");
     let mut doc_count = 0;
     if docs_dir.is_dir() {
         if let Ok(entries) = std::fs::read_dir(&docs_dir) {
@@ -874,8 +875,8 @@ pub async fn get_detailed_wiki_status(cfg: &AppConfig) -> Result<WikiStatusDetai
 
 /// Returns the catalog of all project entries from `projects.json`.
 pub async fn list_wiki_projects_service(cfg: &AppConfig) -> Result<Vec<Value>, String> {
-    let wiki_dir = resolve_wiki_dir(cfg);
-    let projects_json = wiki_dir.join("docs/projects.json");
+    let workspace_dir = resolve_wiki_workspace_dir(cfg);
+    let projects_json = workspace_dir.join("docs/projects.json");
     if projects_json.exists() {
         let content = std::fs::read_to_string(&projects_json)
             .map_err(|e| format!("Failed to read projects.json: {e}"))?;

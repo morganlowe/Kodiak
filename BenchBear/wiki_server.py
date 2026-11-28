@@ -22,7 +22,7 @@ WIKI_DIR = os.path.dirname(os.path.abspath(__file__))
 if WIKI_DIR not in sys.path:
     sys.path.insert(0, WIKI_DIR)
 
-from wiki_config import load_wiki_config
+from wiki_config import load_wiki_config, ensure_workspace_ready
 
 
 def find_mkdocs_cmd():
@@ -100,10 +100,11 @@ def run_sync_api(port_api: int):
 def serve_command(args):
     """Starts MkDocs Material, Sync API, and the Rust Inventory/Barcode Hub concurrently."""
     cfg = load_wiki_config()
+    workspace_dir = str(ensure_workspace_ready())
     port_web = cfg.get("port_web", 8000)
     port_api = cfg.get("port_api", 8765)
     port_inv = cfg.get("port_inventory", 8090)
-    data_dir = cfg.get("data_dir", os.path.join(WIKI_DIR, "data"))
+    data_dir = cfg.get("data_dir", os.path.join(workspace_dir, "data"))
     site_domain = cfg.get("site_domain", "benchbear.localhost")
 
     inv_proc = None
@@ -113,13 +114,13 @@ def serve_command(args):
         inv_proc = subprocess.Popen(
             [
                 rust_bin,
-                "--wiki-root", WIKI_DIR,
+                "--wiki-root", workspace_dir,
                 "--data-dir", data_dir,
                 "serve",
                 "--host", "127.0.0.1",
                 "--port", str(port_inv),
             ],
-            cwd=WIKI_DIR,
+            cwd=workspace_dir,
         )
     else:
         print(":: [BenchBear] Note: Rust binary unavailable; inventory hub not started.")
@@ -146,7 +147,7 @@ def serve_command(args):
     env = os.environ.copy()
     env["NO_MKDOCS_2_WARNING"] = "1"
 
-    proc = subprocess.Popen(cmd, cwd=WIKI_DIR, env=env)
+    proc = subprocess.Popen(cmd, cwd=workspace_dir, env=env)
     try:
         proc.wait()
     except KeyboardInterrupt:
@@ -162,11 +163,12 @@ def serve_command(args):
 def sync_command(args):
     """Exports inventory Markdown/snapshot and regenerates projects.json and mkdocs.yml."""
     cfg = load_wiki_config()
+    workspace_dir = str(ensure_workspace_ready())
     rust_bin = find_or_build_rust_bin()
     if rust_bin:
         subprocess.run(
-            [rust_bin, "--wiki-root", WIKI_DIR, "--data-dir", cfg["data_dir"], "export"],
-            cwd=WIKI_DIR,
+            [rust_bin, "--wiki-root", workspace_dir, "--data-dir", cfg["data_dir"], "export"],
+            cwd=workspace_dir,
             check=False,
         )
     from make_wiki import main as make_main

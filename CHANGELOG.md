@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.2] — 2026-11-27
+
+### Fixed
+
+- **Systemd `benchbear.service` Self-Termination & Symlink Resolution (`BenchBear/wiki.sh`)**:
+  - Split `stop_processes()` from `stop_all()` so `wiki.sh daemon` (invoked by `benchbear.service`) stops leftover background processes without calling `systemctl --user stop benchbear.service` on itself.
+  - Resolved `WIKI_DIR` via `readlink -f` so `/usr/bin/benchbear-wiki` and `/usr/bin/wiki` symlinks locate `/usr/share/kodiak/benchbear`, and replaced broken inline f-string escaping in the config loader with `shlex.quote` across Python 3.10–3.14.
+- **Read-Only System Package Workspace Support (`BenchBear/`, `src-tauri/src/`)**:
+  - Added `get_workspace_dir()` / `ensure_workspace_ready()` in `BenchBear/wiki_config.py` and `resolve_wiki_workspace_dir()` in `src-tauri/src/config.rs` so packaged installs under read-only `/usr/share/kodiak/benchbear` (or `Program Files`) write generated Markdown, `projects.json`, `projects_inventory.json`, and `mkdocs.yml` to `~/.local/share/kodiak/benchbear-workspace` (or `%LOCALAPPDATA%\kodiak\benchbear-workspace`) while preserving in-place writes for local repository checkouts.
+
 ## [1.3.1] — 2026-11-27
 
 ### Changed

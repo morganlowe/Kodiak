@@ -7,10 +7,60 @@ and clean defaults.
 """
 import json
 import os
+import shutil
 from pathlib import Path
 from typing import Any, Dict
 
 WIKI_DIR = Path(__file__).resolve().parent
+
+
+def get_workspace_dir() -> Path:
+    """Returns WIKI_DIR when writable, else a per-user writable workspace directory."""
+    env_ws = os.environ.get("BENCHBEAR_WORKSPACE")
+    if env_ws:
+        return Path(env_ws).expanduser()
+    if os.access(WIKI_DIR, os.W_OK):
+        return WIKI_DIR
+    if os.name == "nt":
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local"))
+        return base / "kodiak" / "benchbear-workspace"
+    return Path("~/.local/share/kodiak/benchbear-workspace").expanduser()
+
+
+def _copy_if_changed(src: Path, dst: Path) -> None:
+    if not src.is_file():
+        return
+    try:
+        src_bytes = src.read_bytes()
+        if dst.is_file() and dst.read_bytes() == src_bytes:
+            return
+    except Exception:
+        pass
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dst)
+
+
+def ensure_workspace_ready() -> Path:
+    """Ensures the writable MkDocs/inventory workspace exists and has static template assets."""
+    ws = get_workspace_dir()
+    docs_dir = ws / "docs"
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    if ws == WIKI_DIR:
+        return ws
+
+    for sub in ("docs/projects", "docs/inventory", "inventory", "projects"):
+        (ws / sub).mkdir(parents=True, exist_ok=True)
+
+    src_docs = WIKI_DIR / "docs"
+    for name in ("index.md", "demo-project.md", "inventory-hub.md", "extra.css", "extra.js", "Bear-built-logo.png"):
+        _copy_if_changed(src_docs / name, docs_dir / name)
+
+    src_mkdocs = WIKI_DIR / "mkdocs.yml"
+    dst_mkdocs = ws / "mkdocs.yml"
+    if src_mkdocs.is_file() and not dst_mkdocs.is_file():
+        shutil.copy2(src_mkdocs, dst_mkdocs)
+
+    return ws
 
 DEFAULT_CATEGORIES = {
     "Hardware & Electronics": [

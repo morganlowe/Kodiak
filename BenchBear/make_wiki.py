@@ -11,9 +11,10 @@ import os
 import re
 from typing import Dict, List
 
-from wiki_config import load_wiki_config, load_overrides
+from wiki_config import load_wiki_config, load_overrides, ensure_workspace_ready
 
-WIKI_DIR = os.path.dirname(os.path.abspath(__file__))
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+WIKI_DIR = str(ensure_workspace_ready())
 WIKI_DOCS_DIR = os.path.join(WIKI_DIR, "docs")
 os.makedirs(WIKI_DOCS_DIR, exist_ok=True)
 

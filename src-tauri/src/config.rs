@@ -315,6 +315,37 @@ pub fn resolve_wiki_dir(cfg: &AppConfig) -> PathBuf {
     configured
 }
 
+/// Resolves the writable BenchBear workspace directory holding generated `docs/`, `projects.json`, and `mkdocs.yml`.
+/// Returns `wiki_dir` directly when it is writable (local repo/portable install), else uses the per-user
+/// `~/.local/share/kodiak/benchbear-workspace` (or `%LOCALAPPDATA%\kodiak\benchbear-workspace` on Windows)
+/// when available.
+pub fn resolve_wiki_workspace_dir(cfg: &AppConfig) -> PathBuf {
+    if let Ok(env_ws) = std::env::var("BENCHBEAR_WORKSPACE") {
+        if !env_ws.trim().is_empty() {
+            return expand_tilde(env_ws.trim());
+        }
+    }
+    let wiki_dir = resolve_wiki_dir(cfg);
+    let is_system_readonly = wiki_dir.starts_with("/usr/")
+        || wiki_dir
+            .to_string_lossy()
+            .to_ascii_lowercase()
+            .contains("program files");
+
+    if !is_system_readonly && wiki_dir.join("docs").is_dir() {
+        return wiki_dir;
+    }
+
+    if let Some(local_data) = dirs::data_local_dir() {
+        let user_ws = local_data.join("kodiak").join("benchbear-workspace");
+        if user_ws.exists() || is_system_readonly {
+            return user_ws;
+        }
+    }
+
+    wiki_dir
+}
+
 /// Resolves the directory where the user's project repositories live.
 /// Prioritizes configured `projects_dir`, then active project parent directory,
 /// then first whitelist entry parent directory, then standard ~/Projects.
