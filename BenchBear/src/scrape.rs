@@ -12,7 +12,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
-const MAX_HTML_BYTES: usize = 2 * 1024 * 1024;
+const MAX_HTML_BYTES: usize = 4 * 1024 * 1024;
 
 pub fn validate_public_http_url(raw_url: &str) -> Result<(String, String)> {
     let trimmed = raw_url.trim();
@@ -130,7 +130,15 @@ pub async fn fetch_product_url(raw_url: &str, db: &Database) -> Result<ProductUr
                 );
             } else {
                 enrich_draft_from_html(&mut draft, &html);
-                draft.fetched = true;
+                if draft.name.trim().is_empty() && draft.images.is_empty() {
+                    draft.blocked = true;
+                    draft.warning = format!(
+                        "{} returned a page without product metadata (possible bot check or JS-rendered page); filled available URL/SKU fields so you can enter the Part Name manually.",
+                        if draft.supplier_name.is_empty() { "The store" } else { &draft.supplier_name }
+                    );
+                } else {
+                    draft.fetched = true;
+                }
             }
         }
         Err(e) => {
@@ -203,12 +211,19 @@ pub fn base_draft_from_url(url: &str, host: &str) -> ProductUrlDraft {
 pub fn is_antibot_or_captcha(status: u16, html: &str) -> bool {
     let lower = html.to_ascii_lowercase();
     if lower.contains("validatecaptcha")
+        || lower.contains("opfcaptcha")
         || lower.contains("type the characters you see in this image")
+        || lower.contains("click the button below to continue shopping")
+        || lower.contains("sorry, we just need to make sure you're not a robot")
         || lower.contains("api-services-support@amazon.com")
         || lower.contains("cf-turnstile")
         || lower.contains("challenge-platform")
         || lower.contains("enable javascript and cookies to continue")
         || (lower.contains("just a moment...") && html.len() < 32_000)
+        || (lower.contains("a-no-js")
+            && html.len() < 16_000
+            && !lower.contains("producttitle")
+            && !lower.contains("application/ld+json"))
     {
         return true;
     }
@@ -1195,6 +1210,9 @@ mod tests {
         let captcha_html = "<html><title>Robot Check</title><form action='/errors/validateCaptcha'>Type the characters you see in this image</form></html>";
         assert!(is_antibot_or_captcha(200, captcha_html));
         assert!(is_antibot_or_captcha(403, "<html><body>Just a moment...</body></html>"));
+
+        let amz_soft_shell = r#"<!DOCTYPE html><html class="a-no-js" lang="en-us"><head><meta charset="utf-8"></head><body></body></html>"#;
+        assert!(is_antibot_or_captcha(200, amz_soft_shell));
     }
 
     #[test]

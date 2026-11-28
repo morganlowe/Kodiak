@@ -10,6 +10,10 @@ src-tauri/gen/schemas/
 *.pkg.tar.*
 pkg/
 
+# Python bytecode
+__pycache__/
+*.py[cod]
+
 # Temporary / backup files
 *.orig
 *.bak

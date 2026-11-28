@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.3] — 2026-11-27
+
+### Fixed
+
+- **Product URL Soft-Block Detection & Inline Modal Error Feedback (`BenchBear/src/scrape.rs`, `BenchBear/src/ui_page.html`)**:
+  - Detected Amazon `<html class="a-no-js">` soft-block shells and empty-metadata responses cleanly in `fetch_product_url()` (`blocked = true`, clear warning, `4 MiB` HTML scan cap) instead of returning `fetched = true` with empty `name`.
+  - Replaced hidden top-layer `showToast` / native `required` modal validation failures with an inline `.modal-error` alert inside open `<dialog>` modals, field highlighting/focus on missing required inputs, and `Number.isFinite` guards on numeric form fields.
+
 ## [1.3.2] — 2026-11-27
 
 ### Fixed

@@ -92,6 +92,8 @@ dialog::backdrop{background:rgba(0,0,0,.74)}
 .dialog-header h3{margin:0;font-size:1.15rem;color:#f5f3f0}
 .dialog-body{flex:1 1 auto;min-height:0;overflow-y:auto;padding:12px 18px}
 .dialog-footer{flex:0 0 auto;background:var(--surface-2);padding:10px 18px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;z-index:2}
+.modal-error{margin:0 18px 10px;padding:9px 12px;border-radius:7px;background:rgba(127,29,29,0.38);border:1px solid #ef4444;color:#fecaca;font-size:.86rem}
+.field-invalid{border-color:#ef4444 !important;box-shadow:0 0 0 1px rgba(239,68,68,0.45)}
 .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(195px,1fr));gap:8px;margin:8px 0}
 dialog .field input,dialog .field select,dialog .field textarea{padding:6px 9px;font-size:.88rem}
 dialog .field select{padding-right:28px}
@@ -421,7 +423,7 @@ dialog .field select{padding-right:28px}
     <h3 id="partModalTitle">Add / Edit Part</h3>
     <button type="button" class="btn-sm" onclick="document.getElementById('partDialog').close()" aria-label="Close">Close</button>
   </div>
-  <form id="partForm" onsubmit="savePartForm(event)">
+  <form id="partForm" novalidate onsubmit="savePartForm(event)">
     <div class="dialog-body">
       <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:10px">
         <label style="display:block;font-size:.78rem;color:var(--muted);margin-bottom:4px">Import from Product URL (Amazon, Adafruit, SparkFun, LCSC, DigiKey, etc.)</label>
@@ -502,6 +504,7 @@ dialog .field select{padding-right:28px}
         <div class="gallery-strip" id="pfGalleryStrip"></div>
       </div>
     </div>
+    <div id="pfFormError" class="modal-error hidden" role="alert"></div>
     <div class="dialog-footer">
       <button type="button" onclick="document.getElementById('partDialog').close()">Cancel</button>
       <button type="submit" class="btn-primary">Save Part</button>
@@ -731,7 +734,30 @@ document.getElementById("pfImportUrl").addEventListener("keydown", (e) => {
   }
 });
 
+function showModalError(msg, targetDlg) {
+  const dlg = targetDlg || document.querySelector("dialog[open]");
+  if (!dlg) return false;
+  let box = dlg.querySelector(".modal-error");
+  if (!box) {
+    box = document.createElement("div");
+    box.className = "modal-error";
+    box.setAttribute("role", "alert");
+    const footer = dlg.querySelector(".dialog-footer");
+    if (footer && footer.parentNode) {
+      footer.parentNode.insertBefore(box, footer);
+    } else {
+      dlg.appendChild(box);
+    }
+  }
+  box.textContent = msg || "";
+  box.classList.toggle("hidden", !msg);
+  return true;
+}
+
 function showToast(msg, isErr = false) {
+  if (isErr && showModalError(msg, null)) {
+    return;
+  }
   const t = document.getElementById("toast");
   t.textContent = msg;
   t.style.borderColor = isErr ? "var(--bad)" : "var(--accent)";
@@ -1299,6 +1325,9 @@ function openPartModal(sku) {
   document.getElementById("pfNotes").value = p ? p.notes : "";
   document.getElementById("pfImportUrl").value = p ? p.product_url : "";
   document.getElementById("pfImportStatus").textContent = "";
+  document.getElementById("pfImportStatus").style.color = "var(--muted)";
+  showModalError("", dlg);
+  dlg.querySelectorAll(".field-invalid").forEach(el => el.classList.remove("field-invalid"));
 
   imgModalState.selectedImgUrl = "";
   imgModalState.selectedPinoutUrl = "";
@@ -1387,10 +1416,16 @@ async function fetchPartFromUrl() {
 
     if (d.warning) {
       st.textContent = d.warning;
-      st.style.color = d.blocked ? "var(--warn)" : "var(--ok)";
+      st.style.color = (d.blocked || !d.name) ? "var(--warn)" : "var(--ok)";
+    } else if (!d.name) {
+      st.textContent = `Fetched partial details from ${d.supplier_name || "store"} (no product title found). Enter Part Name and click Save Part.`;
+      st.style.color = "var(--warn)";
     } else {
       st.textContent = `Imported from ${d.supplier_name || "store"}${d.unit_cost > 0 ? " ($" + Number(d.unit_cost).toFixed(2) + ")" : ""}. Review fields, pick Photo/Pinout, and click Save Part.`;
       st.style.color = "var(--ok)";
+    }
+    if (!document.getElementById("pfName").value.trim()) {
+      document.getElementById("pfName").focus();
     }
   } catch (err) {
     st.textContent = "Fetch failed: " + err.message;
@@ -1402,15 +1437,52 @@ async function fetchPartFromUrl() {
 
 async function savePartForm(e) {
   e.preventDefault();
+  const dlg = document.getElementById("partDialog");
+  showModalError("", dlg);
+  dlg.querySelectorAll(".field-invalid").forEach(el => el.classList.remove("field-invalid"));
+
+  const skuEl = document.getElementById("pfSku");
+  const catEl = document.getElementById("pfCat");
+  const nameEl = document.getElementById("pfName");
+  const skuVal = skuEl.value.trim();
+  const catVal = catEl.value.trim();
+  const nameVal = nameEl.value.trim();
+
+  if (!skuVal) {
+    skuEl.classList.add("field-invalid");
+    skuEl.scrollIntoView({ block: "nearest" });
+    skuEl.focus();
+    showModalError("SKU is required before saving.", dlg);
+    return;
+  }
+  if (!catVal) {
+    catEl.classList.add("field-invalid");
+    catEl.scrollIntoView({ block: "nearest" });
+    catEl.focus();
+    showModalError("Category is required before saving.", dlg);
+    return;
+  }
+  if (!nameVal) {
+    nameEl.classList.add("field-invalid");
+    nameEl.scrollIntoView({ block: "nearest" });
+    nameEl.focus();
+    showModalError("Part Name is required before saving (enter a name if URL fetch was blocked).", dlg);
+    return;
+  }
+
+  const parsedQty = parseInt(document.getElementById("pfQty").value || "0", 10);
+  const parsedMin = parseInt(document.getElementById("pfMin").value || "1", 10);
+  const parsedCost = parseFloat(document.getElementById("pfCost").value || "0");
+
   const payload = {
-    sku: document.getElementById("pfSku").value.trim(),
-    category: document.getElementById("pfCat").value.trim(),
-    name: document.getElementById("pfName").value.trim(),
+    sku: skuVal,
+    category: catVal,
+    name: nameVal,
     spec: document.getElementById("pfSpec").value.trim(),
     package: document.getElementById("pfPkg").value.trim(),
-    qty: parseInt(document.getElementById("pfQty").value || "0", 10),
-    min_qty: parseInt(document.getElementById("pfMin").value || "1", 10),
-    unit_cost: parseFloat(document.getElementById("pfCost").value || "0"),
+    qty: Number.isFinite(parsedQty) ? Math.max(0, parsedQty) : 0,
+    min_qty: Number.isFinite(parsedMin) ? Math.max(0, parsedMin) : 1,
+    unit_cost: Number.isFinite(parsedCost) ? Math.max(0, parsedCost) : 0,
     location_code: document.getElementById("pfLoc").value.trim() || null,
     supplier_name: document.getElementById("pfSup").value.trim() || null,
     mpn: document.getElementById("pfMpn").value.trim(),
@@ -1443,11 +1515,11 @@ async function savePartForm(e) {
         throw new Error(msg || `Image upload failed (${kind})`);
       }
     }
-    document.getElementById("partDialog").close();
+    dlg.close();
     showToast("Saved " + payload.sku);
     await refreshAll();
   } catch (err) {
-    showToast(err.message, true);
+    showModalError(err.message || "Failed to save part.", dlg);
   }
 }
 
